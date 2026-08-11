@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 
 const NAV_SECTIONS = [
   {
@@ -40,6 +41,7 @@ function initials(email) {
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const sections = user?.role === "admin"
     ? [...NAV_SECTIONS, { title: "Sistema", items: [{ to: "/admin", label: "Admin" }] }]
@@ -65,16 +67,10 @@ export default function Layout() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 4px" }}>
-          <div
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 9,
-              background: "linear-gradient(135deg, var(--accent), var(--accent-deep))",
-              flexShrink: 0,
-            }}
-          />
-          <div style={{ fontWeight: 700, fontSize: 14.5, letterSpacing: 0.3 }}>ATLANTICO FERTLOG</div>
+          <div className="brand-logo">
+            <img src="/logo.svg" alt="Atlantico Fertlog" />
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 13.5, letterSpacing: 0.3, lineHeight: 1.2 }}>ATLANTICO<br />FERTLOG</div>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 18, overflowY: "auto" }}>
@@ -130,8 +126,18 @@ export default function Layout() {
           }}
         >
           <div style={{ fontSize: 15, fontWeight: 700 }}>{currentLabel}</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.6 }}>
-            Atlantico Fertlog
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.6 }}>
+              Atlantico Fertlog
+            </div>
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={toggleTheme}
+              title={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
+            >
+              {theme === "dark" ? "☀" : "☽"}
+            </button>
           </div>
         </header>
         <main style={{ flex: 1, overflowY: "auto" }}>

@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,18 +27,21 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, position: "relative" }}>
+      <button
+        type="button"
+        className="theme-toggle"
+        onClick={toggleTheme}
+        title={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
+        style={{ position: "absolute", top: 20, right: 20 }}
+      >
+        {theme === "dark" ? "☀" : "☽"}
+      </button>
       <form onSubmit={handleSubmit} className="card" style={{ width: 360, display: "flex", flexDirection: "column", gap: 18 }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-          <div
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 14,
-              background: "linear-gradient(135deg, var(--accent), var(--accent-deep))",
-              boxShadow: "0 10px 24px -8px rgba(107,156,73,0.55)",
-            }}
-          />
+          <div className="brand-logo" style={{ width: 56, height: 56, borderRadius: 16 }}>
+            <img src="/logo.svg" alt="Atlantico Fertlog" />
+          </div>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontWeight: 700, fontSize: 18, letterSpacing: 0.3 }}>ATLANTICO FERTLOG</div>
             <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>Entrar no sistema</div>

@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ContratoProvider } from "./context/ContratoContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import AdminPage from "./pages/AdminPage";
 import AgendamentosPage from "./pages/AgendamentosPage";
 import AnaliseFretesPage from "./pages/AnaliseFretesPage";
@@ -65,10 +66,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ContratoProvider>
-        <AppRoutes />
-      </ContratoProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <ContratoProvider>
+          <AppRoutes />
+        </ContratoProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
