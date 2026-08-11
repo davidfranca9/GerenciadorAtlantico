@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import * as api from "../api/client";
+import { formatDateInput } from "../utils/format";
 
 export default function AnaliseFretesPage() {
   const [cotacoes, setCotacoes] = useState([]);
@@ -47,7 +48,7 @@ export default function AnaliseFretesPage() {
       <form onSubmit={handleCadastrar} className="card field-grid" style={{ alignItems: "end" }}>
         <div className="field">
           <label>Data da Cotacao</label>
-          <input placeholder="dd/mm/aaaa" value={dataCotacao} onChange={(e) => setDataCotacao(e.target.value)} required />
+          <input placeholder="dd/mm/aaaa" value={dataCotacao} onChange={(e) => setDataCotacao(formatDateInput(e.target.value))} required />
         </div>
         <div className="field">
           <label>Destino</label>

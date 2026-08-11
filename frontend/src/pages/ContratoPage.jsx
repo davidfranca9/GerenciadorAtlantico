@@ -1,10 +1,12 @@
 import { useState } from "react";
 import * as api from "../api/client";
 import { useContrato } from "../context/ContratoContext";
+import { formatDateInput } from "../utils/format";
 
 export default function ContratoPage() {
   const {
     rows,
+    selectedRows,
     metrics,
     dataCarregamento,
     setDataCarregamento,
@@ -19,6 +21,10 @@ export default function ContratoPage() {
   const [status, setStatus] = useState("Nenhum contrato carregado. Selecione os PDFs.");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const [nomeCondutor, setNomeCondutor] = useState("");
+  const [placaCavalo, setPlacaCavalo] = useState("");
+  const [gerandoAutorizacao, setGerandoAutorizacao] = useState(false);
 
   async function handleFiles(e) {
     const files = Array.from(e.target.files || []);
@@ -57,6 +63,36 @@ export default function ContratoPage() {
     }
   }
 
+  async function handleGerarAutorizacao() {
+    setError("");
+    if (selectedRows.length === 0) {
+      setError("Selecione ao menos um contrato na tabela antes de gerar a Autorizacao.");
+      return;
+    }
+    setGerandoAutorizacao(true);
+    try {
+      await api.gerarAutorizacaoColeta({
+        template: supplier,
+        produtos: selectedRows.map((r) => ({
+          contrato: r.contrato,
+          produto: r.produto,
+          embalagem: r.embalagem,
+          toneladas: String(r.toneladas),
+          cidade: r.cidade,
+          cliente: r.cliente,
+        })),
+        nome: nomeCondutor,
+        placa1: placaCavalo,
+        data_carregamento: dataCarregamento,
+      });
+      setStatus("Autorizacao de Carregamento gerada com sucesso.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setGerandoAutorizacao(false);
+    }
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -73,7 +109,7 @@ export default function ContratoPage() {
         <div style={{ display: "flex", gap: 28, flexWrap: "wrap", paddingTop: 6, borderTop: "1px solid var(--border-soft)" }}>
           <div className="field" style={{ minWidth: 220 }}>
             <label>Data de Carregamento</label>
-            <input placeholder="dd/mm/aaaa" value={dataCarregamento} onChange={(e) => setDataCarregamento(e.target.value)} />
+            <input placeholder="dd/mm/aaaa" value={dataCarregamento} onChange={(e) => setDataCarregamento(formatDateInput(e.target.value))} />
           </div>
           <div className="field">
             <label>Fornecedor</label>
@@ -156,6 +192,25 @@ export default function ContratoPage() {
           </div>
         ))}
       </div>
+
+      {supplier !== "HERINGER" && (
+        <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <strong style={{ fontSize: 15 }}>Autorizacao de Carregamento</strong>
+          <div className="field-grid">
+            <div className="field">
+              <label>Nome do Motorista (opcional)</label>
+              <input value={nomeCondutor} onChange={(e) => setNomeCondutor(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Placa Cavalo (opcional)</label>
+              <input value={placaCavalo} onChange={(e) => setPlacaCavalo(e.target.value)} placeholder="ABC1D23" />
+            </div>
+          </div>
+          <button className="btn-primary" disabled={gerandoAutorizacao} onClick={handleGerarAutorizacao} style={{ alignSelf: "start" }}>
+            {gerandoAutorizacao ? "Gerando..." : "Gerar Autorizacao de Carregamento"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

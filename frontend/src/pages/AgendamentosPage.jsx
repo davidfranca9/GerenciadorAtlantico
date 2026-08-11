@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import * as api from "../api/client";
+import { formatDateInput } from "../utils/format";
 
 const STATUS_OPTIONS = ["Aguardando Agendamento", "Agendado", "Cancelado", "Carregou"];
 const ITEM_VAZIO = { pedido: "", cliente: "", produto: "", cidade: "", embalagem: "", toneladas: "" };
@@ -86,7 +87,7 @@ export default function AgendamentosPage() {
             </div>
             <div className="field">
               <label>Data de Carregamento</label>
-              <input placeholder="dd/mm/aaaa" value={loadingDate} onChange={(e) => setLoadingDate(e.target.value)} />
+              <input placeholder="dd/mm/aaaa" value={loadingDate} onChange={(e) => setLoadingDate(formatDateInput(e.target.value))} />
             </div>
             <div className="field">
               <label>Motorista</label>

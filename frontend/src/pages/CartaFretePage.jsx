@@ -1,6 +1,6 @@
 import { useState } from "react";
 import * as api from "../api/client";
-import { formatCPF } from "../utils/format";
+import { formatCPF, formatDateInput } from "../utils/format";
 
 export default function CartaFretePage() {
   const [data, setData] = useState("");
@@ -38,7 +38,7 @@ export default function CartaFretePage() {
       <div className="card field-grid">
         <div className="field">
           <label>Data</label>
-          <input placeholder="dd/mm/aaaa" value={data} onChange={(e) => setData(e.target.value)} />
+          <input placeholder="dd/mm/aaaa" value={data} onChange={(e) => setData(formatDateInput(e.target.value))} />
         </div>
         <div className="field">
           <label>Condutor</label>
