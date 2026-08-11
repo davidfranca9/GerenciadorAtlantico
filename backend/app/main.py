@@ -4,7 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from .auth import router as auth_router
 from .config import settings
 from .database import Base, engine
+from .routers.admin import router as admin_router
 from .routers.agendamentos import router as agendamentos_router
+from .routers.bsoft import router as bsoft_router
+from .routers.buonny import router as buonny_router
+from .routers.clientes import router as clientes_router
+from .routers.contrato import router as contrato_router
 from .routers.documentos import router as documentos_router
 from .routers.fretes import router as fretes_router
 
@@ -22,6 +27,11 @@ app.include_router(auth_router)
 app.include_router(documentos_router)
 app.include_router(agendamentos_router)
 app.include_router(fretes_router)
+app.include_router(clientes_router)
+app.include_router(admin_router)
+app.include_router(contrato_router)
+app.include_router(bsoft_router)
+app.include_router(buonny_router)
 
 
 @app.on_event("startup")

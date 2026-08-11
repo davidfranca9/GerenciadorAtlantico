@@ -89,6 +89,98 @@ export function cadastrarCotacao(payload) {
   return request("/cotacoes-frete", { method: "POST", body: payload });
 }
 
+export function listarClientes(busca) {
+  const query = busca ? `?busca=${encodeURIComponent(busca)}` : "";
+  return request(`/clientes${query}`);
+}
+
+export function criarCliente(payload) {
+  return request("/clientes", { method: "POST", body: payload });
+}
+
+export function atualizarCliente(id, payload) {
+  return request(`/clientes/${id}`, { method: "PUT", body: payload });
+}
+
+export function removerCliente(id) {
+  return request(`/clientes/${id}`, { method: "DELETE" });
+}
+
+export function changePassword(currentPassword, newPassword) {
+  return request("/auth/change-password", {
+    method: "POST",
+    body: { current_password: currentPassword, new_password: newPassword },
+  });
+}
+
+export function adminListarUsuarios() {
+  return request("/admin/usuarios");
+}
+
+export function adminCriarUsuario(payload) {
+  return request("/admin/usuarios", { method: "POST", body: payload });
+}
+
+export function adminAtualizarUsuario(id, payload) {
+  return request(`/admin/usuarios/${id}`, { method: "PATCH", body: payload });
+}
+
+async function uploadFile(path, file) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || "Falha no upload");
+  }
+  return res.json();
+}
+
+export function ocrPedidoHeringer(file) {
+  return uploadFile("/contrato/ocr/pedido-heringer", file);
+}
+
+export function ocrCnh(file) {
+  return uploadFile("/contrato/ocr/cnh", file);
+}
+
+export function ocrCrlv(file) {
+  return uploadFile("/contrato/ocr/crlv", file);
+}
+
+export function parsePdfPedido(file) {
+  return uploadFile("/contrato/parse-pdf", file);
+}
+
+export function bsoftLookups() {
+  return request("/bsoft/lookups");
+}
+
+export function bsoftCadastrarPessoaFisica(payload) {
+  return request("/bsoft/pessoas/fisicas", { method: "POST", body: payload });
+}
+
+export function bsoftCadastrarVeiculo(payload) {
+  return request("/bsoft/veiculos", { method: "POST", body: payload });
+}
+
+export function buonnyLookups() {
+  return request("/buonny/lookups");
+}
+
+export function buonnyLogin(username, password) {
+  return request("/buonny/login", { method: "POST", body: { username, password } });
+}
+
+export function buonnyConsultar(payload) {
+  return request("/buonny/consultar", { method: "POST", body: payload });
+}
+
 async function downloadDocumento(path, payload, filename) {
   const token = getToken();
   const res = await fetch(`${API_URL}${path}`, {

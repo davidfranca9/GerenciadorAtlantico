@@ -5,6 +5,7 @@ const NAV_SECTIONS = [
   {
     title: "Logistica",
     items: [
+      { to: "/contrato", label: "Contrato" },
       { to: "/ordem-coleta", label: "Ordem de Coleta" },
       { to: "/agendamentos", label: "Agendamentos" },
       { to: "/analise-fretes", label: "Analise de Fretes" },
@@ -14,10 +15,24 @@ const NAV_SECTIONS = [
     title: "Financeiro",
     items: [{ to: "/carta-frete", label: "Carta Frete" }],
   },
+  {
+    title: "Cadastro",
+    items: [
+      { to: "/buonny", label: "Buonny" },
+      { to: "/bsoft", label: "Bsoft TMS" },
+    ],
+  },
+  {
+    title: "Clientes",
+    items: [{ to: "/clientes", label: "Clientes" }],
+  },
 ];
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const sections = user?.role === "admin"
+    ? [...NAV_SECTIONS, { title: "Sistema", items: [{ to: "/admin", label: "Admin" }] }]
+    : NAV_SECTIONS;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
@@ -33,7 +48,7 @@ export default function Layout() {
         }}
       >
         <div style={{ fontWeight: 700, fontSize: 16, letterSpacing: 0.5 }}>ATLANTICO FERTLOG</div>
-        {NAV_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <div key={section.title}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, textTransform: "uppercase" }}>
               {section.title}
@@ -61,6 +76,9 @@ export default function Layout() {
         ))}
         <div style={{ marginTop: "auto" }}>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>{user?.email}</div>
+          <NavLink to="/trocar-senha" style={{ fontSize: 12, color: "var(--accent)", display: "block", marginBottom: 8 }}>
+            Trocar senha
+          </NavLink>
           <button className="btn-secondary" onClick={logout} style={{ width: "100%" }}>
             Sair
           </button>

@@ -1,16 +1,30 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import AdminPage from "./pages/AdminPage";
 import AgendamentosPage from "./pages/AgendamentosPage";
 import AnaliseFretesPage from "./pages/AnaliseFretesPage";
+import BsoftPage from "./pages/BsoftPage";
+import BuonnyPage from "./pages/BuonnyPage";
 import CartaFretePage from "./pages/CartaFretePage";
+import ClientesPage from "./pages/ClientesPage";
+import ContratoPage from "./pages/ContratoPage";
 import LoginPage from "./pages/LoginPage";
 import OrdemColetaPage from "./pages/OrdemColetaPage";
+import TrocarSenhaPage from "./pages/TrocarSenhaPage";
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div style={{ padding: 40 }}>Carregando...</div>;
   if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function AdminRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div style={{ padding: 40 }}>Carregando...</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== "admin") return <Navigate to="/ordem-coleta" replace />;
   return children;
 }
 
@@ -26,10 +40,23 @@ function AppRoutes() {
         }
       >
         <Route path="/" element={<Navigate to="/ordem-coleta" replace />} />
+        <Route path="/contrato" element={<ContratoPage />} />
         <Route path="/ordem-coleta" element={<OrdemColetaPage />} />
         <Route path="/carta-frete" element={<CartaFretePage />} />
         <Route path="/agendamentos" element={<AgendamentosPage />} />
         <Route path="/analise-fretes" element={<AnaliseFretesPage />} />
+        <Route path="/clientes" element={<ClientesPage />} />
+        <Route path="/buonny" element={<BuonnyPage />} />
+        <Route path="/bsoft" element={<BsoftPage />} />
+        <Route path="/trocar-senha" element={<TrocarSenhaPage />} />
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <AdminPage />
+            </AdminRoute>
+          }
+        />
       </Route>
     </Routes>
   );
