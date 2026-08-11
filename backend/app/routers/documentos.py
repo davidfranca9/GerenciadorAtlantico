@@ -4,7 +4,6 @@ import html
 import os
 import re
 import tempfile
-import zipfile
 from pathlib import Path
 
 from docx import Document
@@ -132,17 +131,33 @@ def gerar_ordem_coleta(payload: OrdemColetaRequest):
     formato = payload.formato.lower()
     principal_path = arquivos["pdf"] if formato == "pdf" else arquivos["docx"]
     principal_name = f"Ordem de Coleta_{safe_name}.{'pdf' if formato == 'pdf' else 'docx'}"
+    media_type = "application/pdf" if formato == "pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return FileResponse(principal_path, filename=principal_name, media_type=media_type)
 
-    if not arquivos["xlsx"]:
-        media_type = "application/pdf" if formato == "pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        return FileResponse(principal_path, filename=principal_name, media_type=media_type)
 
-    zip_path = os.path.join(tmp_dir, f"Ordem de Coleta_{safe_name}.zip")
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(principal_path, principal_name)
-        zf.write(arquivos["xlsx"], f"Autorizacao de Coleta_{safe_name}.xlsx")
+@router.post("/ordens-coleta/gerar-autorizacao")
+def gerar_autorizacao_coleta(payload: OrdemColetaRequest):
+    if payload.template.upper() == "HERINGER":
+        raise HTTPException(status_code=400, detail="Autorizacao de Coleta nao se aplica ao fornecedor Heringer")
+    if not TEMPLATE_AUTORIZACAO.exists():
+        raise HTTPException(status_code=400, detail="Template de Autorizacao de Coleta nao encontrado")
 
-    return FileResponse(zip_path, filename=f"Ordem de Coleta_{safe_name}.zip", media_type="application/zip")
+    tmp_dir = tempfile.mkdtemp()
+    safe_name = _safe_filename(payload.nome)
+    xlsx_path = os.path.join(tmp_dir, f"Autorizacao de Coleta_{safe_name}.xlsx")
+    gerar_autorizacao_xlsx(
+        str(TEMPLATE_AUTORIZACAO),
+        xlsx_path,
+        [p.model_dump() for p in payload.produtos],
+        payload.data_carregamento,
+        payload.nome,
+        payload.placa1,
+    )
+    return FileResponse(
+        xlsx_path,
+        filename=f"Autorizacao de Coleta_{safe_name}.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 class EnviarOrdemColetaRequest(OrdemColetaRequest):

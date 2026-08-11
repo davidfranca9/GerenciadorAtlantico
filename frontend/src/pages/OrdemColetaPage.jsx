@@ -109,8 +109,14 @@ export default function OrdemColetaPage() {
     }
     setLoadingAction(formato === "pdf" ? "pdf" : "docx");
     try {
-      await api.gerarOrdemColeta(buildPayload(formato));
-      setStatus("O.C. gerada com sucesso.");
+      const payload = buildPayload(formato);
+      await api.gerarOrdemColeta(payload);
+      if (supplier !== "HERINGER") {
+        await api.gerarAutorizacaoColeta(payload);
+        setStatus("O.C. e Autorizacao de Coleta geradas com sucesso.");
+      } else {
+        setStatus("O.C. gerada com sucesso.");
+      }
     } catch (err) {
       setError(err.message);
     } finally {

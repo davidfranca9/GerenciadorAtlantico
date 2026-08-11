@@ -221,6 +221,10 @@ export function gerarOrdemColeta(payload) {
   return downloadDocumento("/ordens-coleta/gerar", payload, `ordem_coleta.${ext}`);
 }
 
+export function gerarAutorizacaoColeta(payload) {
+  return downloadDocumento("/ordens-coleta/gerar-autorizacao", payload, "autorizacao_coleta.xlsx");
+}
+
 export function enviarOrdemColetaEmail(payload) {
   return request("/ordens-coleta/enviar-email", { method: "POST", body: payload });
 }
