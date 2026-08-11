@@ -8,6 +8,10 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!api.hasToken()) {
+      setLoading(false);
+      return;
+    }
     api
       .me()
       .then(setUser)

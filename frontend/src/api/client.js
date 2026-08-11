@@ -9,6 +9,10 @@ export function setToken(token) {
   else localStorage.removeItem("token");
 }
 
+export function hasToken() {
+  return Boolean(getToken());
+}
+
 async function request(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   const token = getToken();
@@ -24,8 +28,11 @@ async function request(path, options = {}) {
   });
 
   if (res.status === 401) {
+    const hadToken = hasToken();
     setToken(null);
-    window.location.href = "/login";
+    if (hadToken && window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
     throw new Error("Sessao expirada");
   }
 
