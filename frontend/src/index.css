@@ -127,9 +127,8 @@ select option {
 input[type="checkbox"],
 input[type="radio"] {
   accent-color: var(--accent);
-  width: 17px;
-  height: 17px;
-  margin: 0;
+  transform: scale(1.25);
+  margin: 0 3px;
   flex-shrink: 0;
   cursor: pointer;
 }

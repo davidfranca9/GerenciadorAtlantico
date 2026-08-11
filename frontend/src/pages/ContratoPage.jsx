@@ -77,15 +77,18 @@ export default function ContratoPage() {
           </div>
           <div className="field">
             <label>Fornecedor</label>
-            <div style={{ display: "flex", gap: 18, height: 40, alignItems: "center" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 400 }}>
-                <input type="radio" name="supplier" checked={supplier === "AFL"} onChange={() => setSupplier("AFL")} />
-                Fertimax
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 400 }}>
-                <input type="radio" name="supplier" checked={supplier === "HERINGER"} onChange={() => setSupplier("HERINGER")} />
-                Heringer
-              </label>
+            <div style={{ display: "flex", gap: 10, height: 40, alignItems: "center" }}>
+              {[["AFL", "Fertimax"], ["HERINGER", "Heringer"]].map(([value, texto]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSupplier(value)}
+                  className={supplier === value ? "btn-primary" : "btn-secondary"}
+                  style={{ padding: "8px 20px" }}
+                >
+                  {texto}
+                </button>
+              ))}
             </div>
           </div>
         </div>
