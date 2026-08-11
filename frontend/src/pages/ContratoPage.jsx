@@ -1,56 +1,158 @@
 import { useState } from "react";
 import * as api from "../api/client";
+import { useContrato } from "../context/ContratoContext";
 
-function UploadBlock({ title, actionFn, resultRenderer }) {
-  const [file, setFile] = useState(null);
-  const [resultado, setResultado] = useState(null);
-  const [error, setError] = useState("");
+export default function ContratoPage() {
+  const {
+    rows,
+    metrics,
+    dataCarregamento,
+    setDataCarregamento,
+    supplier,
+    setSupplier,
+    addRows,
+    toggleRow,
+    removeRow,
+    clearRows,
+  } = useContrato();
+
+  const [status, setStatus] = useState("Nenhum contrato carregado. Selecione os PDFs.");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  async function handleEnviar() {
-    if (!file) return;
+  async function handleFiles(e) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
     setError("");
     setLoading(true);
-    setResultado(null);
-    try {
-      const data = await actionFn(file);
-      setResultado(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+
+    let extracted = [];
+    let semItens = 0;
+    for (const file of files) {
+      try {
+        const data = await api.parsePdfPedido(file);
+        const produtos = data.produtos || [];
+        if (produtos.length === 0) {
+          semItens += 1;
+        } else {
+          extracted = extracted.concat(produtos);
+        }
+      } catch (err) {
+        semItens += 1;
+      }
+    }
+
+    addRows(extracted);
+    setLoading(false);
+    e.target.value = "";
+
+    if (extracted.length > 0) {
+      setStatus(
+        semItens > 0
+          ? `${extracted.length} produto(s) carregado(s). ${semItens} PDF(s) nao geraram itens.`
+          : `${extracted.length} produto(s) carregado(s) de ${files.length} PDF(s).`
+      );
+    } else {
+      setStatus("Nenhum contrato foi extraido dos PDFs selecionados.");
     }
   }
 
   return (
-    <div className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <strong>{title}</strong>
-      <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-      <button className="btn-primary" onClick={handleEnviar} disabled={!file || loading} style={{ alignSelf: "start" }}>
-        {loading ? "Processando..." : "Enviar e Extrair"}
-      </button>
-      {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
-      {resultado && (resultRenderer ? resultRenderer(resultado) : (
-        <pre style={{ background: "var(--window-bg-a)", padding: 12, borderRadius: 6, overflowX: "auto", fontSize: 12 }}>
-          {JSON.stringify(resultado, null, 2)}
-        </pre>
-      ))}
-    </div>
-  );
-}
-
-export default function ContratoPage() {
-  return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <h2 style={{ margin: 0 }}>Contrato (OCR)</h2>
-      <p style={{ color: "var(--muted)", marginTop: -10 }}>
-        Envie o PDF/imagem do pedido, CNH ou CRLV. O texto e extraido via Azure OCR e os dados relevantes ficam prontos para copiar na Ordem de Coleta.
-      </p>
+      <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <strong style={{ fontSize: 15 }}>Filtro de Carregamento</strong>
+          <label className="btn-primary" style={{ cursor: "pointer" }}>
+            {loading ? "Processando..." : "Selecionar Contratos (PDF)"}
+            <input type="file" accept=".pdf" multiple onChange={handleFiles} disabled={loading} style={{ display: "none" }} />
+          </label>
+        </div>
+        <div style={{ fontSize: 13, color: "var(--muted)" }}>{status}</div>
+        {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
 
-      <UploadBlock title="Pedido Heringer (PDF/imagem)" actionFn={api.ocrPedidoHeringer} />
-      <UploadBlock title="Pedido em PDF (texto, layout padrao)" actionFn={api.parsePdfPedido} />
-      <UploadBlock title="CNH do motorista" actionFn={api.ocrCnh} />
-      <UploadBlock title="CRLV do veiculo" actionFn={api.ocrCrlv} />
+        <div style={{ display: "flex", gap: 28, flexWrap: "wrap", paddingTop: 6, borderTop: "1px solid var(--border-soft)" }}>
+          <div className="field" style={{ minWidth: 220 }}>
+            <label>Data de Carregamento</label>
+            <input placeholder="dd/mm/aaaa" value={dataCarregamento} onChange={(e) => setDataCarregamento(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Fornecedor</label>
+            <div style={{ display: "flex", gap: 18, height: 40, alignItems: "center" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 400 }}>
+                <input type="radio" name="supplier" checked={supplier === "AFL"} onChange={() => setSupplier("AFL")} />
+                Fertimax
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 400 }}>
+                <input type="radio" name="supplier" checked={supplier === "HERINGER"} onChange={() => setSupplier("HERINGER")} />
+                Heringer
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px" }}>
+          <strong style={{ fontSize: 15 }}>Contratos Disponiveis</strong>
+          {rows.length > 0 && (
+            <button className="btn-secondary" onClick={clearRows}>Limpar tabela</button>
+          )}
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th>Produto</th>
+                <th>Toneladas</th>
+                <th>Embalagem</th>
+                <th>Pedido</th>
+                <th>Cliente</th>
+                <th>Cidade</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, idx) => (
+                <tr key={idx} style={{ opacity: row.checked ? 1 : 0.45 }}>
+                  <td><input type="checkbox" checked={row.checked} onChange={() => toggleRow(idx)} /></td>
+                  <td>{row.produto}</td>
+                  <td>{row.toneladas}</td>
+                  <td>{row.embalagem}</td>
+                  <td>{row.contrato}</td>
+                  <td>{row.cliente}</td>
+                  <td>{row.cidade}</td>
+                  <td><button className="btn-secondary" onClick={() => removeRow(idx)}>Remover</button></td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr><td colSpan={8} style={{ color: "var(--muted)" }}>Nenhum contrato na lista. Selecione PDFs acima.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card" style={{ display: "flex", gap: 0 }}>
+        {[
+          ["Toneladas Selecionadas", metrics.totalTons.toFixed(1)],
+          ["Produtos Selecionados", metrics.selectedCount],
+          ["Produtos na Lista", metrics.totalCount],
+          ["Clientes Unicos", metrics.uniqueClients],
+        ].map(([label, value], idx, arr) => (
+          <div
+            key={label}
+            style={{
+              flex: 1,
+              padding: "0 18px",
+              borderRight: idx < arr.length - 1 ? "1px solid var(--border-soft)" : "none",
+            }}
+          >
+            <div style={{ fontSize: 20, fontWeight: 700, color: idx === 0 ? "var(--accent-glow)" : "var(--text)" }}>{value}</div>
+            <div style={{ fontSize: 11.5, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

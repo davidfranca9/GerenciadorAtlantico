@@ -1,154 +1,230 @@
 import { useState } from "react";
 import * as api from "../api/client";
+import { useContrato } from "../context/ContratoContext";
 
-const PRODUTO_VAZIO = { contrato: "", produto: "", embalagem: "", toneladas: "", cidade: "", cliente: "" };
+const SUPPLIER_LABEL = { AFL: "Fertimax", HERINGER: "Heringer" };
+
+function cleanOcrValue(value) {
+  const text = String(value || "").trim();
+  const lowered = text.toLowerCase();
+  if (["nao encontrado", "não encontrado", "nao encontrada", "não encontrada"].includes(lowered)) return "";
+  return text;
+}
 
 export default function OrdemColetaPage() {
-  const [template, setTemplate] = useState("AFL");
-  const [dataCarregamento, setDataCarregamento] = useState("");
-  const [cpf, setCpf] = useState("");
+  const { selectedRows, metrics, dataCarregamento, supplier } = useContrato();
+
   const [nome, setNome] = useState("");
+  const [cpf, setCpf] = useState("");
   const [cnh, setCnh] = useState("");
   const [fone, setFone] = useState("");
   const [placa1, setPlaca1] = useState("");
   const [placa2, setPlaca2] = useState("");
   const [placa3, setPlaca3] = useState("");
-  const [produtos, setProdutos] = useState([{ ...PRODUTO_VAZIO }]);
-  const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [roteiro, setRoteiro] = useState("");
+  const [localizador, setLocalizador] = useState("");
+  const [contatoCliente, setContatoCliente] = useState("");
 
-  function updateProduto(idx, field, value) {
-    setProdutos((prev) => prev.map((p, i) => (i === idx ? { ...p, [field]: value } : p)));
+  const [status, setStatus] = useState("Importe os documentos e revise os dados antes de gerar a O.C.");
+  const [error, setError] = useState("");
+  const [loadingAction, setLoadingAction] = useState("");
+
+  function buildPayload(formato) {
+    return {
+      template: supplier,
+      produtos: selectedRows.map((r) => ({
+        contrato: r.contrato,
+        produto: r.produto,
+        embalagem: r.embalagem,
+        toneladas: String(r.toneladas),
+        cidade: r.cidade,
+        cliente: r.cliente,
+      })),
+      cpf,
+      nome,
+      cnh,
+      fone,
+      placa1,
+      placa2,
+      placa3,
+      data_carregamento: dataCarregamento,
+      formato,
+    };
   }
 
-  function addProduto() {
-    setProdutos((prev) => [...prev, { ...PRODUTO_VAZIO }]);
-  }
-
-  function removeProduto(idx) {
-    setProdutos((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  async function handleGerar(formato) {
-    setStatus("");
-    setLoading(true);
+  async function handleImportCnh(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError("");
     try {
-      await api.gerarOrdemColeta({
-        template,
-        produtos,
-        cpf,
-        nome,
-        cnh,
-        fone,
-        placa1,
-        placa2,
-        placa3,
-        data_carregamento: dataCarregamento,
-        formato,
-      });
-      setStatus("Documento gerado com sucesso.");
+      const data = await api.ocrCnh(file);
+      setNome(cleanOcrValue(data.nome));
+      setCpf(cleanOcrValue(data.cpf));
+      setCnh(cleanOcrValue(data.numero));
+      setStatus(`CNH importada com sucesso de ${file.name}.`);
     } catch (err) {
-      setStatus(`Erro: ${err.message}`);
-    } finally {
-      setLoading(false);
+      setError(`Erro ao ler CNH: ${err.message}`);
     }
   }
 
+  async function handleImportCrlv(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError("");
+    try {
+      const data = await api.ocrCrlv(file);
+      const placa = cleanOcrValue(data.placa);
+      const categoria = cleanOcrValue(data.categoria_veiculo).toUpperCase();
+      if (!placa) {
+        setError("Nenhuma placa foi encontrada no CRLV.");
+        return;
+      }
+      if (categoria === "CAVALO" || categoria === "TRUCK") {
+        setPlaca1(placa);
+        setStatus("CRLV importado com sucesso para o campo Placa Cavalo.");
+      } else if (!placa2) {
+        setPlaca2(placa);
+        setStatus("CRLV importado com sucesso para o campo Placa Carreta 1.");
+      } else {
+        setPlaca3(placa);
+        setStatus("CRLV importado com sucesso para o campo Placa Carreta 2.");
+      }
+    } catch (err) {
+      setError(`Erro ao ler CRLV: ${err.message}`);
+    }
+  }
+
+  async function handleGerar(formato) {
+    setError("");
+    if (selectedRows.length === 0) {
+      setError("Selecione os contratos na aba Contrato antes de gerar a O.C.");
+      return;
+    }
+    if (!nome.trim()) {
+      setError("O nome do motorista e obrigatorio.");
+      return;
+    }
+    setLoadingAction(formato === "pdf" ? "pdf" : "docx");
+    try {
+      await api.gerarOrdemColeta(buildPayload(formato));
+      setStatus("O.C. gerada com sucesso.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoadingAction("");
+    }
+  }
+
+  async function handleEnviarEmail() {
+    setError("");
+    if (selectedRows.length === 0) {
+      setError("Selecione os contratos na aba Contrato antes de enviar a O.C.");
+      return;
+    }
+    if (!nome.trim()) {
+      setError("O nome do motorista e obrigatorio.");
+      return;
+    }
+    setLoadingAction("email");
+    try {
+      const payload = { ...buildPayload("pdf"), roteiro, localizador, contato_cliente: contatoCliente };
+      const result = await api.enviarOrdemColetaEmail(payload);
+      setStatus(`E-mail enviado e agendamento #${result.agendamento_id} registrado com sucesso.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoadingAction("");
+    }
+  }
+
+  function handleLimpar() {
+    setNome(""); setCpf(""); setCnh(""); setFone("");
+    setPlaca1(""); setPlaca2(""); setPlaca3("");
+    setRoteiro(""); setLocalizador(""); setContatoCliente("");
+    setStatus("Campos limpos. Importe novamente CNH e CRLV se necessario.");
+    setError("");
+  }
+
+  const preview = selectedRows.slice(0, 3).map((r) => {
+    const cidade = r.cidade ? ` | ${r.cidade}` : "";
+    return `Pedido ${r.contrato || "-"} - ${r.produto || "Produto sem nome"} - ${r.toneladas || 0} t${cidade}`;
+  });
+  if (selectedRows.length > 3) preview.push(`... e mais ${selectedRows.length - 3} item(ns)`);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <h2 style={{ margin: 0 }}>Ordem de Coleta</h2>
-
       <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <strong style={{ fontSize: 15 }}>Dados do Motorista e Veiculo</strong>
+
+        <div className="card" style={{ display: "flex", padding: 0, background: "transparent", border: "1px solid var(--border-soft)", boxShadow: "none" }}>
+          {[
+            ["Fornecedor", SUPPLIER_LABEL[supplier] || supplier],
+            ["Data", dataCarregamento || "-"],
+            ["Pedidos", new Set(selectedRows.map((r) => r.contrato).filter(Boolean)).size],
+            ["Produtos", metrics.selectedCount],
+          ].map(([label, value], idx, arr) => (
+            <div key={label} style={{ flex: 1, padding: "12px 16px", borderRight: idx < arr.length - 1 ? "1px solid var(--border-soft)" : "none" }}>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", textTransform: "uppercase" }}>{label}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: idx >= 2 ? "var(--accent-glow)" : "var(--text)" }}>{value}</div>
+            </div>
+          ))}
+        </div>
+
+        {selectedRows.length > 0 ? (
+          <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{preview.join(" | ")}</div>
+        ) : (
+          <div style={{ fontSize: 12.5, color: "var(--warning)" }}>Nenhum contrato selecionado na aba Contrato.</div>
+        )}
+
         <div className="field-grid">
-          <div className="field">
-            <label>Template</label>
-            <select value={template} onChange={(e) => setTemplate(e.target.value)}>
-              <option value="AFL">AFL</option>
-              <option value="HERINGER">Heringer</option>
-            </select>
-          </div>
-          <div className="field">
-            <label>Data de Carregamento</label>
-            <input placeholder="dd/mm/aaaa" value={dataCarregamento} onChange={(e) => setDataCarregamento(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>CPF do Motorista</label>
-            <input value={cpf} onChange={(e) => setCpf(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Nome do Motorista</label>
-            <input value={nome} onChange={(e) => setNome(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>CNH</label>
-            <input value={cnh} onChange={(e) => setCnh(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Telefone</label>
-            <input value={fone} onChange={(e) => setFone(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Placa Cavalo</label>
-            <input value={placa1} onChange={(e) => setPlaca1(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Placa Carreta 1</label>
-            <input value={placa2} onChange={(e) => setPlaca2(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Placa Carreta 2</label>
-            <input value={placa3} onChange={(e) => setPlaca3(e.target.value)} />
-          </div>
+          <div className="field"><label>Nome do Motorista</label><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome completo" /></div>
+          <div className="field"><label>CPF</label><input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" /></div>
+          <div className="field"><label>CNH</label><input value={cnh} onChange={(e) => setCnh(e.target.value)} placeholder="Numero da CNH" /></div>
+          <div className="field"><label>Telefone</label><input value={fone} onChange={(e) => setFone(e.target.value)} placeholder="(00) 00000-0000" /></div>
+          <div className="field"><label>Placa Cavalo</label><input value={placa1} onChange={(e) => setPlaca1(e.target.value)} placeholder="ABC1D23" /></div>
+          <div className="field"><label>Placa Carreta 1</label><input value={placa2} onChange={(e) => setPlaca2(e.target.value)} placeholder="ABC1D23" /></div>
+          <div className="field"><label>Placa Carreta 2</label><input value={placa3} onChange={(e) => setPlaca3(e.target.value)} placeholder="ABC1D23" /></div>
+        </div>
+
+        {status && <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{status}</div>}
+        {error && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{error}</div>}
+
+        <div style={{ display: "flex", gap: 12 }}>
+          <label className="btn-secondary" style={{ cursor: "pointer" }}>
+            Importar Dados da CNH
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.bmp" onChange={handleImportCnh} style={{ display: "none" }} />
+          </label>
+          <label className="btn-secondary" style={{ cursor: "pointer" }}>
+            Importar Dados do CRLV
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.bmp" onChange={handleImportCrlv} style={{ display: "none" }} />
+          </label>
         </div>
       </div>
 
       <div className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <strong>Produtos / Pedidos</strong>
-          <button className="btn-secondary" onClick={addProduto} type="button">
-            + Adicionar item
-          </button>
+        <strong style={{ fontSize: 15 }}>Roteiro / Contato do Cliente (opcional)</strong>
+        <div className="field-grid">
+          <div className="field"><label>Localizador</label><input value={localizador} onChange={(e) => setLocalizador(e.target.value)} /></div>
+          <div className="field"><label>Contato do Cliente</label><input value={contatoCliente} onChange={(e) => setContatoCliente(e.target.value)} /></div>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Pedido</th>
-              <th>Produto</th>
-              <th>Embalagem</th>
-              <th>Toneladas</th>
-              <th>Cidade/UF</th>
-              <th>Cliente</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {produtos.map((p, idx) => (
-              <tr key={idx}>
-                <td><input value={p.contrato} onChange={(e) => updateProduto(idx, "contrato", e.target.value)} /></td>
-                <td><input value={p.produto} onChange={(e) => updateProduto(idx, "produto", e.target.value)} /></td>
-                <td><input value={p.embalagem} onChange={(e) => updateProduto(idx, "embalagem", e.target.value)} /></td>
-                <td><input value={p.toneladas} onChange={(e) => updateProduto(idx, "toneladas", e.target.value)} /></td>
-                <td><input value={p.cidade} onChange={(e) => updateProduto(idx, "cidade", e.target.value)} /></td>
-                <td><input value={p.cliente} onChange={(e) => updateProduto(idx, "cliente", e.target.value)} /></td>
-                <td>
-                  <button className="btn-secondary" type="button" onClick={() => removeProduto(idx)}>
-                    Remover
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="field"><label>Roteiro</label><input value={roteiro} onChange={(e) => setRoteiro(e.target.value)} placeholder="Detalhes do roteiro de entrega" /></div>
       </div>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <button className="btn-primary" disabled={loading} onClick={() => handleGerar("docx")}>
-          Gerar DOCX
+      <div className="card" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <button className="btn-primary" disabled={!!loadingAction} onClick={() => handleGerar("docx")}>
+          {loadingAction === "docx" ? "Gerando..." : "Gerar O.C. (DOCX)"}
         </button>
-        <button className="btn-secondary" disabled={loading} onClick={() => handleGerar("pdf")}>
-          Gerar PDF
+        <button className="btn-secondary" disabled={!!loadingAction} onClick={() => handleGerar("pdf")}>
+          {loadingAction === "pdf" ? "Gerando..." : "Gerar O.C. (PDF)"}
         </button>
-        {status && <span style={{ fontSize: 13, color: status.startsWith("Erro") ? "var(--danger)" : "var(--success)" }}>{status}</span>}
+        <button className="btn-secondary" disabled={!!loadingAction} onClick={handleEnviarEmail}>
+          {loadingAction === "email" ? "Enviando..." : "Enviar O.C. por E-mail"}
+        </button>
+        <button className="btn-secondary" disabled={!!loadingAction} onClick={handleLimpar}>
+          Limpar os Campos
+        </button>
       </div>
     </div>
   );
