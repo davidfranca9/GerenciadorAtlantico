@@ -1,6 +1,7 @@
 import { useState } from "react";
 import * as api from "../api/client";
 import { useContrato } from "../context/ContratoContext";
+import { formatCPF } from "../utils/format";
 
 const SUPPLIER_LABEL = { AFL: "Fertimax", HERINGER: "Heringer" };
 
@@ -60,7 +61,7 @@ export default function OrdemColetaPage() {
     try {
       const data = await api.ocrCnh(file);
       setNome(cleanOcrValue(data.nome));
-      setCpf(cleanOcrValue(data.cpf));
+      setCpf(formatCPF(cleanOcrValue(data.cpf)));
       setCnh(cleanOcrValue(data.numero));
       setStatus(`CNH importada com sucesso de ${file.name}.`);
     } catch (err) {
@@ -180,7 +181,7 @@ export default function OrdemColetaPage() {
 
         <div className="field-grid">
           <div className="field"><label>Nome do Motorista</label><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome completo" /></div>
-          <div className="field"><label>CPF</label><input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" /></div>
+          <div className="field"><label>CPF</label><input value={cpf} onChange={(e) => setCpf(formatCPF(e.target.value))} placeholder="000.000.000-00" maxLength={14} /></div>
           <div className="field"><label>CNH</label><input value={cnh} onChange={(e) => setCnh(e.target.value)} placeholder="Numero da CNH" /></div>
           <div className="field"><label>Telefone</label><input value={fone} onChange={(e) => setFone(e.target.value)} placeholder="(00) 00000-0000" /></div>
           <div className="field"><label>Placa Cavalo</label><input value={placa1} onChange={(e) => setPlaca1(e.target.value)} placeholder="ABC1D23" /></div>

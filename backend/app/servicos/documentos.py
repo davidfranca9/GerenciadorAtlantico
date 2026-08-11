@@ -16,6 +16,14 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
+from openpyxl import load_workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+
+SHEET_NAME = "Ordem de Carregamento"
+AUTORIZACAO_FIRST_DATA_ROW = 3
+AUTORIZACAO_TOTAL_ROW = 15
+TOTAL_LABEL = "Peso total (t)"
 
 OC_HEADERS = ["Pedido", "Produto", "Embalagem", "Peso (t)", "Cidade/UF", "Cliente"]
 OC_COLUMN_WIDTHS_IN = [0.55, 1.55, 0.78, 0.58, 1.05, 1.39]
@@ -370,3 +378,100 @@ def fill_carta_frete_docx(doc, dados):
 
     for table in doc.tables:
         preencher_tabela(table)
+
+
+def get_headers_from_sheet(ws):
+    return [str(h.value) if h.value is not None else "" for h in ws[1]]
+
+
+def _format_autorizacao_sheet(ws, headers, total_row=AUTORIZACAO_TOTAL_ROW):
+    header_fill = PatternFill("solid", fgColor="0F766E")
+    total_fill = PatternFill("solid", fgColor="E6F4F1")
+    thin = Side(style="thin", color="C7D2D0")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for col_idx, header in enumerate(headers, start=1):
+        for row_idx in (1, 2):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.fill = header_fill
+            cell.font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = border
+
+        width = {
+            "Cliente": 34,
+            "Data de Carregamento": 18,
+            "Placa cavalo mecânico": 18,
+            "Nome do condutor": 28,
+            "Número do pedido": 16,
+            "Produto": 34,
+            "Embalagem": 16,
+            "Quantidade": 14,
+            "Cidade/UF": 22,
+        }.get(header, 16)
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    for row_idx in range(AUTORIZACAO_FIRST_DATA_ROW, total_row + 1):
+        ws.row_dimensions[row_idx].height = 22
+        for col_idx, _header in enumerate(headers, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.font = Font(name="Arial", size=10)
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = border
+
+    try:
+        qty_col_idx = headers.index("Quantidade") + 1
+    except ValueError:
+        return
+
+    label_col_idx = max(1, qty_col_idx - 1)
+    label_cell = ws.cell(row=total_row, column=label_col_idx)
+    total_cell = ws.cell(row=total_row, column=qty_col_idx)
+    label_cell.value = TOTAL_LABEL
+    total_cell.value = f"=SUM({get_column_letter(qty_col_idx)}{AUTORIZACAO_FIRST_DATA_ROW}:{get_column_letter(qty_col_idx)}{total_row - 1})"
+    total_cell.number_format = "0.###"
+
+    for cell in (label_cell, total_cell):
+        cell.fill = total_fill
+        cell.font = Font(name="Arial", size=10, bold=True, color="0F3D36")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = border
+
+
+def _clear_autorizacao_data_rows(ws, headers, total_row=AUTORIZACAO_TOTAL_ROW):
+    for row_num in range(AUTORIZACAO_FIRST_DATA_ROW, total_row):
+        for col_num in range(1, len(headers) + 1):
+            ws.cell(row=row_num, column=col_num).value = None
+
+
+def _write_autorizacao_rows(ws, headers, produtos, data_carregamento, nome_condutor=None, placa_cavalo=None):
+    max_items = max(0, AUTORIZACAO_TOTAL_ROW - AUTORIZACAO_FIRST_DATA_ROW)
+    for idx, p in enumerate((produtos or [])[:max_items]):
+        contrato = str(p.get("contrato") or "").strip()
+        row_map = {
+            "Cliente": p.get("cliente"),
+            "Data de Carregamento": data_carregamento,
+            "Placa cavalo mecânico": placa_cavalo,
+            "Nome do condutor": nome_condutor,
+            "Número do pedido": int(contrato) if contrato.isdigit() else contrato,
+            "Produto": p.get("produto"),
+            "Embalagem": p.get("embalagem"),
+            "Quantidade": _safe_float(p.get("toneladas")),
+            "Cidade/UF": p.get("cidade"),
+        }
+        for col_idx, header in enumerate(headers, start=1):
+            ws.cell(row=AUTORIZACAO_FIRST_DATA_ROW + idx, column=col_idx).value = row_map.get(header)
+
+
+def gerar_autorizacao_xlsx(template_path, save_path, produtos, data_carregamento, nome_condutor, placa_cavalo):
+    wb = load_workbook(template_path)
+    ws = wb[SHEET_NAME] if SHEET_NAME in wb.sheetnames else wb.active
+    headers = get_headers_from_sheet(ws)
+    _clear_autorizacao_data_rows(ws, headers)
+    _write_autorizacao_rows(ws, headers, produtos, data_carregamento, nome_condutor, placa_cavalo)
+    _format_autorizacao_sheet(ws, headers)
+    try:
+        wb.calculation.fullCalcOnLoad = True
+    except Exception:
+        pass
+    wb.save(save_path)

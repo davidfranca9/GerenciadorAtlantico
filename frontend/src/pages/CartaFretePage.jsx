@@ -1,5 +1,6 @@
 import { useState } from "react";
 import * as api from "../api/client";
+import { formatCPF } from "../utils/format";
 
 export default function CartaFretePage() {
   const [data, setData] = useState("");
@@ -45,7 +46,7 @@ export default function CartaFretePage() {
         </div>
         <div className="field">
           <label>CPF</label>
-          <input value={cpf} onChange={(e) => setCpf(e.target.value)} />
+          <input value={cpf} onChange={(e) => setCpf(formatCPF(e.target.value))} placeholder="000.000.000-00" maxLength={14} />
         </div>
         <div className="field">
           <label>Placa Cavalo</label>

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import html
 import os
+import re
 import tempfile
+import zipfile
 from pathlib import Path
 
 from docx import Document
@@ -15,7 +17,7 @@ from ..auth import get_current_user
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem
 from ..servicos.comunicacao import send_email_message
-from ..servicos.documentos import fill_carta_frete_docx, gerar_oc_docx
+from ..servicos.documentos import fill_carta_frete_docx, gerar_autorizacao_xlsx, gerar_oc_docx
 from ..servicos.pdf_convert import docx_to_pdf
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -36,6 +38,12 @@ TEMPLATES_OC = {
     "HERINGER": DADOS_DIR / "O.C_HERINGER.docx",
 }
 TEMPLATE_CF = DADOS_DIR / "CARTA FRETE atlantico (1).docx"
+TEMPLATE_AUTORIZACAO = DADOS_DIR / "Autorizacao de Carregamento (2).xlsx"
+
+
+def _safe_filename(nome: str) -> str:
+    safe = re.sub(r'[\\/*?:"<>|]', "", (nome or "").strip())
+    return safe or "Motorista"
 
 
 class Produto(BaseModel):
@@ -71,57 +79,22 @@ class CartaFreteRequest(BaseModel):
     formato: str = "docx"
 
 
-@router.post("/ordens-coleta/gerar")
-def gerar_ordem_coleta(payload: OrdemColetaRequest):
+def _gerar_oc_arquivos(payload: OrdemColetaRequest, tmp_dir: str) -> dict:
+    """Gera a Ordem de Coleta (docx/pdf) e, para fornecedores que nao sejam
+    Heringer, tambem a Autorizacao de Coleta (xlsx). Retorna um dict com os
+    caminhos gerados: {"docx": ..., "pdf": ..., "xlsx": ... | None}."""
     template_path = TEMPLATES_OC.get(payload.template.upper())
     if template_path is None or not template_path.exists():
         raise HTTPException(status_code=400, detail=f"Template '{payload.template}' invalido")
 
-    tmp_dir = tempfile.mkdtemp()
-    docx_path = os.path.join(tmp_dir, "ordem_coleta.docx")
+    safe_name = _safe_filename(payload.nome)
+    produtos_dict = [p.model_dump() for p in payload.produtos]
 
+    docx_path = os.path.join(tmp_dir, f"Ordem de Coleta_{safe_name}.docx")
     gerar_oc_docx(
         str(template_path),
         docx_path,
-        [p.model_dump() for p in payload.produtos],
-        payload.cpf,
-        payload.nome,
-        payload.cnh,
-        payload.fone,
-        payload.placa1,
-        payload.placa2,
-        payload.placa3,
-        payload.data_carregamento,
-    )
-
-    if payload.formato.lower() == "pdf":
-        pdf_path = docx_to_pdf(docx_path)
-        return FileResponse(pdf_path, filename="ordem_coleta.pdf", media_type="application/pdf")
-
-    return FileResponse(
-        docx_path,
-        filename="ordem_coleta.docx",
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    )
-
-
-class EnviarOrdemColetaRequest(OrdemColetaRequest):
-    roteiro: str = ""
-    localizador: str = ""
-    contato_cliente: str = ""
-
-
-def _gerar_oc_arquivos(payload: OrdemColetaRequest) -> tuple[str, str]:
-    template_path = TEMPLATES_OC.get(payload.template.upper())
-    if template_path is None or not template_path.exists():
-        raise HTTPException(status_code=400, detail=f"Template '{payload.template}' invalido")
-
-    tmp_dir = tempfile.mkdtemp()
-    docx_path = os.path.join(tmp_dir, "ordem_coleta.docx")
-    gerar_oc_docx(
-        str(template_path),
-        docx_path,
-        [p.model_dump() for p in payload.produtos],
+        produtos_dict,
         payload.cpf,
         payload.nome,
         payload.cnh,
@@ -132,7 +105,50 @@ def _gerar_oc_arquivos(payload: OrdemColetaRequest) -> tuple[str, str]:
         payload.data_carregamento,
     )
     pdf_path = docx_to_pdf(docx_path)
-    return docx_path, pdf_path
+    pdf_renamed = os.path.join(tmp_dir, f"Ordem de Coleta_{safe_name}.pdf")
+    os.replace(pdf_path, pdf_renamed)
+
+    xlsx_path = None
+    if payload.template.upper() != "HERINGER" and TEMPLATE_AUTORIZACAO.exists():
+        xlsx_path = os.path.join(tmp_dir, f"Autorizacao de Coleta_{safe_name}.xlsx")
+        gerar_autorizacao_xlsx(
+            str(TEMPLATE_AUTORIZACAO),
+            xlsx_path,
+            produtos_dict,
+            payload.data_carregamento,
+            payload.nome,
+            payload.placa1,
+        )
+
+    return {"docx": docx_path, "pdf": pdf_renamed, "xlsx": xlsx_path, "safe_name": safe_name}
+
+
+@router.post("/ordens-coleta/gerar")
+def gerar_ordem_coleta(payload: OrdemColetaRequest):
+    tmp_dir = tempfile.mkdtemp()
+    arquivos = _gerar_oc_arquivos(payload, tmp_dir)
+    safe_name = arquivos["safe_name"]
+
+    formato = payload.formato.lower()
+    principal_path = arquivos["pdf"] if formato == "pdf" else arquivos["docx"]
+    principal_name = f"Ordem de Coleta_{safe_name}.{'pdf' if formato == 'pdf' else 'docx'}"
+
+    if not arquivos["xlsx"]:
+        media_type = "application/pdf" if formato == "pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        return FileResponse(principal_path, filename=principal_name, media_type=media_type)
+
+    zip_path = os.path.join(tmp_dir, f"Ordem de Coleta_{safe_name}.zip")
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(principal_path, principal_name)
+        zf.write(arquivos["xlsx"], f"Autorizacao de Coleta_{safe_name}.xlsx")
+
+    return FileResponse(zip_path, filename=f"Ordem de Coleta_{safe_name}.zip", media_type="application/zip")
+
+
+class EnviarOrdemColetaRequest(OrdemColetaRequest):
+    roteiro: str = ""
+    localizador: str = ""
+    contato_cliente: str = ""
 
 
 @router.post("/ordens-coleta/enviar-email")
@@ -145,7 +161,11 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
     supplier_label = "Heringer" if payload.template.upper() == "HERINGER" else "Fertimax"
     recipients = RECIPIENTS_HERINGER if supplier_label == "Heringer" else RECIPIENTS_FERTIMAX
 
-    _docx_path, pdf_path = _gerar_oc_arquivos(payload)
+    tmp_dir = tempfile.mkdtemp()
+    arquivos = _gerar_oc_arquivos(payload, tmp_dir)
+    anexos = [arquivos["pdf"]]
+    if arquivos["xlsx"]:
+        anexos.append(arquivos["xlsx"])
 
     subject = f"Autorizacao de {payload.nome.strip()} - Placa {payload.placa1.strip() or 'N/A'}"
     detail_blocks = []
@@ -162,7 +182,7 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
     """
 
     try:
-        send_email_message(recipients, subject, body, [pdf_path])
+        send_email_message(recipients, subject, body, anexos)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
 
@@ -185,7 +205,8 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
         contato_cliente=payload.contato_cliente.strip(),
         email_subject=subject,
         email_recipients=", ".join(recipients),
-        oc_pdf_path=pdf_path,
+        oc_pdf_path=arquivos["pdf"],
+        planilha_path=arquivos["xlsx"] or "",
     )
     agendamento.itens = [
         AgendamentoItem(

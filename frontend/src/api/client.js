@@ -202,11 +202,14 @@ async function downloadDocumento(path, payload, filename) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.detail || "Falha ao gerar documento");
   }
+  const disposition = res.headers.get("content-disposition") || "";
+  const match = disposition.match(/filename="?([^";]+)"?/);
+  const finalFilename = match ? decodeURIComponent(match[1]) : filename;
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.download = finalFilename;
   document.body.appendChild(a);
   a.click();
   a.remove();
