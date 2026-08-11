@@ -8,6 +8,7 @@ from __future__ import annotations
 import locale
 import re
 import unicodedata
+from datetime import datetime
 
 from docx import Document
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
@@ -255,29 +256,50 @@ def fill_motorista_and_placas(doc, cpf, nome, cnh, fone, placa1, placa2, placa3)
             continue
         matches = list(LABEL_PATTERN.finditer(para.text))
         if matches:
-            updated_parts = []
-            for m in matches:
-                key = _label_key_from_text(m.group(0))
-                if key:
-                    val = mapping.get(key, "")
-                    label = STANDARDIZED_LABELS.get(key)
-                    updated_parts.append(f"{label}: {val}" if val else f"{label}:")
             src_run = para.runs[0] if para.runs else None
             for run in para.runs:
                 run.text = ""
-            new_run = para.add_run("\t\t".join(updated_parts))
-            if src_run:
-                copy_run_style(src_run, new_run)
+            for idx, m in enumerate(matches):
+                key = _label_key_from_text(m.group(0))
+                if not key:
+                    continue
+                if idx > 0:
+                    sep_run = para.add_run("\t\t")
+                    if src_run:
+                        copy_run_style(src_run, sep_run)
+                val = mapping.get(key, "")
+                label = STANDARDIZED_LABELS.get(key)
+                label_run = para.add_run(f"{label}:")
+                if src_run:
+                    copy_run_style(src_run, label_run)
+                label_run.font.bold = True
+                if val:
+                    val_run = para.add_run(f" {val}")
+                    if src_run:
+                        copy_run_style(src_run, val_run)
+                    val_run.font.bold = False
+
+
+def _replace_date_in_paragraph(paragraph, new_date):
+    for run in paragraph.runs:
+        if re.search(r"\d{1,2}/\d{1,2}/\d{2,4}", run.text):
+            run.text = re.sub(r"\d{1,2}/\d{1,2}/\d{2,4}", new_date, run.text, 1)
+            return True
+    return False
 
 
 def gerar_oc_docx(modelo_path, save_path, produtos, cpf, nome, cnh, fone, placa1, placa2, placa3, data_carregamento):
     doc = Document(modelo_path)
     fill_products_in_existing_table(doc, produtos)
     fill_motorista_and_placas(doc, cpf, nome, cnh, fone, placa1, placa2, placa3)
+
+    hoje = datetime.now().strftime("%d/%m/%Y")
     for p in _iter_all_paragraphs(doc):
-        if re.search(r"\d{1,2}/\d{1,2}/\d{2,4}", p.text, re.I):
-            p.text = re.sub(r"\d{1,2}/\d{1,2}/\d{2,4}", data_carregamento, p.text, 1)
-            break
+        if "Emiss" in p.text and re.search(r"\d{1,2}/\d{1,2}/\d{2,4}", p.text):
+            _replace_date_in_paragraph(p, hoje)
+        elif "Carregamento" in p.text and re.search(r"\d{1,2}/\d{1,2}/\d{2,4}", p.text):
+            _replace_date_in_paragraph(p, data_carregamento)
+
     doc.save(save_path)
 
 
