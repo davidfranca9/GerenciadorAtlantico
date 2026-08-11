@@ -31,7 +31,7 @@ function UploadBlock({ title, actionFn, resultRenderer }) {
       </button>
       {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
       {resultado && (resultRenderer ? resultRenderer(resultado) : (
-        <pre style={{ background: "var(--bg)", padding: 12, borderRadius: 6, overflowX: "auto", fontSize: 12 }}>
+        <pre style={{ background: "var(--window-bg-a)", padding: 12, borderRadius: 6, overflowX: "auto", fontSize: 12 }}>
           {JSON.stringify(resultado, null, 2)}
         </pre>
       ))}
@@ -43,7 +43,7 @@ export default function ContratoPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <h2 style={{ margin: 0 }}>Contrato (OCR)</h2>
-      <p style={{ color: "var(--text-muted)", marginTop: -10 }}>
+      <p style={{ color: "var(--muted)", marginTop: -10 }}>
         Envie o PDF/imagem do pedido, CNH ou CRLV. O texto e extraido via Azure OCR e os dados relevantes ficam prontos para copiar na Ordem de Coleta.
       </p>
 

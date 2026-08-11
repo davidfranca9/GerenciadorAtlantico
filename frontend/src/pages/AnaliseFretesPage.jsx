@@ -87,7 +87,7 @@ export default function AnaliseFretesPage() {
             ))}
             {cotacoes.length === 0 && (
               <tr>
-                <td colSpan={3} style={{ color: "var(--text-muted)" }}>Nenhuma cotacao encontrada.</td>
+                <td colSpan={3} style={{ color: "var(--muted)" }}>Nenhuma cotacao encontrada.</td>
               </tr>
             )}
           </tbody>

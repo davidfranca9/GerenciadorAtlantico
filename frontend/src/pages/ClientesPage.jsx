@@ -149,7 +149,7 @@ export default function ClientesPage() {
               </tr>
             ))}
             {clientes.length === 0 && (
-              <tr><td colSpan={5} style={{ color: "var(--text-muted)" }}>Nenhum cliente cadastrado.</td></tr>
+              <tr><td colSpan={5} style={{ color: "var(--muted)" }}>Nenhum cliente cadastrado.</td></tr>
             )}
           </tbody>
         </table>

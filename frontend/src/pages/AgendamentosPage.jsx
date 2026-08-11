@@ -170,7 +170,7 @@ export default function AgendamentosPage() {
             ))}
             {!loading && agendamentos.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ color: "var(--text-muted)" }}>Nenhum agendamento encontrado.</td>
+                <td colSpan={6} style={{ color: "var(--muted)" }}>Nenhum agendamento encontrado.</td>
               </tr>
             )}
           </tbody>
