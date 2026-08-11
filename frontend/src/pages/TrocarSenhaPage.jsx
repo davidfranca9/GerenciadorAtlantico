@@ -29,7 +29,6 @@ export default function TrocarSenhaPage() {
 
   return (
     <div style={{ maxWidth: 360 }}>
-      <h2 style={{ marginTop: 0 }}>Trocar Senha</h2>
       <form onSubmit={handleSubmit} className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div className="field">
           <label>Senha atual</label>

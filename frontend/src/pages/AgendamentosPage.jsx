@@ -72,7 +72,6 @@ export default function AgendamentosPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ margin: 0 }}>Agendamentos</h2>
         <button className="btn-primary" onClick={() => setShowForm((v) => !v)}>
           {showForm ? "Cancelar" : "+ Novo Agendamento"}
         </button>

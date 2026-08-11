@@ -56,7 +56,6 @@ export default function AdminPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <h2 style={{ margin: 0 }}>Administracao de Usuarios</h2>
 
       <form onSubmit={handleCriar} className="card field-grid" style={{ alignItems: "end" }}>
         <div className="field">

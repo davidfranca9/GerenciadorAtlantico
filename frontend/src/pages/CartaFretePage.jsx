@@ -34,7 +34,6 @@ export default function CartaFretePage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <h2 style={{ margin: 0 }}>Carta Frete</h2>
       <div className="card field-grid">
         <div className="field">
           <label>Data</label>

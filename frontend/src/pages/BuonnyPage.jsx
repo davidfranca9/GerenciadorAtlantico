@@ -45,7 +45,6 @@ export default function BuonnyPage() {
   if (!sessionId) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 360 }}>
-        <h2 style={{ margin: 0 }}>Buonny</h2>
         <form onSubmit={handleLogin} className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div className="field">
             <label>Apelido (Codigo)</label>
@@ -64,7 +63,6 @@ export default function BuonnyPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <h2 style={{ margin: 0 }}>Buonny - Consulta</h2>
       <form onSubmit={handleConsultar} className="card field-grid">
         <div className="field"><label>Codigo Cliente</label><input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} /></div>
         <div className="field"><label>CPF Motorista</label><input value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} /></div>

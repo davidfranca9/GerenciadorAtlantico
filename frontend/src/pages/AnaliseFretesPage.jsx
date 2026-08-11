@@ -43,7 +43,6 @@ export default function AnaliseFretesPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <h2 style={{ margin: 0 }}>Analise de Fretes</h2>
 
       <form onSubmit={handleCadastrar} className="card field-grid" style={{ alignItems: "end" }}>
         <div className="field">

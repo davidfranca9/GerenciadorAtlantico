@@ -51,7 +51,6 @@ export default function BsoftPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <h2 style={{ margin: 0 }}>Bsoft TMS</h2>
 
       {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
       {status && <div style={{ color: "var(--success)" }}>{status}</div>}
