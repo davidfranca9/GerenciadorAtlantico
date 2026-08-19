@@ -210,9 +210,8 @@ def fill_products_in_existing_table(doc, produtos):
         table._tbl.remove(table.rows[1]._tr)
 
     header_row = table.rows[0]
-    _set_row_fill(header_row, "0F766E")
     for cell, header in zip(header_row.cells, OC_HEADERS):
-        _set_cell_text(cell, header, bold=True, size=7.5, color="FFFFFF")
+        _set_cell_text(cell, header, bold=True, size=7.5, color="000000")
 
     for p in produtos or []:
         row = table.add_row()
@@ -305,8 +304,7 @@ def gerar_oc_docx(modelo_path, save_path, produtos, cpf, nome, cnh, fone, placa1
     for p in _iter_all_paragraphs(doc):
         if "Emiss" in p.text and re.search(r"\d{1,2}/\d{1,2}/\d{2,4}", p.text):
             _replace_date_in_paragraph(p, hoje)
-        elif "Carregamento" in p.text and re.search(r"\d{1,2}/\d{1,2}/\d{2,4}", p.text):
-            _replace_date_in_paragraph(p, data_carregamento)
+            break
 
     doc.save(save_path)
 
