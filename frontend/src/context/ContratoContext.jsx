@@ -7,9 +7,17 @@ function safeTon(value) {
   return Number.isFinite(num) ? num : 0;
 }
 
+function todayFormatted() {
+  const hoje = new Date();
+  const dd = String(hoje.getDate()).padStart(2, "0");
+  const mm = String(hoje.getMonth() + 1).padStart(2, "0");
+  const yyyy = hoje.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 export function ContratoProvider({ children }) {
   const [rows, setRows] = useState([]);
-  const [dataCarregamento, setDataCarregamento] = useState("");
+  const [dataCarregamento, setDataCarregamento] = useState(todayFormatted);
   const [supplier, setSupplier] = useState("AFL");
 
   function addRows(newRows) {

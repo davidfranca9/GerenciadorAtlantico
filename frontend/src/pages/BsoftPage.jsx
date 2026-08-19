@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import * as api from "../api/client";
+import { formatNome, formatPhone, formatPlaca } from "../utils/format";
 
 export default function BsoftPage() {
   const [lookups, setLookups] = useState(null);
@@ -58,11 +59,11 @@ export default function BsoftPage() {
       <form onSubmit={handleCadastrarPF} className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <strong>Cadastrar Motorista (Pessoa Fisica)</strong>
         <div className="field-grid">
-          <div className="field"><label>Nome</label><input value={pf.nome} onChange={(e) => setPf({ ...pf, nome: e.target.value })} required /></div>
+          <div className="field"><label>Nome</label><input value={pf.nome} onChange={(e) => setPf({ ...pf, nome: formatNome(e.target.value) })} required /></div>
           <div className="field"><label>CPF</label><input value={pf.cpf} onChange={(e) => setPf({ ...pf, cpf: e.target.value })} required /></div>
           <div className="field"><label>Data Nascimento</label><input placeholder="aaaa-mm-dd" value={pf.dtNascimento} onChange={(e) => setPf({ ...pf, dtNascimento: e.target.value })} /></div>
           <div className="field"><label>RNTRC</label><input value={pf.rntrc} onChange={(e) => setPf({ ...pf, rntrc: e.target.value })} /></div>
-          <div className="field"><label>Telefone</label><input value={pf.fone} onChange={(e) => setPf({ ...pf, fone: e.target.value })} /></div>
+          <div className="field"><label>Telefone</label><input value={pf.fone} onChange={(e) => setPf({ ...pf, fone: formatPhone(e.target.value) })} placeholder="(00) 9 0000-0000" /></div>
         </div>
         <label style={{ fontSize: 13, display: "flex", gap: 8, alignItems: "center" }}>
           <input type="checkbox" checked={pf.is_owner} onChange={(e) => setPf({ ...pf, is_owner: e.target.checked })} />
@@ -74,7 +75,7 @@ export default function BsoftPage() {
       <form onSubmit={handleCadastrarVeiculo} className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <strong>Cadastrar Veiculo</strong>
         <div className="field-grid">
-          <div className="field"><label>Placa</label><input value={veiculo.placa} onChange={(e) => setVeiculo({ ...veiculo, placa: e.target.value })} required /></div>
+          <div className="field"><label>Placa</label><input value={veiculo.placa} onChange={(e) => setVeiculo({ ...veiculo, placa: formatPlaca(e.target.value) })} placeholder="ABC-1D23" required /></div>
           <div className="field"><label>Renavam</label><input value={veiculo.renavam} onChange={(e) => setVeiculo({ ...veiculo, renavam: e.target.value })} /></div>
           <div className="field"><label>Modelo</label><input value={veiculo.modeloVeiculo} onChange={(e) => setVeiculo({ ...veiculo, modeloVeiculo: e.target.value })} /></div>
           <div className="field"><label>Eixos</label><input value={veiculo.quantidadeEixos} onChange={(e) => setVeiculo({ ...veiculo, quantidadeEixos: e.target.value })} /></div>

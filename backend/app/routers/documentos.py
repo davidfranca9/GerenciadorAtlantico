@@ -45,6 +45,14 @@ def _safe_filename(nome: str) -> str:
     return safe or "Motorista"
 
 
+def _client_name_from_produtos(produtos: list) -> str:
+    for p in produtos:
+        cliente = (p.get("cliente") if isinstance(p, dict) else p.cliente) or ""
+        if cliente.strip():
+            return _safe_filename(cliente)
+    return "Cliente"
+
+
 class Produto(BaseModel):
     contrato: str = ""
     produto: str = ""
@@ -109,7 +117,8 @@ def _gerar_oc_arquivos(payload: OrdemColetaRequest, tmp_dir: str) -> dict:
 
     xlsx_path = None
     if payload.template.upper() != "HERINGER" and TEMPLATE_AUTORIZACAO.exists():
-        xlsx_path = os.path.join(tmp_dir, f"Autorizacao de Coleta_{safe_name}.xlsx")
+        cliente_name = _client_name_from_produtos(produtos_dict)
+        xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{cliente_name}.xlsx")
         gerar_autorizacao_xlsx(
             str(TEMPLATE_AUTORIZACAO),
             xlsx_path,
@@ -143,19 +152,20 @@ def gerar_autorizacao_coleta(payload: OrdemColetaRequest):
         raise HTTPException(status_code=400, detail="Template de Autorizacao de Coleta nao encontrado")
 
     tmp_dir = tempfile.mkdtemp()
-    safe_name = _safe_filename(payload.nome)
-    xlsx_path = os.path.join(tmp_dir, f"Autorizacao de Coleta_{safe_name}.xlsx")
+    produtos_dict = [p.model_dump() for p in payload.produtos]
+    cliente_name = _client_name_from_produtos(produtos_dict)
+    xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{cliente_name}.xlsx")
     gerar_autorizacao_xlsx(
         str(TEMPLATE_AUTORIZACAO),
         xlsx_path,
-        [p.model_dump() for p in payload.produtos],
+        produtos_dict,
         payload.data_carregamento,
         payload.nome,
         payload.placa1,
     )
     return FileResponse(
         xlsx_path,
-        filename=f"Autorizacao de Coleta_{safe_name}.xlsx",
+        filename=f"Autorizacao de carregamento_{cliente_name}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 

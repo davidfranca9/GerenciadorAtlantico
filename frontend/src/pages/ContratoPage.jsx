@@ -1,7 +1,8 @@
 import { useState } from "react";
 import * as api from "../api/client";
+import DateField from "../components/DateField";
 import { useContrato } from "../context/ContratoContext";
-import { formatDateInput } from "../utils/format";
+import { formatNome, formatPlaca } from "../utils/format";
 
 export default function ContratoPage() {
   const {
@@ -107,9 +108,8 @@ export default function ContratoPage() {
         {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
 
         <div style={{ display: "flex", gap: 28, flexWrap: "wrap", paddingTop: 6, borderTop: "1px solid var(--border-soft)" }}>
-          <div className="field" style={{ minWidth: 220 }}>
-            <label>Data de Carregamento</label>
-            <input placeholder="dd/mm/aaaa" value={dataCarregamento} onChange={(e) => setDataCarregamento(formatDateInput(e.target.value))} />
+          <div style={{ minWidth: 220 }}>
+            <DateField label="Data de Carregamento" value={dataCarregamento} onChange={setDataCarregamento} />
           </div>
           <div className="field">
             <label>Fornecedor</label>
@@ -199,11 +199,11 @@ export default function ContratoPage() {
           <div className="field-grid">
             <div className="field">
               <label>Nome do Motorista (opcional)</label>
-              <input value={nomeCondutor} onChange={(e) => setNomeCondutor(e.target.value)} />
+              <input value={nomeCondutor} onChange={(e) => setNomeCondutor(formatNome(e.target.value))} />
             </div>
             <div className="field">
               <label>Placa Cavalo (opcional)</label>
-              <input value={placaCavalo} onChange={(e) => setPlacaCavalo(e.target.value)} placeholder="ABC1D23" />
+              <input value={placaCavalo} onChange={(e) => setPlacaCavalo(formatPlaca(e.target.value))} placeholder="ABC-1D23" />
             </div>
           </div>
           <button className="btn-primary" disabled={gerandoAutorizacao} onClick={handleGerarAutorizacao} style={{ alignSelf: "start" }}>

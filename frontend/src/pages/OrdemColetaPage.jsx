@@ -1,7 +1,7 @@
 import { useState } from "react";
 import * as api from "../api/client";
 import { useContrato } from "../context/ContratoContext";
-import { formatCPF } from "../utils/format";
+import { formatCPF, formatNome, formatPhone, formatPlaca } from "../utils/format";
 
 const SUPPLIER_LABEL = { AFL: "Fertimax", HERINGER: "Heringer" };
 
@@ -60,7 +60,7 @@ export default function OrdemColetaPage() {
     setError("");
     try {
       const data = await api.ocrCnh(file);
-      setNome(cleanOcrValue(data.nome));
+      setNome(formatNome(cleanOcrValue(data.nome)));
       setCpf(formatCPF(cleanOcrValue(data.cpf)));
       setCnh(cleanOcrValue(data.numero));
       setStatus(`CNH importada com sucesso de ${file.name}.`);
@@ -82,14 +82,15 @@ export default function OrdemColetaPage() {
         setError("Nenhuma placa foi encontrada no CRLV.");
         return;
       }
+      const placaFormatada = formatPlaca(placa);
       if (categoria === "CAVALO" || categoria === "TRUCK") {
-        setPlaca1(placa);
+        setPlaca1(placaFormatada);
         setStatus("CRLV importado com sucesso para o campo Placa Cavalo.");
       } else if (!placa2) {
-        setPlaca2(placa);
+        setPlaca2(placaFormatada);
         setStatus("CRLV importado com sucesso para o campo Placa Carreta 1.");
       } else {
-        setPlaca3(placa);
+        setPlaca3(placaFormatada);
         setStatus("CRLV importado com sucesso para o campo Placa Carreta 2.");
       }
     } catch (err) {
@@ -186,13 +187,13 @@ export default function OrdemColetaPage() {
         )}
 
         <div className="field-grid">
-          <div className="field"><label>Nome do Motorista</label><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome completo" /></div>
+          <div className="field"><label>Nome do Motorista</label><input value={nome} onChange={(e) => setNome(formatNome(e.target.value))} placeholder="Nome completo" /></div>
           <div className="field"><label>CPF</label><input value={cpf} onChange={(e) => setCpf(formatCPF(e.target.value))} placeholder="000.000.000-00" maxLength={14} /></div>
           <div className="field"><label>CNH</label><input value={cnh} onChange={(e) => setCnh(e.target.value)} placeholder="Numero da CNH" /></div>
-          <div className="field"><label>Telefone</label><input value={fone} onChange={(e) => setFone(e.target.value)} placeholder="(00) 00000-0000" /></div>
-          <div className="field"><label>Placa Cavalo</label><input value={placa1} onChange={(e) => setPlaca1(e.target.value)} placeholder="ABC1D23" /></div>
-          <div className="field"><label>Placa Carreta 1</label><input value={placa2} onChange={(e) => setPlaca2(e.target.value)} placeholder="ABC1D23" /></div>
-          <div className="field"><label>Placa Carreta 2</label><input value={placa3} onChange={(e) => setPlaca3(e.target.value)} placeholder="ABC1D23" /></div>
+          <div className="field"><label>Telefone</label><input value={fone} onChange={(e) => setFone(formatPhone(e.target.value))} placeholder="(00) 9 0000-0000" /></div>
+          <div className="field"><label>Placa Cavalo</label><input value={placa1} onChange={(e) => setPlaca1(formatPlaca(e.target.value))} placeholder="ABC-1D23" /></div>
+          <div className="field"><label>Placa Carreta 1</label><input value={placa2} onChange={(e) => setPlaca2(formatPlaca(e.target.value))} placeholder="ABC-1D23" /></div>
+          <div className="field"><label>Placa Carreta 2</label><input value={placa3} onChange={(e) => setPlaca3(formatPlaca(e.target.value))} placeholder="ABC-1D23" /></div>
         </div>
 
         {status && <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{status}</div>}

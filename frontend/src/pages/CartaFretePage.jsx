@@ -1,6 +1,7 @@
 import { useState } from "react";
 import * as api from "../api/client";
-import { formatCPF, formatDateInput } from "../utils/format";
+import DateField from "../components/DateField";
+import { formatCPF, formatNome, formatPlaca } from "../utils/format";
 
 export default function CartaFretePage() {
   const [data, setData] = useState("");
@@ -36,13 +37,10 @@ export default function CartaFretePage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div className="card field-grid">
-        <div className="field">
-          <label>Data</label>
-          <input placeholder="dd/mm/aaaa" value={data} onChange={(e) => setData(formatDateInput(e.target.value))} />
-        </div>
+        <DateField label="Data" value={data} onChange={setData} />
         <div className="field">
           <label>Condutor</label>
-          <input value={condutor} onChange={(e) => setCondutor(e.target.value)} />
+          <input value={condutor} onChange={(e) => setCondutor(formatNome(e.target.value))} />
         </div>
         <div className="field">
           <label>CPF</label>
@@ -50,7 +48,7 @@ export default function CartaFretePage() {
         </div>
         <div className="field">
           <label>Placa Cavalo</label>
-          <input value={placaCavalo} onChange={(e) => setPlacaCavalo(e.target.value)} />
+          <input value={placaCavalo} onChange={(e) => setPlacaCavalo(formatPlaca(e.target.value))} placeholder="ABC-1D23" />
         </div>
         <div className="field">
           <label>Valor do Frete</label>
