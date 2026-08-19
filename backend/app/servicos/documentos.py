@@ -210,13 +210,12 @@ def fill_products_in_existing_table(doc, produtos):
         table._tbl.remove(table.rows[1]._tr)
 
     header_row = table.rows[0]
-    _set_row_fill(header_row, "343A40")
+    _set_row_fill(header_row, "FFFFFF")
     for cell, header in zip(header_row.cells, OC_HEADERS):
-        _set_cell_text(cell, header, bold=True, size=7.5, color="FFFFFF")
+        _set_cell_text(cell, header, bold=True, size=7.5, color="000000")
 
-    for row_idx, p in enumerate(produtos or []):
+    for p in produtos or []:
         row = table.add_row()
-        _set_row_fill(row, "F8F9FA" if row_idx % 2 == 1 else "FFFFFF")
         values = [
             p.get("contrato", ""),
             p.get("produto", ""),
