@@ -16,17 +16,18 @@ from datetime import datetime
 import fitz  # PyMuPDF
 import pdfplumber
 import pytesseract
-from PIL import Image, ImageChops, ImageOps
+from PIL import Image, ImageChops, ImageFilter, ImageOps
 
 _RESOLUCAO_MINIMA_LADO_MAIOR = 1900
 
 
 def _preprocessar_imagem(image: Image.Image) -> Image.Image:
     """Prepara a imagem para o Tesseract: corrige orientacao EXIF, amplia
-    fotos de baixa resolucao e converte para escala de cinza usando o canal
-    mais escuro entre R/G/B (em vez da luminancia padrao), o que preserva
-    tinta colorida (ex: numeros em vermelho na CNH) que a conversao normal
-    apaga quando o fundo do documento tambem e claro."""
+    fotos de baixa resolucao, converte para escala de cinza usando o canal
+    mais escuro entre R/G/B (em vez da luminancia padrao, que apaga tinta
+    colorida como numeros em vermelho contra fundo claro) e borra levemente
+    para atenuar o padrao de seguranca repetido no fundo de documentos como
+    a CNH, sem destruir o texto real."""
     image = ImageOps.exif_transpose(image).convert("RGB")
 
     largura, altura = image.size
@@ -37,6 +38,7 @@ def _preprocessar_imagem(image: Image.Image) -> Image.Image:
 
     r, g, b = image.split()
     cinza = ImageChops.darker(ImageChops.darker(r, g), b)
+    cinza = cinza.filter(ImageFilter.GaussianBlur(radius=0.6))
     return ImageOps.autocontrast(cinza, cutoff=1)
 
 
@@ -52,7 +54,9 @@ def obter_texto_do_arquivo_ocr(caminho_arquivo: str) -> str:
         image = Image.open(caminho_arquivo)
 
     image = _preprocessar_imagem(image)
-    return pytesseract.image_to_string(image, lang="por", config="--psm 11")
+    texto_bloco = pytesseract.image_to_string(image, lang="por", config="--psm 6")
+    texto_esparso = pytesseract.image_to_string(image, lang="por", config="--psm 11")
+    return f"{texto_bloco}\n{texto_esparso}"
 
 
 def extrair_dados_pedido_heringer(texto_completo: str) -> list:
