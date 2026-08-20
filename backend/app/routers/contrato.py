@@ -27,7 +27,7 @@ async def _save_upload(file: UploadFile) -> str:
 async def ocr_pedido_heringer(file: UploadFile):
     path = await _save_upload(file)
     try:
-        texto = ocr.obter_texto_do_arquivo_com_azure(path)
+        texto = ocr.obter_texto_do_arquivo_ocr(path)
         produtos = ocr.extrair_dados_pedido_heringer(texto)
         return {"produtos": produtos}
     finally:
@@ -38,7 +38,7 @@ async def ocr_pedido_heringer(file: UploadFile):
 async def ocr_cnh(file: UploadFile):
     path = await _save_upload(file)
     try:
-        texto = ocr.obter_texto_do_arquivo_com_azure(path)
+        texto = ocr.obter_texto_do_arquivo_ocr(path)
         return ocr.extrair_dados_cnh_com_azure_api(texto)
     finally:
         os.remove(path)
@@ -48,7 +48,7 @@ async def ocr_cnh(file: UploadFile):
 async def ocr_crlv(file: UploadFile):
     path = await _save_upload(file)
     try:
-        texto = ocr.obter_texto_do_arquivo_com_azure(path)
+        texto = ocr.obter_texto_do_arquivo_ocr(path)
         return ocr.extrair_dados_crlv_com_azure_api(texto, BSOFT_SIMPLE_BRANDS_LIST, BSOFT_TIPOS_CARROCERIA_NOMES)
     finally:
         os.remove(path)

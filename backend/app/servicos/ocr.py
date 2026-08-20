@@ -1,4 +1,5 @@
-"""OCR de pedidos/CNH/CRLV via Azure Computer Vision + parsing de PDF de pedido.
+"""OCR de pedidos/CNH/CRLV via Tesseract (motor local, sem custo) + parsing
+de PDF de pedido.
 
 Portado de gerenciador_atlantico/servicos/ocr.py, removendo dependencias de
 tkinter (dialogo de escolha de cidade vira retorno de candidatos para o
@@ -6,6 +7,7 @@ frontend decidir) e trocando a planilha de cidades por consulta ao Postgres.
 """
 from __future__ import annotations
 
+import io
 import os
 import re
 import unicodedata
@@ -13,32 +15,28 @@ from datetime import datetime
 
 import fitz  # PyMuPDF
 import pdfplumber
-from azure.ai.vision.imageanalysis import ImageAnalysisClient
-from azure.ai.vision.imageanalysis.models import VisualFeatures
-from azure.core.credentials import AzureKeyCredential
-
-from ..config import settings
+import pytesseract
+from PIL import Image, ImageOps
 
 
-def obter_texto_do_arquivo_com_azure(caminho_arquivo: str) -> str:
+def _preprocessar_imagem(image: Image.Image) -> Image.Image:
+    image = ImageOps.exif_transpose(image)
+    return image.convert("L")
+
+
+def obter_texto_do_arquivo_ocr(caminho_arquivo: str) -> str:
     ext = os.path.splitext(caminho_arquivo)[1].lower()
     if ext == ".pdf":
         with fitz.open(caminho_arquivo) as doc:
             page = doc.load_page(0)
             pix = page.get_pixmap(dpi=300)
             img_bytes = pix.tobytes("png")
+        image = Image.open(io.BytesIO(img_bytes))
     else:
-        with open(caminho_arquivo, "rb") as arquivo:
-            img_bytes = arquivo.read()
+        image = Image.open(caminho_arquivo)
 
-    client = ImageAnalysisClient(
-        endpoint=settings.azure_vision_endpoint,
-        credential=AzureKeyCredential(settings.azure_vision_key),
-    )
-    result = client.analyze(image_data=img_bytes, visual_features=[VisualFeatures.READ])
-    if not result.read:
-        return ""
-    return "\n".join(line.text for block in result.read.blocks for line in block.lines)
+    image = _preprocessar_imagem(image)
+    return pytesseract.image_to_string(image, lang="por")
 
 
 def extrair_dados_pedido_heringer(texto_completo: str) -> list:

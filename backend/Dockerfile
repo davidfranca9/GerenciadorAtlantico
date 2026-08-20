@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     shared-mime-info \
     fonts-dejavu-core \
+    tesseract-ocr \
+    tesseract-ocr-por \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

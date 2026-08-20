@@ -121,7 +121,7 @@ async def importar_documentos(files: list[UploadFile]):
     for file in files:
         path = await _salvar_upload(file)
         try:
-            texto = ocr.obter_texto_do_arquivo_com_azure(path)
+            texto = ocr.obter_texto_do_arquivo_ocr(path)
             if not texto:
                 continue
             tipo = ocr.classificar_documento(texto)

@@ -12,9 +12,6 @@ class Settings(BaseSettings):
 
     cors_allowed_origins: str = "http://localhost:5173"
 
-    azure_vision_endpoint: str = ""
-    azure_vision_key: str = ""
-
     gmail_sender_email: str = ""
     gmail_app_password_send: str = ""
     gmail_app_password_imap: str = ""
