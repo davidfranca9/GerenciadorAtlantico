@@ -7,6 +7,22 @@ export function formatCPF(value) {
   return out;
 }
 
+export function formatCNPJ(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 14);
+  let out = digits;
+  if (digits.length > 12) out = digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{1,2})/, "$1.$2.$3/$4-$5");
+  else if (digits.length > 8) out = digits.replace(/(\d{2})(\d{3})(\d{3})(\d{1,4})/, "$1.$2.$3/$4");
+  else if (digits.length > 5) out = digits.replace(/(\d{2})(\d{3})(\d{1,3})/, "$1.$2.$3");
+  else if (digits.length > 2) out = digits.replace(/(\d{2})(\d{1,3})/, "$1.$2");
+  return out;
+}
+
+export function formatCEP(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 8);
+  if (digits.length > 5) return digits.replace(/(\d{5})(\d{1,3})/, "$1-$2");
+  return digits;
+}
+
 export function formatDateInput(value) {
   const digits = String(value || "").replace(/\D/g, "").slice(0, 8);
   let out = digits;

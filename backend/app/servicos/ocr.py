@@ -286,6 +286,28 @@ def extrair_dados_crlv_com_azure_api(texto_completo: str, marcas_conhecidas: lis
     return dados_crlv
 
 
+def extrair_dados_rntrc_com_azure_api(texto_completo: str) -> dict:
+    if not texto_completo:
+        return {}
+    dados_rntrc = {}
+    texto_upper = texto_completo.upper()
+    match_rntrc = re.search(r"(\d{8,})", texto_upper.replace("RNTRC", ""))
+    if match_rntrc:
+        dados_rntrc["rntrc"] = match_rntrc.group(1).strip()
+    return dados_rntrc
+
+
+def classificar_documento(texto: str) -> str:
+    upper = normalizar_texto_sem_acento(texto)
+    if "CARTEIRA NACIONAL DE HABILITA" in upper:
+        return "CNH"
+    if "CERTIFICADO DE REGISTRO E LICENCIAMENTO" in upper:
+        return "CRLV"
+    if "RNTRC" in upper or "TRANSPORTADORES RODOVIARIOS DE CARGAS" in upper:
+        return "RNTRC"
+    return "DESCONHECIDO"
+
+
 def normalizar_texto_sem_acento(texto: str) -> str:
     if not isinstance(texto, str):
         texto = str(texto)

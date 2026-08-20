@@ -152,6 +152,22 @@ async function uploadFile(path, file) {
   return res.json();
 }
 
+async function uploadFiles(path, files) {
+  const token = getToken();
+  const formData = new FormData();
+  for (const file of files) formData.append("files", file);
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || "Falha no upload");
+  }
+  return res.json();
+}
+
 export function ocrPedidoHeringer(file) {
   return uploadFile("/contrato/ocr/pedido-heringer", file);
 }
@@ -172,12 +188,44 @@ export function bsoftLookups() {
   return request("/bsoft/lookups");
 }
 
+export function bsoftCidades() {
+  return request("/bsoft/cidades");
+}
+
+export function bsoftConsultaCep(cep) {
+  return request(`/bsoft/consulta-cep/${encodeURIComponent(cep)}`);
+}
+
+export function bsoftConsultaCnpj(cnpj) {
+  return request(`/bsoft/consulta-cnpj/${encodeURIComponent(cnpj)}`);
+}
+
+export function bsoftBuscarPessoaFisica(cpf) {
+  return request(`/bsoft/pessoas/fisicas/${encodeURIComponent(cpf)}/busca`);
+}
+
+export function bsoftBuscarPessoaJuridica(cnpj) {
+  return request(`/bsoft/pessoas/juridicas/${encodeURIComponent(cnpj)}/busca`);
+}
+
+export function bsoftImportarOC(file) {
+  return uploadFile("/bsoft/importar-oc", file);
+}
+
+export function bsoftImportarDocumentos(files) {
+  return uploadFiles("/bsoft/importar-documentos", files);
+}
+
 export function bsoftCadastrarPessoaFisica(payload) {
   return request("/bsoft/pessoas/fisicas", { method: "POST", body: payload });
 }
 
 export function bsoftCadastrarVeiculo(payload) {
   return request("/bsoft/veiculos", { method: "POST", body: payload });
+}
+
+export function bsoftCadastrarCompleto(payload) {
+  return request("/bsoft/cadastrar-completo", { method: "POST", body: payload });
 }
 
 export function buonnyLookups() {

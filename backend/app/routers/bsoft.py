@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import os
+import re
+import tempfile
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+import requests
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
-from ..servicos import bsoft_api
+from ..database import get_db
+from ..models import Cidade
+from ..servicos import bsoft_api, bsoft_orquestracao, ocr
 from ..servicos.bsoft_lookup import (
     BSOFT_CATEGORY_ID_TO_RODADO_ID_MAP,
     BSOFT_CATEGORIAS_VEICULO,
@@ -37,6 +44,97 @@ def obter_lookups():
         "marcas": BSOFT_SIMPLE_BRANDS_LIST,
         "marca_id_lookup": {f"{marca}|{categoria}": id_ for (marca, categoria), id_ in BSOFT_MARCA_ID_LOOKUP.items()},
     }
+
+
+@router.get("/cidades")
+def obter_cidades(db: Session = Depends(get_db)):
+    cidades_por_uf: dict[str, list[list[str]]] = {}
+    for c in db.query(Cidade).order_by(Cidade.uf, Cidade.nome).all():
+        if not c.ibge:
+            continue
+        cidades_por_uf.setdefault(c.uf, []).append([c.nome, c.ibge])
+    return cidades_por_uf
+
+
+@router.get("/consulta-cep/{cep}")
+def consulta_cep(cep: str):
+    digitos = re.sub(r"\D", "", cep)
+    if len(digitos) != 8:
+        raise HTTPException(status_code=400, detail="O CEP deve conter 8 digitos.")
+    try:
+        return bsoft_api.consultar_cep(digitos)
+    except bsoft_api.BsoftApiError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except requests.exceptions.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Nao foi possivel consultar o CEP: {exc}")
+
+
+@router.get("/consulta-cnpj/{cnpj}")
+def consulta_cnpj(cnpj: str):
+    digitos = re.sub(r"\D", "", cnpj)
+    if len(digitos) != 14:
+        raise HTTPException(status_code=400, detail="O CNPJ deve conter 14 digitos.")
+    try:
+        return bsoft_api.consultar_cnpj(digitos)
+    except bsoft_api.BsoftApiError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except requests.exceptions.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Nao foi possivel consultar o CNPJ: {exc}")
+
+
+@router.get("/pessoas/fisicas/{cpf}/busca")
+def buscar_pessoa_fisica(cpf: str):
+    pessoa_id = bsoft_api.buscar_pessoa_fisica_por_cpf(re.sub(r"\D", "", cpf))
+    return {"encontrado": bool(pessoa_id), "id": pessoa_id}
+
+
+@router.get("/pessoas/juridicas/{cnpj}/busca")
+def buscar_pessoa_juridica(cnpj: str):
+    pessoa_id = bsoft_api.buscar_pessoa_juridica_por_cnpj(re.sub(r"\D", "", cnpj))
+    return {"encontrado": bool(pessoa_id), "id": pessoa_id}
+
+
+async def _salvar_upload(file: UploadFile) -> str:
+    suffix = os.path.splitext(file.filename or "")[1] or ".pdf"
+    fd, path = tempfile.mkstemp(suffix=suffix)
+    with os.fdopen(fd, "wb") as f:
+        f.write(await file.read())
+    return path
+
+
+@router.post("/importar-oc")
+async def importar_oc(file: UploadFile):
+    path = await _salvar_upload(file)
+    try:
+        return bsoft_orquestracao.extrair_dados_oc(path)
+    except bsoft_orquestracao.CadastroBsoftError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    finally:
+        os.remove(path)
+
+
+@router.post("/importar-documentos")
+async def importar_documentos(files: list[UploadFile]):
+    driver_data: dict = {}
+    vehicle_docs: list[dict] = []
+
+    for file in files:
+        path = await _salvar_upload(file)
+        try:
+            texto = ocr.obter_texto_do_arquivo_com_azure(path)
+            if not texto:
+                continue
+            tipo = ocr.classificar_documento(texto)
+            if tipo == "CNH":
+                driver_data.update(ocr.extrair_dados_cnh_com_azure_api(texto))
+            elif tipo == "CRLV":
+                vehicle_docs.append(ocr.extrair_dados_crlv_com_azure_api(texto, BSOFT_SIMPLE_BRANDS_LIST, BSOFT_TIPOS_CARROCERIA_NOMES))
+            elif tipo == "RNTRC":
+                driver_data.update(ocr.extrair_dados_rntrc_com_azure_api(texto))
+        finally:
+            os.remove(path)
+
+    return {"motorista": driver_data, "veiculos": vehicle_docs}
 
 
 class VeiculoIn(BaseModel):
@@ -127,3 +225,79 @@ def cadastrar_pessoa_juridica(payload: PessoaJuridicaIn):
 @router.put("/pessoas/juridicas/{cnpj}")
 def atualizar_pessoa_juridica(cnpj: str, payload: PessoaJuridicaIn):
     return _wrap(bsoft_api.atualizar_pessoa_juridica_bsoft, cnpj, payload.model_dump())
+
+
+class CnhIn(BaseModel):
+    numero: str = ""
+    seguro: str = ""
+    categoria: str = ""
+    protocolo: str = ""
+    dtValidade: str = ""
+    dtExpedicao: str = ""
+    dtPrimeiraExpedicao: str = ""
+
+
+class MotoristaIn(BaseModel):
+    nome: str
+    cpf: str
+    fone: str = ""
+    dtNascimento: str = ""
+    rntrc: str = ""
+    cnh: CnhIn = CnhIn()
+
+
+class EnderecoMotoristaIn(BaseModel):
+    cep: str = ""
+    logradouro: str = ""
+    numero: str = ""
+    bairro: str = ""
+    estado: str = ""
+    cidade: str = ""
+    complemento: str = ""
+    inscricaoEstadual: str = "ISENTO"
+    inscricaoMunicipal: str = "ISENTO"
+    tipoEndereco: str = "Nacional"
+    enderecoPreferencial: str = "Sim"
+    cobrancaPreferencial: str = "Não"
+    ieNaoContribuinte: str = "Sim"
+
+
+class ProprietarioIn(BaseModel):
+    cnpj: str = ""
+    razao_social: str = ""
+    rntrc: str = ""
+    tipo: str = ""
+    endereco_cnpj_data: dict = {}
+
+
+class VeiculoSlotIn(BaseModel):
+    placa: str = ""
+    renavam: str = ""
+    eixos: str = ""
+    estado: str = ""
+    cidade: str = ""
+    marca: str = ""
+    modelo: str = ""
+    categoria: str = ""
+    rodado: str = ""
+    carroceria: str = ""
+    equipamento: str = ""
+
+
+class CadastroCompletoIn(BaseModel):
+    motorista: MotoristaIn
+    endereco: EnderecoMotoristaIn = EnderecoMotoristaIn()
+    motorista_e_proprietario: bool = True
+    proprietario: ProprietarioIn = ProprietarioIn()
+    cavalo: VeiculoSlotIn = VeiculoSlotIn()
+    reboque1: Optional[VeiculoSlotIn] = None
+    reboque2: Optional[VeiculoSlotIn] = None
+    permitir_sem_veiculo: bool = False
+
+
+@router.post("/cadastrar-completo")
+def cadastrar_completo(payload: CadastroCompletoIn, db: Session = Depends(get_db)):
+    try:
+        return bsoft_orquestracao.executar_cadastro_completo(db, payload.model_dump())
+    except bsoft_orquestracao.CadastroBsoftError as exc:
+        return {"ok": False, "passos": [], "mensagem": str(exc)}

@@ -50,6 +50,7 @@ class Cidade(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     nome: Mapped[str] = mapped_column(String(255), index=True)
     uf: Mapped[str] = mapped_column(String(2), index=True)
+    ibge: Mapped[str] = mapped_column(String(16), default="")
 
 
 class Agendamento(Base):

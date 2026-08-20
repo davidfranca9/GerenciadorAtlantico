@@ -42,6 +42,19 @@ def on_startup():
     try:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS observacoes VARCHAR(2000) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE cidades ADD COLUMN IF NOT EXISTS ibge VARCHAR(16) DEFAULT ''"))
+    except Exception:
+        pass
+
+    try:
+        from .database import SessionLocal
+        from .import_cidades import backfill_ibge_codes
+
+        db = SessionLocal()
+        try:
+            backfill_ibge_codes(db)
+        finally:
+            db.close()
     except Exception:
         pass
 

@@ -131,3 +131,45 @@ def atualizar_pessoa_juridica_bsoft(cnpj: str, dados_empresa: dict) -> dict:
     if resp.status_code == 200:
         return resp.json()
     raise BsoftApiError(f"Falha ao atualizar proprietario PJ (status {resp.status_code}): {resp.text}")
+
+
+def buscar_pessoa_fisica_por_cpf(cpf: str) -> str | None:
+    if not cpf:
+        return None
+    url = f"{BASE_URL}/pessoas/v1/pessoas/fisicas/{cpf}"
+    try:
+        resp = requests.get(url, auth=_auth(), timeout=20)
+        if resp.status_code == 200 and resp.text and resp.json():
+            return resp.json()[0].get("id")
+    except requests.exceptions.RequestException:
+        return None
+    return None
+
+
+def buscar_pessoa_juridica_por_cnpj(cnpj: str) -> str | None:
+    if not cnpj:
+        return None
+    url = f"{BASE_URL}/pessoas/v1/pessoas/juridicas/{cnpj}"
+    try:
+        resp = requests.get(url, auth=_auth(), timeout=20)
+        if resp.status_code == 200 and resp.text and resp.json():
+            return resp.json()[0].get("id")
+    except requests.exceptions.RequestException:
+        return None
+    return None
+
+
+def consultar_cep(cep: str) -> dict:
+    resp = requests.get(f"https://brasilapi.com.br/api/cep/v1/{cep}", timeout=10)
+    if resp.status_code == 404:
+        raise BsoftApiError(f"O CEP '{cep}' nao foi encontrado.")
+    resp.raise_for_status()
+    return resp.json()
+
+
+def consultar_cnpj(cnpj: str) -> dict:
+    resp = requests.get(f"https://brasilapi.com.br/api/cnpj/v1/{cnpj}", timeout=15)
+    if resp.status_code == 404:
+        raise BsoftApiError(f"O CNPJ '{cnpj}' nao foi encontrado.")
+    resp.raise_for_status()
+    return resp.json()
