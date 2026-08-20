@@ -1,5 +1,3 @@
-import os
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -66,17 +64,3 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/health/specs")
-def health_specs():
-    def _ler(caminho):
-        try:
-            with open(caminho) as f:
-                return f.read()
-        except Exception as exc:
-            return f"erro: {exc}"
-
-    return {
-        "cpus": os.cpu_count(),
-        "meminfo": _ler("/proc/meminfo").splitlines()[:5],
-        "loadavg": _ler("/proc/loadavg"),
-    }
