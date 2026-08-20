@@ -167,9 +167,11 @@ def extrair_dados_cnh_com_azure_api(texto_completo: str) -> dict:
     if categoria_encontrada:
         dados_cnh["categoria"] = categoria_encontrada
 
-    m_cpf = re.search(r"(\d{3}\.?\d{3}\.?\d{3}-?\d{2})", texto_upper)
+    m_cpf = re.search(r"\d{3}\.\d{3}\.\d{3}-\d{2}", texto_upper)
+    if not m_cpf:
+        m_cpf = re.search(r"\b\d{11}\b", texto_upper)
     if m_cpf:
-        dados_cnh["cpf"] = m_cpf.group(1)
+        dados_cnh["cpf"] = m_cpf.group()
 
     todas_datas = []
     datas_concatenadas = set()
