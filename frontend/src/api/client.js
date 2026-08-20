@@ -87,6 +87,10 @@ export function atualizarStatusAgendamento(id, status) {
   return request(`/agendamentos/${id}/status`, { method: "PATCH", body: { status } });
 }
 
+export function obterAgendamento(id) {
+  return request(`/agendamentos/${id}`);
+}
+
 export function listarCotacoes(destino) {
   const query = destino ? `?destino=${encodeURIComponent(destino)}` : "";
   return request(`/cotacoes-frete${query}`);
@@ -211,6 +215,7 @@ async function downloadDocumento(path, payload, filename) {
   } else if (plainMatch) {
     finalFilename = plainMatch[1];
   }
+  const agendamentoIdHeader = res.headers.get("x-agendamento-id");
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -220,6 +225,7 @@ async function downloadDocumento(path, payload, filename) {
   a.click();
   a.remove();
   window.URL.revokeObjectURL(url);
+  return { agendamentoId: agendamentoIdHeader ? Number(agendamentoIdHeader) : null };
 }
 
 export function gerarOrdemColeta(payload) {

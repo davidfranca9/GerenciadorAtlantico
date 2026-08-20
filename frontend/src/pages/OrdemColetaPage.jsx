@@ -25,6 +25,8 @@ export default function OrdemColetaPage() {
   const [roteiro, setRoteiro] = useState("");
   const [localizador, setLocalizador] = useState("");
   const [contatoCliente, setContatoCliente] = useState("");
+  const [observacoes, setObservacoes] = useState("");
+  const [agendamentoId, setAgendamentoId] = useState(null);
 
   const [status, setStatus] = useState("Importe os documentos e revise os dados antes de gerar a O.C.");
   const [error, setError] = useState("");
@@ -49,6 +51,8 @@ export default function OrdemColetaPage() {
       placa2,
       placa3,
       data_carregamento: dataCarregamento,
+      observacoes,
+      agendamento_id: agendamentoId,
     };
   }
 
@@ -110,10 +114,11 @@ export default function OrdemColetaPage() {
     setLoadingAction("pdf");
     try {
       const payload = buildPayload();
-      await api.gerarOrdemColeta(payload);
+      const result = await api.gerarOrdemColeta(payload);
+      if (result?.agendamentoId) setAgendamentoId(result.agendamentoId);
       if (supplier !== "HERINGER") {
-        await api.gerarAutorizacaoColeta(payload);
-        setStatus("O.C. e Autorizacao de Coleta geradas com sucesso.");
+        await api.gerarAutorizacaoColeta({ ...payload, agendamento_id: result?.agendamentoId ?? agendamentoId });
+        setStatus("O.C. e autorização de coleta geradas com sucesso.");
       } else {
         setStatus("O.C. gerada com sucesso.");
       }
@@ -138,6 +143,7 @@ export default function OrdemColetaPage() {
     try {
       const payload = { ...buildPayload(), roteiro, localizador, contato_cliente: contatoCliente };
       const result = await api.enviarOrdemColetaEmail(payload);
+      if (result?.agendamento_id) setAgendamentoId(result.agendamento_id);
       setStatus(`E-mail enviado e agendamento #${result.agendamento_id} registrado com sucesso.`);
     } catch (err) {
       setError(err.message);
@@ -150,6 +156,7 @@ export default function OrdemColetaPage() {
     setNome(""); setCpf(""); setCnh(""); setFone("");
     setPlaca1(""); setPlaca2(""); setPlaca3("");
     setRoteiro(""); setLocalizador(""); setContatoCliente("");
+    setObservacoes(""); setAgendamentoId(null);
     setStatus("Campos limpos. Importe novamente CNH e CRLV se necessario.");
     setError("");
   }
@@ -163,7 +170,7 @@ export default function OrdemColetaPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <strong style={{ fontSize: 15 }}>Dados do Motorista e Veiculo</strong>
+        <strong style={{ fontSize: 15 }}>Dados do motorista e veículo</strong>
 
         <div className="card" style={{ display: "flex", padding: 0, background: "transparent", border: "1px solid var(--border-soft)", boxShadow: "none" }}>
           {[
@@ -188,7 +195,7 @@ export default function OrdemColetaPage() {
         <div className="field-grid">
           <div className="field"><label>Nome do Motorista</label><input value={nome} onChange={(e) => setNome(formatNome(e.target.value))} placeholder="Nome completo" /></div>
           <div className="field"><label>CPF</label><input value={cpf} onChange={(e) => setCpf(formatCPF(e.target.value))} placeholder="000.000.000-00" maxLength={14} /></div>
-          <div className="field"><label>CNH</label><input value={cnh} onChange={(e) => setCnh(e.target.value)} placeholder="Numero da CNH" /></div>
+          <div className="field"><label>CNH</label><input value={cnh} onChange={(e) => setCnh(e.target.value)} placeholder="Número da CNH" /></div>
           <div className="field"><label>Telefone</label><input value={fone} onChange={(e) => setFone(formatPhone(e.target.value))} placeholder="(00) 9 0000-0000" /></div>
           <div className="field"><label>Placa Cavalo</label><input value={placa1} onChange={(e) => setPlaca1(formatPlaca(e.target.value))} placeholder="ABC-1D23" /></div>
           <div className="field"><label>Placa Carreta 1</label><input value={placa2} onChange={(e) => setPlaca2(formatPlaca(e.target.value))} placeholder="ABC-1D23" /></div>
@@ -217,6 +224,16 @@ export default function OrdemColetaPage() {
           <div className="field"><label>Contato do Cliente</label><input value={contatoCliente} onChange={(e) => setContatoCliente(e.target.value)} /></div>
         </div>
         <div className="field"><label>Roteiro</label><input value={roteiro} onChange={(e) => setRoteiro(e.target.value)} placeholder="Detalhes do roteiro de entrega" /></div>
+        <div className="field">
+          <label>Observações</label>
+          <textarea
+            value={observacoes}
+            onChange={(e) => setObservacoes(e.target.value)}
+            placeholder="Observações que aparecem na O.C."
+            rows={3}
+            style={{ resize: "vertical", fontFamily: "inherit", fontSize: "inherit" }}
+          />
+        </div>
       </div>
 
       <div className="card" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>

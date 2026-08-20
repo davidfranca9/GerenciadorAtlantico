@@ -48,6 +48,7 @@ def gerar_oc_pdf_html(
     placa3: str,
     data_carregamento: str,
     save_path: str,
+    observacoes: str = "",
 ) -> None:
     supplier_key = template.upper() if template.upper() in REMETENTE_POR_FORNECEDOR else "AFL"
 
@@ -83,6 +84,7 @@ def gerar_oc_pdf_html(
         placa2=placa2,
         placa3=placa3,
         data_carregamento=data_carregamento,
+        observacoes=observacoes,
     )
 
     HTML(string=html_str, base_url=str(TEMPLATES_DIR)).write_pdf(save_path)

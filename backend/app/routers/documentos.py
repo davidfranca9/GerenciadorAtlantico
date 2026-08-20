@@ -4,7 +4,9 @@ import html
 import os
 import re
 import tempfile
+from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from docx import Document
 from fastapi import APIRouter, Depends, HTTPException
@@ -71,6 +73,8 @@ class OrdemColetaRequest(BaseModel):
     placa2: str = ""
     placa3: str = ""
     data_carregamento: str = ""
+    observacoes: str = ""
+    agendamento_id: Optional[int] = None
 
 class CartaFreteRequest(BaseModel):
     DATA: str = ""
@@ -105,6 +109,7 @@ def _gerar_oc_arquivos(payload: OrdemColetaRequest, tmp_dir: str) -> dict:
         payload.placa3,
         payload.data_carregamento,
         pdf_path,
+        observacoes=payload.observacoes,
     )
 
     xlsx_path = None
@@ -123,16 +128,73 @@ def _gerar_oc_arquivos(payload: OrdemColetaRequest, tmp_dir: str) -> dict:
     return {"pdf": pdf_path, "xlsx": xlsx_path, "safe_name": safe_name}
 
 
+def _salvar_agendamento_oc(
+    db: Session,
+    payload: OrdemColetaRequest,
+    produtos_dict: list[dict],
+    arquivos: dict,
+) -> Agendamento:
+    """Cria ou atualiza (quando payload.agendamento_id e informado) o registro
+    da Ordem de Coleta no banco, funcionando como o "banco de OCs geradas"."""
+    if payload.agendamento_id:
+        agendamento = db.get(Agendamento, payload.agendamento_id)
+        if agendamento is None:
+            raise HTTPException(status_code=404, detail="Ordem de Coleta nao encontrada para edicao")
+    else:
+        agendamento = Agendamento()
+        db.add(agendamento)
+
+    agendamento.supplier = "Heringer" if payload.template.upper() == "HERINGER" else "Fertimax"
+    agendamento.loading_date = payload.data_carregamento
+    agendamento.driver_name = payload.nome.strip()
+    agendamento.driver_cpf = payload.cpf.strip()
+    agendamento.driver_phone = payload.fone.strip()
+    agendamento.cnh = payload.cnh.strip()
+    agendamento.plate_cavalo = payload.placa1.strip()
+    agendamento.plate_carreta1 = payload.placa2.strip()
+    agendamento.plate_carreta2 = payload.placa3.strip()
+    agendamento.observacoes = payload.observacoes.strip()
+    agendamento.itens = [
+        AgendamentoItem(
+            pedido=p.get("contrato", ""),
+            cliente=p.get("cliente", ""),
+            produto=p.get("produto", ""),
+            cidade=p.get("cidade", ""),
+            embalagem=p.get("embalagem", ""),
+            toneladas=_safe_float(p.get("toneladas")),
+        )
+        for p in produtos_dict
+    ]
+    agendamento.total_items = len(agendamento.itens)
+    agendamento.total_tons = sum(i.toneladas for i in agendamento.itens)
+    if arquivos.get("pdf"):
+        agendamento.oc_pdf_path = arquivos["pdf"]
+    if arquivos.get("xlsx"):
+        agendamento.planilha_path = arquivos["xlsx"]
+    agendamento.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(agendamento)
+    return agendamento
+
+
 @router.post("/ordens-coleta/gerar")
-def gerar_ordem_coleta(payload: OrdemColetaRequest):
+def gerar_ordem_coleta(payload: OrdemColetaRequest, db: Session = Depends(get_db)):
     tmp_dir = tempfile.mkdtemp()
     arquivos = _gerar_oc_arquivos(payload, tmp_dir)
     safe_name = arquivos["safe_name"]
-    return FileResponse(arquivos["pdf"], filename=f"Ordem de Coleta_{safe_name}.pdf", media_type="application/pdf")
+    produtos_dict = [p.model_dump() for p in payload.produtos]
+    agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, arquivos)
+    return FileResponse(
+        arquivos["pdf"],
+        filename=f"Ordem de Coleta_{safe_name}.pdf",
+        media_type="application/pdf",
+        headers={"X-Agendamento-Id": str(agendamento.id)},
+    )
 
 
 @router.post("/ordens-coleta/gerar-autorizacao")
-def gerar_autorizacao_coleta(payload: OrdemColetaRequest):
+def gerar_autorizacao_coleta(payload: OrdemColetaRequest, db: Session = Depends(get_db)):
     if payload.template.upper() == "HERINGER":
         raise HTTPException(status_code=400, detail="Autorizacao de Coleta nao se aplica ao fornecedor Heringer")
     if not TEMPLATE_AUTORIZACAO.exists():
@@ -150,10 +212,12 @@ def gerar_autorizacao_coleta(payload: OrdemColetaRequest):
         payload.nome,
         payload.placa1,
     )
+    agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, {"xlsx": xlsx_path})
     return FileResponse(
         xlsx_path,
         filename=f"Autorizacao de carregamento_{cliente_name}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"X-Agendamento-Id": str(agendamento.id)},
     )
 
 
@@ -198,40 +262,13 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
 
-    itens = [p for p in payload.produtos]
-    agendamento = Agendamento(
-        status="Aguardando Agendamento",
-        supplier=supplier_label,
-        loading_date=payload.data_carregamento,
-        driver_name=payload.nome.strip(),
-        driver_cpf=payload.cpf.strip(),
-        driver_phone=payload.fone.strip(),
-        cnh=payload.cnh.strip(),
-        plate_cavalo=payload.placa1.strip(),
-        plate_carreta1=payload.placa2.strip(),
-        plate_carreta2=payload.placa3.strip(),
-        total_items=len(itens),
-        total_tons=sum(_safe_float(p.toneladas) for p in itens),
-        roteiro=payload.roteiro.strip(),
-        localizador=payload.localizador.strip(),
-        contato_cliente=payload.contato_cliente.strip(),
-        email_subject=subject,
-        email_recipients=", ".join(recipients),
-        oc_pdf_path=arquivos["pdf"],
-        planilha_path=arquivos["xlsx"] or "",
-    )
-    agendamento.itens = [
-        AgendamentoItem(
-            pedido=p.contrato,
-            cliente=p.cliente,
-            produto=p.produto,
-            cidade=p.cidade,
-            embalagem=p.embalagem,
-            toneladas=_safe_float(p.toneladas),
-        )
-        for p in itens
-    ]
-    db.add(agendamento)
+    produtos_dict = [p.model_dump() for p in payload.produtos]
+    agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, arquivos)
+    agendamento.roteiro = payload.roteiro.strip()
+    agendamento.localizador = payload.localizador.strip()
+    agendamento.contato_cliente = payload.contato_cliente.strip()
+    agendamento.email_subject = subject
+    agendamento.email_recipients = ", ".join(recipients)
     db.commit()
     db.refresh(agendamento)
 

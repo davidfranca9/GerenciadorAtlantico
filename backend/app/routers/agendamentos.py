@@ -37,6 +37,7 @@ class AgendamentoIn(BaseModel):
     roteiro: str = ""
     localizador: str = ""
     contato_cliente: str = ""
+    observacoes: str = ""
     itens: list[AgendamentoItemIn] = []
 
 
@@ -64,6 +65,7 @@ def _to_dict(a: Agendamento) -> dict:
         "roteiro": a.roteiro,
         "localizador": a.localizador,
         "contato_cliente": a.contato_cliente,
+        "observacoes": a.observacoes,
         "itens": [
             {
                 "id": it.id,

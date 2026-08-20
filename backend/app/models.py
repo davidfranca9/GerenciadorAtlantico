@@ -80,6 +80,7 @@ class Agendamento(Base):
     email_recipients: Mapped[str] = mapped_column(String(1000), default="")
     oc_pdf_path: Mapped[str] = mapped_column(String(500), default="")
     planilha_path: Mapped[str] = mapped_column(String(500), default="")
+    observacoes: Mapped[str] = mapped_column(String(2000), default="")
 
     itens: Mapped[list["AgendamentoItem"]] = relationship(
         back_populates="agendamento", cascade="all, delete-orphan"

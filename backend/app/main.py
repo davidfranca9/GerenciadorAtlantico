@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from .auth import router as auth_router
 from .config import settings
@@ -21,6 +22,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition", "X-Agendamento-Id"],
 )
 
 app.include_router(auth_router)
@@ -37,6 +39,11 @@ app.include_router(buonny_router)
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS observacoes VARCHAR(2000) DEFAULT ''"))
+    except Exception:
+        pass
 
 
 @app.get("/health")
