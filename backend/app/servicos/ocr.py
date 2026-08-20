@@ -329,8 +329,8 @@ def extrair_dados_crlv_com_azure_api(texto_completo: str, marcas_conhecidas: lis
             for _codigo, nome in tipos_carroceria.items():
                 if nome == "NÃO APLICAVEL":
                     continue
-                palavras_chave = re.split(r"[/ ]", nome.replace("Ú", "U"))
-                if any(len(p) > 2 and p in texto_upper_linha_unica for p in palavras_chave):
+                padrao_nome = re.escape(nome.replace("Ú", "U")).replace(r"\ ", r"\s+").replace(r"\/", r"\s*/\s*")
+                if re.search(padrao_nome, texto_upper_linha_unica):
                     dados_crlv["tipo_carroceria"] = nome
                     break
     except Exception:
