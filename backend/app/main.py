@@ -66,17 +66,3 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/health/gmail-imap")
-def health_gmail_imap():
-    from .servicos.email_inbox import credenciais_limpas
-
-    usuario, senha = credenciais_limpas()
-    mascarado = f"{usuario[:3]}***@{usuario.split('@')[-1]}" if "@" in usuario else ("***" if usuario else "")
-    return {
-        "usuario_configurado": bool(usuario),
-        "usuario_mascarado": mascarado,
-        "senha_configurada": bool(senha),
-        "senha_tamanho": len(senha),
-    }
-
-
