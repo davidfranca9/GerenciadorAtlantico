@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import email
 import imaplib
+import re
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 
@@ -20,9 +21,14 @@ class InboxIndisponivel(Exception):
     pass
 
 
+def credenciais_limpas() -> tuple[str, str]:
+    usuario = re.sub(r"\s+", "", settings.gmail_sender_email or "")
+    senha = re.sub(r"\s+", "", settings.gmail_app_password_imap or "")
+    return usuario, senha
+
+
 def _conectar() -> imaplib.IMAP4_SSL:
-    usuario = settings.gmail_sender_email.strip()
-    senha = settings.gmail_app_password_imap.replace(" ", "").strip()
+    usuario, senha = credenciais_limpas()
     if not usuario or not senha:
         raise InboxIndisponivel("GMAIL_SENDER_EMAIL / GMAIL_APP_PASSWORD_IMAP nao configurados")
     conexao = imaplib.IMAP4_SSL(IMAP_HOST)
