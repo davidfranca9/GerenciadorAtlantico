@@ -259,12 +259,14 @@ def gerar_carta_frete(payload: CartaFreteRequest):
     docx_path = os.path.join(tmp_dir, "carta_frete.docx")
     doc.save(docx_path)
 
+    safe_name = _safe_filename(payload.CONDUTOR)
+
     if payload.formato.lower() == "pdf":
         pdf_path = docx_to_pdf(docx_path)
-        return FileResponse(pdf_path, filename="carta_frete.pdf", media_type="application/pdf")
+        return FileResponse(pdf_path, filename=f"Autorizacao Abastecimento_{safe_name}.pdf", media_type="application/pdf")
 
     return FileResponse(
         docx_path,
-        filename="carta_frete.docx",
+        filename=f"Autorizacao Abastecimento_{safe_name}.docx",
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )

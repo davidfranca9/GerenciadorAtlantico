@@ -3,8 +3,15 @@ import * as api from "../api/client";
 import DateField from "../components/DateField";
 import { formatCPF, formatNome, formatPlaca } from "../utils/format";
 
+function hoje() {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
 export default function CartaFretePage() {
-  const [data, setData] = useState("");
+  const [data, setData] = useState(hoje());
   const [condutor, setCondutor] = useState("");
   const [cpf, setCpf] = useState("");
   const [placaCavalo, setPlacaCavalo] = useState("");
@@ -13,20 +20,21 @@ export default function CartaFretePage() {
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleGerar(formato) {
+  async function handleGerar() {
     setStatus("");
     setLoading(true);
     try {
-      await api.gerarCartaFrete({
+      const base = {
         DATA: data,
         CONDUTOR: condutor,
         CPF: cpf,
         PLACA_CAVALO: placaCavalo,
         VALOR_FRETE: valorFrete,
         AUTORIZACAO_NUM: autorizacaoNum,
-        formato,
-      });
-      setStatus("Documento gerado com sucesso.");
+      };
+      await api.gerarCartaFrete({ ...base, formato: "docx" });
+      await api.gerarCartaFrete({ ...base, formato: "pdf" });
+      setStatus("Documentos gerados com sucesso.");
     } catch (err) {
       setStatus(`Erro: ${err.message}`);
     } finally {
@@ -60,11 +68,8 @@ export default function CartaFretePage() {
         </div>
       </div>
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <button className="btn-primary" disabled={loading} onClick={() => handleGerar("docx")}>
-          Gerar DOCX
-        </button>
-        <button className="btn-secondary" disabled={loading} onClick={() => handleGerar("pdf")}>
-          Gerar PDF
+        <button className="btn-primary" disabled={loading} onClick={handleGerar}>
+          {loading ? "Gerando..." : "Gerar Autorização"}
         </button>
         {status && <span style={{ fontSize: 13, color: status.startsWith("Erro") ? "var(--danger)" : "var(--success)" }}>{status}</span>}
       </div>
