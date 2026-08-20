@@ -243,8 +243,10 @@ def extrair_dados_crlv_com_azure_api(texto_completo: str, marcas_conhecidas: lis
         match = re.search(r"C[OÓ]DIGO RENAVAM\s*\n\s*(\d{9,11})", texto_upper_com_linhas)
         if not match:
             match = re.search(r"C[OÓ]DIGO RENAVAM\s.*?(\d{11})", texto_upper_linha_unica)
+        if not match:
+            match = re.search(r"\b\d{11}\b", texto_upper_linha_unica)
         if match:
-            dados_crlv["renavam"] = match.group(1).strip()
+            dados_crlv["renavam"] = match.group(1) if match.groups() else match.group()
 
         match = re.search(r"EIXOS\s*\n\s*(\d+)", texto_upper_com_linhas)
         if not match:
@@ -252,17 +254,29 @@ def extrair_dados_crlv_com_azure_api(texto_completo: str, marcas_conhecidas: lis
         if match:
             dados_crlv["eixos"] = match.group(1).strip()
 
+        marca_encontrada = None
         try:
             idx = next(i for i, l in enumerate(linhas) if "MARCA / MODELO" in l)
             for linha_busca in linhas[idx + 1 : idx + 8]:
                 encontrada = next((m for m in marcas_conhecidas if m in linha_busca), None)
                 if encontrada:
+                    marca_encontrada = encontrada
                     dados_crlv["marca"] = encontrada
                     dados_crlv["modelo"] = linha_busca.strip().split(encontrada, 1)[1].strip("/ ").strip()
                     break
         except (StopIteration, IndexError):
             pass
+        if not marca_encontrada:
+            for linha_busca in linhas:
+                encontrada = next((m for m in marcas_conhecidas if m in linha_busca), None)
+                if encontrada:
+                    dados_crlv["marca"] = encontrada
+                    resto = linha_busca.strip().split(encontrada, 1)[-1].strip("/ ").strip()
+                    if resto:
+                        dados_crlv["modelo"] = resto
+                    break
 
+        local_encontrado = False
         try:
             idx = next(i for i, l in enumerate(linhas) if "LOCAL" in l)
             for linha_busca in linhas[idx + 1 : idx + 8]:
@@ -270,36 +284,55 @@ def extrair_dados_crlv_com_azure_api(texto_completo: str, marcas_conhecidas: lis
                 if match_local and len(match_local.group(1).strip()) > 3:
                     dados_crlv["cidade"] = " ".join(w.capitalize() for w in match_local.group(1).strip().split())
                     dados_crlv["estado"] = match_local.group(2).strip()
+                    local_encontrado = True
                     break
         except (StopIteration, IndexError):
             pass
+        if not local_encontrado:
+            match_local = re.search(r"\b([A-ZÀ-Ú][A-ZÀ-Ú\s]{3,40})\s+([A-Z]{2})\s+\d{1,2}/\d{1,2}/\d{1,4}", texto_upper_linha_unica)
+            if match_local:
+                dados_crlv["cidade"] = " ".join(w.capitalize() for w in match_local.group(1).strip().split())
+                dados_crlv["estado"] = match_local.group(2).strip()
 
+        categoria_encontrada = False
         try:
             idx = next(i for i, l in enumerate(linhas) if "ESPÉCIE / TIPO" in l)
             for linha_busca in linhas[idx + 1 : idx + 11]:
                 linha_upper = linha_busca.upper()
                 if "TRACAO CAMINHAO TRATOR" in linha_upper or "CAMINHAO TRATOR" in linha_upper:
                     dados_crlv["categoria_veiculo"] = "CAVALO"
+                    categoria_encontrada = True
                     break
                 if "CARGA CAMINHAO" in linha_upper:
                     dados_crlv["categoria_veiculo"] = "TRUCK"
+                    categoria_encontrada = True
                     break
                 if "SEMI-REBOQUE" in linha_upper:
                     dados_crlv["categoria_veiculo"] = "SEMI-REBOQUE 1"
+                    categoria_encontrada = True
                     break
         except (StopIteration, IndexError):
             pass
+        if not categoria_encontrada:
+            if "TRACAO CAMINHAO TRATOR" in texto_upper_linha_unica or "CAMINHAO TRATOR" in texto_upper_linha_unica:
+                dados_crlv["categoria_veiculo"] = "CAVALO"
+            elif "SEMI-REBOQUE" in texto_upper_linha_unica:
+                dados_crlv["categoria_veiculo"] = "SEMI-REBOQUE 1"
+            elif "CARGA CAMINHAO" in texto_upper_linha_unica:
+                dados_crlv["categoria_veiculo"] = "TRUCK"
 
-        for _codigo, nome in tipos_carroceria.items():
-            palavras_chave = re.split(r"[/ ]", nome.replace("Ú", "U"))
-            encontrada = False
-            for palavra in palavras_chave:
-                if len(palavra) > 2 and palavra in texto_upper_linha_unica:
+        match_carroceria = re.search(r"CARROCERIA\s+([A-ZÀ-Ú/]+)", texto_upper_linha_unica)
+        nomes_validos = {nome.replace("Ú", "U"): nome for nome in tipos_carroceria.values()}
+        if match_carroceria and match_carroceria.group(1) in nomes_validos:
+            dados_crlv["tipo_carroceria"] = nomes_validos[match_carroceria.group(1)]
+        else:
+            for _codigo, nome in tipos_carroceria.items():
+                if nome == "NÃO APLICAVEL":
+                    continue
+                palavras_chave = re.split(r"[/ ]", nome.replace("Ú", "U"))
+                if any(len(p) > 2 and p in texto_upper_linha_unica for p in palavras_chave):
                     dados_crlv["tipo_carroceria"] = nome
-                    encontrada = True
                     break
-            if encontrada:
-                break
     except Exception:
         pass
 
