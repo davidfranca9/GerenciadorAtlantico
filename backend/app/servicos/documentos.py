@@ -20,9 +20,8 @@ from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 
 SHEET_NAME = "Ordem de Carregamento"
-AUTORIZACAO_FIRST_DATA_ROW = 3
-AUTORIZACAO_TOTAL_ROW = 15
-TOTAL_LABEL = "Peso total (t)"
+AUTORIZACAO_FIRST_DATA_ROW = 2
+AUTORIZACAO_TOTAL_ROW = 13
 
 OC_HEADERS = ["Pedido", "Produto", "Embalagem", "Peso (t)", "Cidade/UF", "Cliente"]
 OC_COLUMN_WIDTHS_IN = [0.55, 1.55, 0.78, 0.58, 1.05, 1.39]
@@ -383,18 +382,15 @@ def get_headers_from_sheet(ws):
 
 
 def _format_autorizacao_sheet(ws, headers, total_row=AUTORIZACAO_TOTAL_ROW):
-    """Preenche apenas o rotulo/formula da linha de total. Nao mexe em cor,
-    fonte, borda ou largura de coluna: o template do usuario ja define isso
-    e deve ser preservado exatamente como enviado."""
+    """Preenche apenas a formula da linha de total. Nao mexe em cor, fonte,
+    borda, largura de coluna ou no rotulo (ja vem pronto no template): o
+    template do usuario deve ser preservado exatamente como enviado."""
     try:
         qty_col_idx = headers.index("Quantidade") + 1
     except ValueError:
         return
 
-    label_col_idx = max(1, qty_col_idx - 1)
-    label_cell = ws.cell(row=total_row, column=label_col_idx)
     total_cell = ws.cell(row=total_row, column=qty_col_idx)
-    label_cell.value = TOTAL_LABEL
     total_cell.value = f"=SUM({get_column_letter(qty_col_idx)}{AUTORIZACAO_FIRST_DATA_ROW}:{get_column_letter(qty_col_idx)}{total_row - 1})"
     total_cell.number_format = "0.###"
 
