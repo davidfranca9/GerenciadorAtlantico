@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'DejaVu Sans', Arial, sans-serif;
+    color: #2b2b2b;
+    font-size: 10.5px;
+    margin: 0;
+  }
+  @media screen {
+    html, body { background: #d9d9d9; }
+    .page {
+      max-width: 210mm;
+      min-height: 297mm;
+      margin: 24px auto;
+      background: #ffffff;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+      padding: 14mm 12mm;
+    }
+  }
+
+  /* ---- header ---- */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e6e9e6;
+    margin-bottom: 12px;
+  }
+  .header img.logo { width: 130px; height: 130px; flex-shrink: 0; }
+  .company-name {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    margin: 0 0 8px 0;
+  }
+  .company-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: #3a3a3a;
+    margin: 5px 0;
+  }
+  .company-line a { color: #2f6b2f; text-decoration: none; }
+  .badge-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    background: #3f722a;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .badge-icon svg { width: 12px; height: 12px; }
+
+  /* ---- title pill ---- */
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 0 12px 0;
+  }
+  .title-accent {
+    width: 10px;
+    height: 2px;
+    background: #3f722a;
+    transform: skewX(-30deg);
+  }
+  .title-line {
+    flex: 1;
+    height: 1px;
+    background: #cfe0c8;
+  }
+  .title-pill {
+    background: #3f722a;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 8px 30px;
+    border-radius: 999px;
+  }
+
+  /* ---- date ---- */
+  .date-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #2b2b2b;
+    margin-bottom: 10px;
+  }
+  .date-row .outline-icon { width: 16px; height: 16px; }
+  .dotted {
+    border: none;
+    border-top: 1.4px dotted #c7cec6;
+    margin: 12px 0;
+  }
+
+  /* ---- section headers ---- */
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px 0;
+  }
+  .outline-icon { width: 17px; height: 17px; flex-shrink: 0; }
+  .section-header .stem {
+    flex: 1;
+    height: 1.3px;
+    background: #3f722a;
+  }
+  .section-title {
+    font-weight: 700;
+    font-size: 12px;
+    color: #202020;
+    white-space: nowrap;
+  }
+
+  .field-row { margin: 5px 0; font-size: 10.8px; }
+  .field-label { font-weight: 700; }
+
+  .driver-grid {
+    display: flex;
+    gap: 30px;
+    flex-wrap: wrap;
+    font-size: 10.8px;
+    margin: 5px 0;
+  }
+  .driver-grid.plates { gap: 70px; }
+
+  /* ---- table ---- */
+  .table-wrap {
+    border: 1px solid #e2e6e1;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 8px 0 4px 0;
+  }
+  table.oc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9.8px;
+  }
+  table.oc-table th {
+    background: #1f1f1f;
+    color: #ffffff;
+    font-weight: 700;
+    padding: 9px 8px;
+    text-align: center;
+  }
+  table.oc-table td {
+    padding: 9px 8px;
+    border-top: 1px solid #edf0ed;
+    text-align: center;
+  }
+  table.oc-table td.left { text-align: left; }
+  table.oc-table tr.odd td { background: #f7f8f4; }
+  table.oc-table tr.even td { background: #ffffff; }
+  table.oc-table tr.blank td { background: #fcfcfa; height: 22px; }
+  table.oc-table tr.total td {
+    background: #e6f4e6;
+    font-weight: 700;
+    color: #1e4a1e;
+    border-top: 1px solid #cfe4cf;
+  }
+
+  .obs-box {
+    border: 1px solid #dfe4df;
+    border-radius: 8px;
+    min-height: 50px;
+    margin-top: 4px;
+  }
+
+  .terms {
+    font-size: 10.5px;
+    color: #444;
+    margin-top: 16px;
+  }
+  .terms p { margin: 8px 0; font-weight: 700; font-size: 11px; }
+  .terms ul { margin: 6px 0; padding-left: 18px; }
+  .terms li { margin: 5px 0; line-height: 1.35; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <img class="logo" src="{{ logo_data_uri }}" alt="logo">
+    <div>
+      <div class="company-name">ATLÂNTICO FERTLOG TRASPORTES E SERVIÇOS DE CARGAS</div>
+      <div class="company-line">
+        <span class="badge-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4"><rect x="3" y="7" width="18" height="13" rx="1.5"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></span>
+        CNPJ: 08.187.322/0001-01
+      </div>
+      <div class="company-line">
+        <span class="badge-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4"><rect x="3" y="5" width="18" height="14" rx="1.5"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M6 16c.5-2 2-3 2.5-3s2 1 2.5 3M14 9h5M14 13h5"/></svg></span>
+        IE: 069.517.302
+      </div>
+      <div class="company-line">
+        <span class="badge-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 7l9 6 9-6"/></svg></span>
+        e-mail: <a href="mailto:atlanticofertlog.comercial@gmail.com">atlanticofertlog.comercial@gmail.com</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="title-row">
+    <div class="title-accent"></div>
+    <div class="title-line"></div>
+    <div class="title-pill">Ordem de Carregamento</div>
+    <div class="title-line"></div>
+    <div class="title-accent"></div>
+  </div>
+
+  <div class="date-row">
+    <svg class="outline-icon" viewBox="0 0 24 24" fill="none" stroke="#3f722a" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+    {{ data_emissao }}
+  </div>
+  <hr class="dotted">
+
+  <div class="section-header">
+    <svg class="outline-icon" viewBox="0 0 24 24" fill="none" stroke="#3f722a" stroke-width="2"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c1.2-4 4-6 7-6s5.8 2 7 6"/></svg>
+    <span class="section-title">Dados Remetente</span>
+    <div class="stem"></div>
+  </div>
+  <div class="field-row"><span class="field-label">Remetente:</span> {{ remetente }}</div>
+  <div class="field-row"><span class="field-label">Endereço:</span> {{ endereco }}</div>
+  <hr class="dotted">
+
+  <div class="section-header">
+    <svg class="outline-icon" viewBox="0 0 24 24" fill="none" stroke="#3f722a" stroke-width="2"><rect x="2" y="8" width="13" height="9" rx="1"/><path d="M15 11h4l3 3v3h-7z"/><circle cx="7" cy="19" r="1.6"/><circle cx="18" cy="19" r="1.6"/></svg>
+    <span class="section-title">Dados Carregamento</span>
+    <div class="stem"></div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="oc-table">
+      <thead>
+        <tr>
+          <th style="width:9%">Pedido</th>
+          <th>Produto</th>
+          <th style="width:9%">Peso (t)</th>
+          <th style="width:16%">Cidade/UF</th>
+          <th style="width:22%">Cliente</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in produtos %}
+        <tr class="{{ 'odd' if loop.index0 % 2 else 'even' }}">
+          <td>{{ p.contrato }}</td>
+          <td class="left">{{ p.produto }}{% if p.embalagem %} &ndash; {{ p.embalagem }}{% endif %}</td>
+          <td>{{ p.peso }}</td>
+          <td>{{ p.cidade }}</td>
+          <td class="left">{{ p.cliente }}</td>
+        </tr>
+        {% endfor %}
+        {% for _ in blank_rows %}
+        <tr class="blank"><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>
+        {% endfor %}
+        <tr class="total">
+          <td colspan="2" style="text-align:right">PESO TOTAL</td>
+          <td>{{ peso_total }}</td>
+          <td></td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <hr class="dotted">
+
+  <div class="section-header">
+    <svg class="outline-icon" viewBox="0 0 24 24" fill="none" stroke="#3f722a" stroke-width="2"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c1.2-4 4-6 7-6s5.8 2 7 6"/></svg>
+    <span class="section-title">Dados do Motorista</span>
+    <div class="stem"></div>
+  </div>
+  <div class="driver-grid">
+    <div><span class="field-label">Motorista:</span> {{ motorista_doc }} &ndash; {{ motorista_nome }}</div>
+    <div><span class="field-label">CNH:</span> {{ cnh }}</div>
+    <div><span class="field-label">Fone:</span> {{ fone }}</div>
+  </div>
+  <hr class="dotted">
+
+  <div class="section-header">
+    <svg class="outline-icon" viewBox="0 0 24 24" fill="none" stroke="#3f722a" stroke-width="2"><rect x="2" y="8" width="13" height="9" rx="1"/><path d="M15 11h4l3 3v3h-7z"/><circle cx="7" cy="19" r="1.6"/><circle cx="18" cy="19" r="1.6"/></svg>
+    <span class="section-title">Dados Caminhão</span>
+    <div class="stem"></div>
+  </div>
+  <div class="driver-grid plates">
+    <div><span class="field-label">1&#170; Placa:</span> {{ placa1 }}</div>
+    <div><span class="field-label">2&#170; Placa:</span> {{ placa2 }}</div>
+    <div><span class="field-label">3&#170; Placa:</span> {{ placa3 }}</div>
+  </div>
+  <hr class="dotted">
+
+  <div class="section-header">
+    <svg class="outline-icon" viewBox="0 0 24 24" fill="none" stroke="#3f722a" stroke-width="2"><path d="M4 5h16v11H8l-4 4z"/></svg>
+    <span class="section-title">Observações</span>
+    <div class="stem"></div>
+  </div>
+  <div class="obs-box"></div>
+
+  <div class="terms">
+    <p>ATENÇÃO AO RECEBER ESTE DOCUMENTO CONCORDO COM AS INFORMAÇÕES A SEGUIR:</p>
+    <ul>
+      <li>Fico responsável pela conferência das informações e carregamento junto à Ordem de coleta e Nota fiscal.</li>
+      <li>O valor do frete combinado com a transportadora não pode ser revisto após o carregamento, tendo em vista que, este já foi acordado não tendo mais nada a ser questionado.</li>
+      <li>Horário para manifestar a nota fiscal: Segunda a Sábado das 8:00h às 12:00h e 13:30 às 19:00h, após o horário estabelecido a liberação ocorrerá no dia seguinte, não implicando em alterações no valor do frete combinado.</li>
+      <li>Pagamentos feitos apenas via pix (conta do Proprietário, Condutor ou Antt), pagamentos das 9:00h às 18:00h, após o horário estabelecido a liberação ocorrerá no dia seguinte, não implicando em alterações no valor do frete combinado.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

@@ -16,7 +16,8 @@ from ..auth import get_current_user
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem
 from ..servicos.comunicacao import send_email_message
-from ..servicos.documentos import fill_carta_frete_docx, gerar_autorizacao_xlsx, gerar_oc_docx
+from ..servicos.documentos import fill_carta_frete_docx, gerar_autorizacao_xlsx
+from ..servicos.oc_html import gerar_oc_pdf_html
 from ..servicos.pdf_convert import docx_to_pdf
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -32,10 +33,7 @@ RECIPIENTS_FERTIMAX = [
 ]
 
 DADOS_DIR = Path(__file__).resolve().parents[2] / "dados"
-TEMPLATES_OC = {
-    "AFL": DADOS_DIR / "O.C_AFL.docx",
-    "HERINGER": DADOS_DIR / "O.C_HERINGER.docx",
-}
+SUPPLIERS_OC = {"AFL", "HERINGER"}
 TEMPLATE_CF = DADOS_DIR / "CARTA FRETE atlantico (1).docx"
 TEMPLATE_AUTORIZACAO = DADOS_DIR / "Autorizacao de Carregamento (2).xlsx"
 
@@ -73,8 +71,6 @@ class OrdemColetaRequest(BaseModel):
     placa2: str = ""
     placa3: str = ""
     data_carregamento: str = ""
-    formato: str = "docx"  # "docx" | "pdf"
-
 
 class CartaFreteRequest(BaseModel):
     DATA: str = ""
@@ -87,20 +83,18 @@ class CartaFreteRequest(BaseModel):
 
 
 def _gerar_oc_arquivos(payload: OrdemColetaRequest, tmp_dir: str) -> dict:
-    """Gera a Ordem de Coleta (docx/pdf) e, para fornecedores que nao sejam
-    Heringer, tambem a Autorizacao de Coleta (xlsx). Retorna um dict com os
-    caminhos gerados: {"docx": ..., "pdf": ..., "xlsx": ... | None}."""
-    template_path = TEMPLATES_OC.get(payload.template.upper())
-    if template_path is None or not template_path.exists():
-        raise HTTPException(status_code=400, detail=f"Template '{payload.template}' invalido")
+    """Gera a Ordem de Coleta (PDF via HTML/WeasyPrint) e, para fornecedores
+    que nao sejam Heringer, tambem a Autorizacao de Coleta (xlsx). Retorna um
+    dict com os caminhos gerados: {"pdf": ..., "xlsx": ... | None}."""
+    if payload.template.upper() not in SUPPLIERS_OC:
+        raise HTTPException(status_code=400, detail=f"Fornecedor '{payload.template}' invalido")
 
     safe_name = _safe_filename(payload.nome)
     produtos_dict = [p.model_dump() for p in payload.produtos]
 
-    docx_path = os.path.join(tmp_dir, f"Ordem de Coleta_{safe_name}.docx")
-    gerar_oc_docx(
-        str(template_path),
-        docx_path,
+    pdf_path = os.path.join(tmp_dir, f"Ordem de Coleta_{safe_name}.pdf")
+    gerar_oc_pdf_html(
+        payload.template,
         produtos_dict,
         payload.cpf,
         payload.nome,
@@ -110,10 +104,8 @@ def _gerar_oc_arquivos(payload: OrdemColetaRequest, tmp_dir: str) -> dict:
         payload.placa2,
         payload.placa3,
         payload.data_carregamento,
+        pdf_path,
     )
-    pdf_path = docx_to_pdf(docx_path)
-    pdf_renamed = os.path.join(tmp_dir, f"Ordem de Coleta_{safe_name}.pdf")
-    os.replace(pdf_path, pdf_renamed)
 
     xlsx_path = None
     if payload.template.upper() != "HERINGER" and TEMPLATE_AUTORIZACAO.exists():
@@ -128,7 +120,7 @@ def _gerar_oc_arquivos(payload: OrdemColetaRequest, tmp_dir: str) -> dict:
             payload.placa1,
         )
 
-    return {"docx": docx_path, "pdf": pdf_renamed, "xlsx": xlsx_path, "safe_name": safe_name}
+    return {"pdf": pdf_path, "xlsx": xlsx_path, "safe_name": safe_name}
 
 
 @router.post("/ordens-coleta/gerar")
@@ -136,12 +128,7 @@ def gerar_ordem_coleta(payload: OrdemColetaRequest):
     tmp_dir = tempfile.mkdtemp()
     arquivos = _gerar_oc_arquivos(payload, tmp_dir)
     safe_name = arquivos["safe_name"]
-
-    formato = payload.formato.lower()
-    principal_path = arquivos["pdf"] if formato == "pdf" else arquivos["docx"]
-    principal_name = f"Ordem de Coleta_{safe_name}.{'pdf' if formato == 'pdf' else 'docx'}"
-    media_type = "application/pdf" if formato == "pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    return FileResponse(principal_path, filename=principal_name, media_type=media_type)
+    return FileResponse(arquivos["pdf"], filename=f"Ordem de Coleta_{safe_name}.pdf", media_type="application/pdf")
 
 
 @router.post("/ordens-coleta/gerar-autorizacao")

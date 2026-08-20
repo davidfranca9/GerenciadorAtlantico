@@ -223,8 +223,7 @@ async function downloadDocumento(path, payload, filename) {
 }
 
 export function gerarOrdemColeta(payload) {
-  const ext = payload.formato === "pdf" ? "pdf" : "docx";
-  return downloadDocumento("/ordens-coleta/gerar", payload, `ordem_coleta.${ext}`);
+  return downloadDocumento("/ordens-coleta/gerar", payload, "ordem_coleta.pdf");
 }
 
 export function gerarAutorizacaoColeta(payload) {

@@ -30,7 +30,7 @@ export default function OrdemColetaPage() {
   const [error, setError] = useState("");
   const [loadingAction, setLoadingAction] = useState("");
 
-  function buildPayload(formato) {
+  function buildPayload() {
     return {
       template: supplier,
       produtos: selectedRows.map((r) => ({
@@ -49,7 +49,6 @@ export default function OrdemColetaPage() {
       placa2,
       placa3,
       data_carregamento: dataCarregamento,
-      formato,
     };
   }
 
@@ -98,7 +97,7 @@ export default function OrdemColetaPage() {
     }
   }
 
-  async function handleGerar(formato) {
+  async function handleGerar() {
     setError("");
     if (selectedRows.length === 0) {
       setError("Selecione os contratos na aba Contrato antes de gerar a O.C.");
@@ -108,9 +107,9 @@ export default function OrdemColetaPage() {
       setError("O nome do motorista e obrigatorio.");
       return;
     }
-    setLoadingAction(formato === "pdf" ? "pdf" : "docx");
+    setLoadingAction("pdf");
     try {
-      const payload = buildPayload(formato);
+      const payload = buildPayload();
       await api.gerarOrdemColeta(payload);
       if (supplier !== "HERINGER") {
         await api.gerarAutorizacaoColeta(payload);
@@ -137,7 +136,7 @@ export default function OrdemColetaPage() {
     }
     setLoadingAction("email");
     try {
-      const payload = { ...buildPayload("pdf"), roteiro, localizador, contato_cliente: contatoCliente };
+      const payload = { ...buildPayload(), roteiro, localizador, contato_cliente: contatoCliente };
       const result = await api.enviarOrdemColetaEmail(payload);
       setStatus(`E-mail enviado e agendamento #${result.agendamento_id} registrado com sucesso.`);
     } catch (err) {
@@ -221,10 +220,7 @@ export default function OrdemColetaPage() {
       </div>
 
       <div className="card" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <button className="btn-primary" disabled={!!loadingAction} onClick={() => handleGerar("docx")}>
-          {loadingAction === "docx" ? "Gerando..." : "Gerar O.C. (DOCX)"}
-        </button>
-        <button className="btn-secondary" disabled={!!loadingAction} onClick={() => handleGerar("pdf")}>
+        <button className="btn-primary" disabled={!!loadingAction} onClick={handleGerar}>
           {loadingAction === "pdf" ? "Gerando..." : "Gerar O.C. (PDF)"}
         </button>
         <button className="btn-secondary" disabled={!!loadingAction} onClick={handleEnviarEmail}>
