@@ -16,12 +16,39 @@ function escapeHtml(texto) {
 }
 
 const RASCUNHO_VAZIO = { para: "", assunto: "", corpo: "" };
+const CHAVE_CACHE = "emails_inbox_cache_v1";
 
-// Cache em memoria (fora do componente) pra sobreviver a navegacao entre
-// paginas do app: sair da tela de E-mails e voltar reaproveita a lista ja
-// carregada em vez de buscar tudo de novo. Um refresh de navegador (F5)
-// reinicia o modulo JS normalmente, entao esse cache some nesse caso.
-const cache = { carregou: false, mensagens: [], pagina: 1, total: 0, selecionado: null, detalhe: null };
+function lerCacheSalvo() {
+  try {
+    const bruto = sessionStorage.getItem(CHAVE_CACHE);
+    return bruto ? JSON.parse(bruto) : null;
+  } catch {
+    return null;
+  }
+}
+
+function salvarCache(mensagens, pagina, total) {
+  try {
+    sessionStorage.setItem(CHAVE_CACHE, JSON.stringify({ mensagens, pagina, total }));
+  } catch {
+    // sessionStorage indisponivel ou cheio: apenas nao persiste, sem quebrar a tela
+  }
+}
+
+const cacheSalvo = lerCacheSalvo();
+
+// Cache em memoria + sessionStorage pra sobreviver tanto a navegacao entre
+// paginas do app (sair de E-mails e voltar) quanto a um F5 de verdade no
+// navegador: a lista salva aparece instantaneamente, e uma busca silenciosa
+// em segundo plano atualiza os dados sem mostrar tela de carregamento.
+const cache = {
+  carregou: Boolean(cacheSalvo),
+  mensagens: cacheSalvo?.mensagens || [],
+  pagina: cacheSalvo?.pagina || 1,
+  total: cacheSalvo?.total || 0,
+  selecionado: null,
+  detalhe: null,
+};
 
 export default function EmailsPage() {
   const [mensagens, setMensagens] = useState(cache.mensagens);
@@ -38,18 +65,23 @@ export default function EmailsPage() {
   const [erroEnvio, setErroEnvio] = useState("");
 
   useEffect(() => {
-    if (!cache.carregou) carregarPagina(1, false);
+    // Se ja tem algo em cache, mostra na hora e so atualiza por baixo dos
+    // panos (sem spinner); senao, e a primeira vez e mostra o carregamento.
+    carregarPagina(1, false, !cache.carregou);
   }, []);
 
-  async function carregarPagina(numeroPagina, acumular) {
-    if (numeroPagina === 1) setCarregandoLista(true);
-    else setCarregandoMais(true);
+  async function carregarPagina(numeroPagina, acumular, mostrarCarregando = true) {
+    if (mostrarCarregando) {
+      if (numeroPagina === 1) setCarregandoLista(true);
+      else setCarregandoMais(true);
+    }
     setErro("");
     try {
       const data = await api.listarEmails(numeroPagina, TAMANHO_PAGINA);
       setMensagens((prev) => {
         const novo = acumular ? [...prev, ...data.mensagens] : data.mensagens;
         cache.mensagens = novo;
+        salvarCache(novo, numeroPagina, data.total);
         return novo;
       });
       setTotal(data.total);
@@ -58,7 +90,7 @@ export default function EmailsPage() {
       cache.pagina = numeroPagina;
       cache.carregou = true;
     } catch (err) {
-      setErro(err.message);
+      if (mostrarCarregando) setErro(err.message);
     } finally {
       setCarregandoLista(false);
       setCarregandoMais(false);
@@ -79,6 +111,7 @@ export default function EmailsPage() {
       setMensagens((prev) => {
         const novo = prev.map((m) => (m.id === msg.id ? { ...m, lida: true } : m));
         cache.mensagens = novo;
+        salvarCache(novo, cache.pagina, cache.total);
         return novo;
       });
     } catch (err) {
