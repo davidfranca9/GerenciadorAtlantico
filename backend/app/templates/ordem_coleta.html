@@ -30,12 +30,19 @@
   .header {
     display: flex;
     align-items: center;
-    gap: 20px;
     padding-bottom: 12px;
     border-bottom: 1px solid #e6e9e6;
     margin-bottom: 12px;
   }
-  .header img.logo { width: 130px; height: 130px; flex-shrink: 0; }
+  .logo-box {
+    width: 130px;
+    height: 130px;
+    overflow: hidden;
+    flex-shrink: 0;
+    margin-right: 20px;
+  }
+  .logo-box img.logo { width: 130px; height: 130px; display: block; }
+  .header-text { overflow: hidden; }
   .company-name {
     font-size: 20px;
     font-weight: 800;
@@ -45,7 +52,6 @@
   .company-line {
     display: flex;
     align-items: center;
-    gap: 8px;
     font-size: 11px;
     color: #3a3a3a;
     margin: 5px 0;
@@ -60,6 +66,8 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    overflow: hidden;
+    margin-right: 8px;
   }
   .badge-icon svg { width: 12px; height: 12px; }
 
@@ -67,7 +75,6 @@
   .title-row {
     display: flex;
     align-items: center;
-    gap: 8px;
     margin: 16px 0 12px 0;
   }
   .title-accent {
@@ -75,12 +82,15 @@
     height: 2px;
     background: #3f722a;
     transform: skewX(-30deg);
+    margin-right: 8px;
   }
   .title-line {
     flex: 1;
     height: 1px;
     background: #cfe0c8;
+    margin-right: 8px;
   }
+  .title-line.right { margin-right: 0; margin-left: 8px; }
   .title-pill {
     background: #3f722a;
     color: #ffffff;
@@ -88,19 +98,19 @@
     font-size: 13px;
     padding: 8px 30px;
     border-radius: 999px;
+    margin-right: 8px;
   }
 
   /* ---- date ---- */
   .date-row {
     display: flex;
     align-items: center;
-    gap: 8px;
     font-size: 12px;
     font-weight: 700;
     color: #2b2b2b;
     margin-bottom: 10px;
   }
-  .date-row .outline-icon { width: 16px; height: 16px; }
+  .date-row .outline-icon { width: 16px; height: 16px; margin-right: 8px; }
   .dotted {
     border: none;
     border-top: 1.4px dotted #c7cec6;
@@ -111,10 +121,10 @@
   .section-header {
     display: flex;
     align-items: center;
-    gap: 8px;
     margin: 0 0 8px 0;
   }
-  .outline-icon { width: 17px; height: 17px; flex-shrink: 0; }
+  .outline-icon { width: 17px; height: 17px; flex-shrink: 0; margin-right: 8px; }
+  .section-header .section-title { margin-right: 8px; }
   .section-header .stem {
     flex: 1;
     height: 1.3px;
@@ -132,12 +142,12 @@
 
   .driver-grid {
     display: flex;
-    gap: 30px;
     flex-wrap: wrap;
     font-size: 10.8px;
     margin: 5px 0;
   }
-  .driver-grid.plates { gap: 70px; }
+  .driver-grid > div { margin-right: 30px; }
+  .driver-grid.plates > div { margin-right: 70px; }
 
   /* ---- table ---- */
   .table-wrap {
@@ -198,8 +208,8 @@
 <div class="page">
 
   <div class="header">
-    <img class="logo" src="{{ logo_data_uri }}" alt="logo">
-    <div>
+    <div class="logo-box"><img class="logo" src="{{ logo_data_uri }}" alt="logo"></div>
+    <div class="header-text">
       <div class="company-name">ATLÂNTICO FERTLOG TRASPORTES E SERVIÇOS DE CARGAS</div>
       <div class="company-line">
         <span class="badge-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4"><rect x="3" y="7" width="18" height="13" rx="1.5"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></span>
@@ -220,8 +230,8 @@
     <div class="title-accent"></div>
     <div class="title-line"></div>
     <div class="title-pill">Ordem de Carregamento</div>
-    <div class="title-line"></div>
-    <div class="title-accent"></div>
+    <div class="title-line right"></div>
+    <div class="title-accent" style="margin-right:0"></div>
   </div>
 
   <div class="date-row">
