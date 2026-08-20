@@ -10,12 +10,16 @@ import base64
 import email
 import imaplib
 import re
+import threading
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 
 from ..config import settings
 
 IMAP_HOST = "imap.gmail.com"
+
+_lock = threading.Lock()
+_conexao_ativa: imaplib.IMAP4_SSL | None = None
 
 
 class InboxIndisponivel(Exception):
@@ -28,10 +32,7 @@ def credenciais_limpas() -> tuple[str, str]:
     return usuario, senha
 
 
-def _conectar() -> imaplib.IMAP4_SSL:
-    usuario, senha = credenciais_limpas()
-    if not usuario or not senha:
-        raise InboxIndisponivel("GMAIL_SENDER_EMAIL / GMAIL_APP_PASSWORD_IMAP nao configurados")
+def _logar(usuario: str, senha: str) -> imaplib.IMAP4_SSL:
     conexao = imaplib.IMAP4_SSL(IMAP_HOST)
     try:
         conexao.login(usuario, senha)
@@ -42,6 +43,30 @@ def _conectar() -> imaplib.IMAP4_SSL:
             f"POP/IMAP > Ativar IMAP) da conta {usuario}. Erro original: {exc}"
         ) from exc
     return conexao
+
+
+def _obter_conexao() -> imaplib.IMAP4_SSL:
+    """Reaproveita uma unica conexao IMAP entre requisicoes (evita repetir o
+    handshake TLS + login a cada acao, que era o principal motivo da lentidao).
+    Verifica com NOOP se ainda esta viva antes de reusar; reconecta se nao."""
+    global _conexao_ativa
+
+    if _conexao_ativa is not None:
+        try:
+            _conexao_ativa.noop()
+            return _conexao_ativa
+        except Exception:
+            try:
+                _conexao_ativa.logout()
+            except Exception:
+                pass
+            _conexao_ativa = None
+
+    usuario, senha = credenciais_limpas()
+    if not usuario or not senha:
+        raise InboxIndisponivel("GMAIL_SENDER_EMAIL / GMAIL_APP_PASSWORD_IMAP nao configurados")
+    _conexao_ativa = _logar(usuario, senha)
+    return _conexao_ativa
 
 
 def _decodificar(valor: str | None) -> str:
@@ -75,8 +100,8 @@ def _extrair_data(msg: email.message.Message) -> str:
 
 
 def listar_mensagens(pagina: int = 1, tamanho_pagina: int = 25) -> dict:
-    conexao = _conectar()
-    try:
+    with _lock:
+        conexao = _obter_conexao()
         status, _ = conexao.select("INBOX", readonly=True)
         if status != "OK":
             raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
@@ -91,31 +116,41 @@ def listar_mensagens(pagina: int = 1, tamanho_pagina: int = 25) -> dict:
         inicio = (pagina - 1) * tamanho_pagina
         pagina_ids = todos_ids[inicio : inicio + tamanho_pagina]
 
-        mensagens = []
-        for msg_id in pagina_ids:
-            status, dados_msg = conexao.fetch(msg_id, "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
-            if status != "OK" or not dados_msg or not isinstance(dados_msg[0], tuple):
+        if not pagina_ids:
+            return {"mensagens": [], "total": total, "pagina": pagina, "tamanho_pagina": tamanho_pagina}
+
+        # Busca todas as mensagens da pagina numa unica chamada FETCH (uma
+        # unica ida-e-volta ao servidor) em vez de uma chamada por mensagem.
+        status, dados_msg = conexao.fetch(b",".join(pagina_ids), "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+        if status != "OK":
+            raise InboxIndisponivel("Nao foi possivel buscar as mensagens")
+
+        por_id: dict[bytes, dict] = {}
+        for item in dados_msg:
+            if not isinstance(item, tuple):
                 continue
-            linha_info, cabecalho_bruto = dados_msg[0]
+            linha_info, cabecalho_bruto = item
+            correspondencia = re.match(rb"(\d+) \(", linha_info)
+            if not correspondencia:
+                continue
+            msg_id = correspondencia.group(1)
             msg = email.message_from_bytes(cabecalho_bruto)
             flags = imaplib.ParseFlags(linha_info)
-            mensagens.append(
-                {
-                    "id": msg_id.decode(),
-                    "remetente": _extrair_remetente(msg),
-                    "assunto": _decodificar(msg.get("Subject", "")) or "(sem assunto)",
-                    "data": _extrair_data(msg),
-                    "lida": b"\\Seen" in flags,
-                }
-            )
+            por_id[msg_id] = {
+                "id": msg_id.decode(),
+                "remetente": _extrair_remetente(msg),
+                "assunto": _decodificar(msg.get("Subject", "")) or "(sem assunto)",
+                "data": _extrair_data(msg),
+                "lida": b"\\Seen" in flags,
+            }
+
+        mensagens = [por_id[mid] for mid in pagina_ids if mid in por_id]
         return {"mensagens": mensagens, "total": total, "pagina": pagina, "tamanho_pagina": tamanho_pagina}
-    finally:
-        conexao.logout()
 
 
 def obter_mensagem(msg_id: str) -> dict:
-    conexao = _conectar()
-    try:
+    with _lock:
+        conexao = _obter_conexao()
         status, _ = conexao.select("INBOX")
         if status != "OK":
             raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
@@ -180,5 +215,3 @@ def obter_mensagem(msg_id: str) -> dict:
             "corpo_texto": corpo_texto,
             "anexos": anexos,
         }
-    finally:
-        conexao.logout()

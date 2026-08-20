@@ -17,22 +17,28 @@ function escapeHtml(texto) {
 
 const RASCUNHO_VAZIO = { para: "", assunto: "", corpo: "" };
 
+// Cache em memoria (fora do componente) pra sobreviver a navegacao entre
+// paginas do app: sair da tela de E-mails e voltar reaproveita a lista ja
+// carregada em vez de buscar tudo de novo. Um refresh de navegador (F5)
+// reinicia o modulo JS normalmente, entao esse cache some nesse caso.
+const cache = { carregou: false, mensagens: [], pagina: 1, total: 0, selecionado: null, detalhe: null };
+
 export default function EmailsPage() {
-  const [mensagens, setMensagens] = useState([]);
-  const [pagina, setPagina] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [carregandoLista, setCarregandoLista] = useState(true);
+  const [mensagens, setMensagens] = useState(cache.mensagens);
+  const [pagina, setPagina] = useState(cache.pagina);
+  const [total, setTotal] = useState(cache.total);
+  const [carregandoLista, setCarregandoLista] = useState(!cache.carregou);
   const [carregandoMais, setCarregandoMais] = useState(false);
   const [erro, setErro] = useState("");
-  const [selecionado, setSelecionado] = useState(null);
-  const [detalhe, setDetalhe] = useState(null);
+  const [selecionado, setSelecionado] = useState(cache.selecionado);
+  const [detalhe, setDetalhe] = useState(cache.detalhe);
   const [carregandoDetalhe, setCarregandoDetalhe] = useState(false);
   const [compor, setCompor] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [erroEnvio, setErroEnvio] = useState("");
 
   useEffect(() => {
-    carregarPagina(1, false);
+    if (!cache.carregou) carregarPagina(1, false);
   }, []);
 
   async function carregarPagina(numeroPagina, acumular) {
@@ -41,9 +47,16 @@ export default function EmailsPage() {
     setErro("");
     try {
       const data = await api.listarEmails(numeroPagina, TAMANHO_PAGINA);
-      setMensagens((prev) => (acumular ? [...prev, ...data.mensagens] : data.mensagens));
+      setMensagens((prev) => {
+        const novo = acumular ? [...prev, ...data.mensagens] : data.mensagens;
+        cache.mensagens = novo;
+        return novo;
+      });
       setTotal(data.total);
       setPagina(numeroPagina);
+      cache.total = data.total;
+      cache.pagina = numeroPagina;
+      cache.carregou = true;
     } catch (err) {
       setErro(err.message);
     } finally {
@@ -55,13 +68,19 @@ export default function EmailsPage() {
   async function abrirMensagem(msg) {
     setCompor(null);
     setSelecionado(msg.id);
+    cache.selecionado = msg.id;
     setCarregandoDetalhe(true);
     setDetalhe(null);
     setErro("");
     try {
       const data = await api.obterEmail(msg.id);
       setDetalhe(data);
-      setMensagens((prev) => prev.map((m) => (m.id === msg.id ? { ...m, lida: true } : m)));
+      cache.detalhe = data;
+      setMensagens((prev) => {
+        const novo = prev.map((m) => (m.id === msg.id ? { ...m, lida: true } : m));
+        cache.mensagens = novo;
+        return novo;
+      });
     } catch (err) {
       setErro(err.message);
     } finally {
