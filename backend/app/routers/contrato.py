@@ -23,11 +23,18 @@ async def _save_upload(file: UploadFile) -> str:
     return path
 
 
+def _ocr_texto_ou_erro(path: str) -> str:
+    try:
+        return ocr.obter_texto_do_arquivo_ocr(path)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erro no OCR: {exc!r}")
+
+
 @router.post("/ocr/pedido-heringer")
 async def ocr_pedido_heringer(file: UploadFile):
     path = await _save_upload(file)
     try:
-        texto = ocr.obter_texto_do_arquivo_ocr(path)
+        texto = _ocr_texto_ou_erro(path)
         produtos = ocr.extrair_dados_pedido_heringer(texto)
         return {"produtos": produtos}
     finally:
@@ -38,7 +45,7 @@ async def ocr_pedido_heringer(file: UploadFile):
 async def ocr_cnh(file: UploadFile):
     path = await _save_upload(file)
     try:
-        texto = ocr.obter_texto_do_arquivo_ocr(path)
+        texto = _ocr_texto_ou_erro(path)
         return ocr.extrair_dados_cnh_com_azure_api(texto)
     finally:
         os.remove(path)
@@ -48,7 +55,7 @@ async def ocr_cnh(file: UploadFile):
 async def ocr_crlv(file: UploadFile):
     path = await _save_upload(file)
     try:
-        texto = ocr.obter_texto_do_arquivo_ocr(path)
+        texto = _ocr_texto_ou_erro(path)
         return ocr.extrair_dados_crlv_com_azure_api(texto, BSOFT_SIMPLE_BRANDS_LIST, BSOFT_TIPOS_CARROCERIA_NOMES)
     finally:
         os.remove(path)
