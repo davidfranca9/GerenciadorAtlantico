@@ -181,7 +181,12 @@ def _salvar_agendamento_oc(
 @router.post("/ordens-coleta/gerar")
 def gerar_ordem_coleta(payload: OrdemColetaRequest, db: Session = Depends(get_db)):
     tmp_dir = tempfile.mkdtemp()
-    arquivos = _gerar_oc_arquivos(payload, tmp_dir)
+    try:
+        arquivos = _gerar_oc_arquivos(payload, tmp_dir)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar PDF da O.C.: {exc!r}")
     safe_name = arquivos["safe_name"]
     produtos_dict = [p.model_dump() for p in payload.produtos]
     agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, arquivos)
