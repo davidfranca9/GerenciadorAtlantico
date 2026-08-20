@@ -18,7 +18,7 @@ from google.genai import types
 from ..config import settings
 from .bsoft_lookup import BSOFT_CATEGORIAS_VEICULO, BSOFT_SIMPLE_BRANDS_LIST, BSOFT_TIPOS_CARROCERIA_NOMES
 
-MODELO = "gemini-2.0-flash"
+MODELO = "gemini-3.6-flash"
 
 CNH_SCHEMA = {
     "type": "object",
