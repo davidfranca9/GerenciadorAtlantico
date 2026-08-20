@@ -99,7 +99,7 @@ export default function AdminPage() {
                 <td>{u.email}</td>
                 <td>{u.name}</td>
                 <td>{u.role}</td>
-                <td>{u.is_active ? "Sim" : "Nao"}</td>
+                <td>{u.is_active ? "Sim" : "Não"}</td>
                 <td style={{ display: "flex", gap: 6 }}>
                   <button className="btn-secondary" onClick={() => togglePapel(u)}>
                     {u.role === "admin" ? "Tornar usuario" : "Tornar admin"}

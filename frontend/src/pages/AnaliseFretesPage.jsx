@@ -46,7 +46,7 @@ export default function AnaliseFretesPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
       <form onSubmit={handleCadastrar} className="card field-grid" style={{ alignItems: "end" }}>
-        <DateField label="Data da Cotacao" value={dataCotacao} onChange={setDataCotacao} required />
+        <DateField label="Data da Cotação" value={dataCotacao} onChange={setDataCotacao} required />
         <div className="field">
           <label>Destino</label>
           <input value={destino} onChange={(e) => setDestino(e.target.value)} required />
@@ -55,7 +55,7 @@ export default function AnaliseFretesPage() {
           <label>Valor por Tonelada (R$)</label>
           <input value={valorTonelada} onChange={(e) => setValorTonelada(e.target.value)} required />
         </div>
-        <button type="submit" className="btn-primary">Cadastrar Cotacao</button>
+        <button type="submit" className="btn-primary">Cadastrar cotação</button>
       </form>
 
       <div className="field" style={{ maxWidth: 300 }}>

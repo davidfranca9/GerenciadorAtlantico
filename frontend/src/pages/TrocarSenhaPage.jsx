@@ -13,7 +13,7 @@ export default function TrocarSenhaPage() {
     setError("");
     setStatus("");
     if (nova !== confirmar) {
-      setError("A confirmacao nao coincide com a nova senha.");
+      setError("A confirmação não coincide com a nova senha.");
       return;
     }
     try {

@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { formatDateInput } from "../utils/format";
+import Icon from "./Icon";
 
 function toIso(value) {
   const m = String(value || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -62,7 +63,7 @@ export default function DateField({ label, value, onChange, required = false }) 
             cursor: "pointer",
           }}
         >
-          📅
+          <Icon name="calendar" size={16} />
         </button>
         <input
           ref={dateInputRef}

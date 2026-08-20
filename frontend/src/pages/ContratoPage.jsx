@@ -56,7 +56,7 @@ export default function ContratoPage() {
     if (extracted.length > 0) {
       setStatus(
         semItens > 0
-          ? `${extracted.length} produto(s) carregado(s). ${semItens} PDF(s) nao geraram itens.`
+          ? `${extracted.length} produto(s) carregado(s). ${semItens} PDF(s) não geraram itens.`
           : `${extracted.length} produto(s) carregado(s) de ${files.length} PDF(s).`
       );
     } else {
@@ -67,7 +67,7 @@ export default function ContratoPage() {
   async function handleGerarAutorizacao() {
     setError("");
     if (selectedRows.length === 0) {
-      setError("Selecione ao menos um contrato na tabela antes de gerar a Autorizacao.");
+      setError("Selecione ao menos um contrato na tabela antes de gerar a autorização.");
       return;
     }
     setGerandoAutorizacao(true);
@@ -86,7 +86,7 @@ export default function ContratoPage() {
         placa1: placaCavalo,
         data_carregamento: dataCarregamento,
       });
-      setStatus("Autorizacao de Carregamento gerada com sucesso.");
+      setStatus("Autorização de carregamento gerada com sucesso.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -177,7 +177,7 @@ export default function ContratoPage() {
           ["Toneladas Selecionadas", metrics.totalTons.toFixed(1)],
           ["Produtos Selecionados", metrics.selectedCount],
           ["Produtos na Lista", metrics.totalCount],
-          ["Clientes Unicos", metrics.uniqueClients],
+          ["Clientes únicos", metrics.uniqueClients],
         ].map(([label, value], idx, arr) => (
           <div
             key={label}
@@ -195,7 +195,7 @@ export default function ContratoPage() {
 
       {supplier !== "HERINGER" && (
         <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <strong style={{ fontSize: 15 }}>Autorizacao de Carregamento</strong>
+          <strong style={{ fontSize: 15 }}>Autorização de carregamento</strong>
           <div className="field-grid">
             <div className="field">
               <label>Nome do Motorista (opcional)</label>
@@ -207,7 +207,7 @@ export default function ContratoPage() {
             </div>
           </div>
           <button className="btn-primary" disabled={gerandoAutorizacao} onClick={handleGerarAutorizacao} style={{ alignSelf: "start" }}>
-            {gerandoAutorizacao ? "Gerando..." : "Gerar Autorizacao de Carregamento"}
+            {gerandoAutorizacao ? "Gerando..." : "Gerar autorização de carregamento"}
           </button>
         </div>
       )}

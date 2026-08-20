@@ -103,7 +103,7 @@ export default function ClientesPage() {
           </div>
         </div>
         <div className="field">
-          <label>Observacoes</label>
+          <label>Observações</label>
           <input value={form.observacoes} onChange={(e) => updateField("observacoes", e.target.value)} />
         </div>
         <div style={{ display: "flex", gap: 10 }}>

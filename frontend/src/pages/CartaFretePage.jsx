@@ -63,7 +63,7 @@ export default function CartaFretePage() {
           <input placeholder="1500,00" value={valorFrete} onChange={(e) => setValorFrete(e.target.value)} />
         </div>
         <div className="field">
-          <label>Numero da Autorizacao</label>
+          <label>Número da autorização</label>
           <input value={autorizacaoNum} onChange={(e) => setAutorizacaoNum(e.target.value)} />
         </div>
       </div>

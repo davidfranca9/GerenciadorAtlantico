@@ -17,14 +17,14 @@ import TrocarSenhaPage from "./pages/TrocarSenhaPage";
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div style={{ padding: 40 }}>Carregando...</div>;
+  if (loading) return <div className="app-loading"><span />Carregando ambiente...</div>;
   if (!user) return <Navigate to="/login" replace />;
   return children;
 }
 
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div style={{ padding: 40 }}>Carregando...</div>;
+  if (loading) return <div className="app-loading"><span />Carregando ambiente...</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (user.role !== "admin") return <Navigate to="/ordem-coleta" replace />;
   return children;

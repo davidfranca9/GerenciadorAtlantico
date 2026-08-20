@@ -1,148 +1,87 @@
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import Icon from "./Icon";
 
 const NAV_SECTIONS = [
-  {
-    title: "Logistica",
-    items: [
-      { to: "/contrato", label: "Contrato" },
-      { to: "/ordem-coleta", label: "Ordem de Coleta" },
-      { to: "/agendamentos", label: "Agendamentos" },
-      { to: "/analise-fretes", label: "Analise de Fretes" },
-    ],
-  },
-  {
-    title: "Financeiro",
-    items: [{ to: "/carta-frete", label: "Carta Frete" }],
-  },
-  {
-    title: "Cadastro",
-    items: [
-      { to: "/buonny", label: "Buonny" },
-      { to: "/bsoft", label: "Bsoft TMS" },
-    ],
-  },
-  {
-    title: "Clientes",
-    items: [{ to: "/clientes", label: "Clientes" }],
-  },
+  { title: "Operação", items: [
+    { to: "/contrato", label: "Contratos", icon: "contract", description: "Importação e seleção de cargas" },
+    { to: "/ordem-coleta", label: "Ordem de coleta", icon: "clipboard", description: "Emissão de documentos operacionais" },
+    { to: "/agendamentos", label: "Agendamentos", icon: "calendar", description: "Controle de coletas programadas" },
+    { to: "/analise-fretes", label: "Análise de fretes", icon: "chart", description: "Histórico e comparação de valores" },
+  ]},
+  { title: "Financeiro", items: [{ to: "/carta-frete", label: "Carta frete", icon: "wallet", description: "Geração de autorizações financeiras" }] },
+  { title: "Integrações", items: [
+    { to: "/buonny", label: "Buonny", icon: "shield", description: "Consulta e gerenciamento de risco" },
+    { to: "/bsoft", label: "Bsoft TMS", icon: "truck", description: "Cadastro de motoristas e veículos" },
+  ]},
+  { title: "Cadastros", items: [{ to: "/clientes", label: "Clientes", icon: "users", description: "Base de clientes e contatos" }] },
 ];
-
-const ALL_ITEMS = NAV_SECTIONS.flatMap((s) => s.items).concat([
-  { to: "/admin", label: "Admin" },
-  { to: "/trocar-senha", label: "Trocar Senha" },
+const ALL_ITEMS = NAV_SECTIONS.flatMap((section) => section.items).concat([
+  { to: "/admin", label: "Administração", icon: "settings", description: "Usuários e permissões do sistema" },
+  { to: "/trocar-senha", label: "Segurança", icon: "key", description: "Atualize sua senha de acesso" },
 ]);
 
-function initials(email) {
-  if (!email) return "?";
-  return email[0].toUpperCase();
+function initials(user) {
+  const source = user?.name || user?.email || "?";
+  return source.split(/\s|@/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
-  const sections = user?.role === "admin"
-    ? [...NAV_SECTIONS, { title: "Sistema", items: [{ to: "/admin", label: "Admin" }] }]
-    : NAV_SECTIONS;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const sections = user?.role === "admin" ? [...NAV_SECTIONS, { title: "Sistema", items: [ALL_ITEMS.find((item) => item.to === "/admin")] }] : NAV_SECTIONS;
+  const current = ALL_ITEMS.find((item) => item.to === location.pathname) || ALL_ITEMS[1];
 
-  const currentLabel = ALL_ITEMS.find((i) => i.to === location.pathname)?.label || "";
+  useEffect(() => setMenuOpen(false), [location.pathname]);
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
-      <aside
-        style={{
-          width: 232,
-          flexShrink: 0,
-          background: "var(--panel)",
-          border: "1px solid var(--panel-border)",
-          borderLeft: "none",
-          borderTopRightRadius: 22,
-          borderBottomRightRadius: 22,
-          padding: 18,
-          display: "flex",
-          flexDirection: "column",
-          gap: 22,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 4px" }}>
-          <div className="brand-logo">
-            <img src="/logo.svg" alt="Atlantico Fertlog" />
-          </div>
-          <div style={{ fontWeight: 700, fontSize: 13.5, letterSpacing: 0.3, lineHeight: 1.2 }}>ATLANTICO<br />FERTLOG</div>
+    <div className="app-shell">
+      <button className={`sidebar-backdrop ${menuOpen ? "visible" : ""}`} onClick={() => setMenuOpen(false)} aria-label="Fechar menu" />
+      <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
+        <div className="brand">
+          <div className="brand-logo"><img src="/logo.svg" alt="Atlântico Fertlog" /></div>
+          <div className="brand-copy"><strong>ATLÂNTICO</strong><span>FERTLOG</span></div>
+          <button className="icon-btn sidebar-close" onClick={() => setMenuOpen(false)} aria-label="Fechar menu"><Icon name="close" /></button>
         </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 18, overflowY: "auto" }}>
+        <div className="sidebar-nav">
           {sections.map((section) => (
-            <div key={section.title}>
+            <section className="nav-section" key={section.title}>
               <div className="sidebar-caption">{section.title}</div>
-              <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <nav>
                 {section.items.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    className={({ isActive }) => `sidebar-btn${isActive ? " active" : ""}`}
-                  >
-                    {item.label}
+                  <NavLink key={item.to} to={item.to} className={({ isActive }) => `sidebar-btn${isActive ? " active" : ""}`}>
+                    <span className="nav-icon"><Icon name={item.icon} /></span><span>{item.label}</span><Icon name="chevron" size={14} className="nav-chevron" />
                   </NavLink>
                 ))}
               </nav>
-            </div>
+            </section>
           ))}
         </div>
-
-        <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 4px" }}>
-            <div className="user-avatar">{initials(user?.email)}</div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {user?.email}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "capitalize" }}>{user?.role}</div>
-            </div>
+        <div className="sidebar-footer">
+          <div className="user-card">
+            <div className="user-avatar">{initials(user)}</div>
+            <div className="user-copy"><strong>{user?.name || user?.email?.split("@")[0]}</strong><span>{user?.email}</span></div>
           </div>
-          <NavLink to="/trocar-senha" className={({ isActive }) => `sidebar-btn${isActive ? " active" : ""}`}>
-            Trocar senha
-          </NavLink>
-          <button className="btn-secondary" onClick={logout} style={{ width: "100%" }}>
-            Sair
-          </button>
+          <div className="sidebar-actions">
+            <NavLink to="/trocar-senha" className="icon-btn" title="Segurança"><Icon name="key" /></NavLink>
+            <button className="icon-btn" onClick={toggleTheme} title={theme === "dark" ? "Usar tema claro" : "Usar tema escuro"}><Icon name={theme === "dark" ? "sun" : "moon"} /></button>
+            <button className="icon-btn danger-hover" onClick={logout} title="Sair"><Icon name="logout" /></button>
+          </div>
         </div>
       </aside>
-
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "14px 16px 16px 14px", minWidth: 0 }}>
-        <header
-          style={{
-            background: "var(--topbar)",
-            border: "1px solid var(--topbar-border)",
-            borderRadius: 20,
-            padding: "14px 20px",
-            marginBottom: 16,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            boxShadow: "0 14px 30px -18px rgba(0,0,0,0.6)",
-          }}
-        >
-          <div style={{ fontSize: 15, fontWeight: 700 }}>{currentLabel}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.6 }}>
-              Atlantico Fertlog
-            </div>
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={toggleTheme}
-              title={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
-            >
-              {theme === "dark" ? "☀" : "☽"}
-            </button>
+      <div className="workspace">
+        <header className="topbar">
+          <div className="topbar-title">
+            <button className="icon-btn mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Abrir menu"><Icon name="menu" /></button>
+            <div><span className="eyebrow">CENTRAL OPERACIONAL</span><h1>{current.label}</h1><p>{current.description}</p></div>
           </div>
+          <div className="topbar-status"><span className="status-dot" /> Sistema online</div>
         </header>
-        <main style={{ flex: 1, overflowY: "auto" }}>
-          <Outlet />
-        </main>
+        <main className={`page-content page-${location.pathname.slice(1) || "home"}`}><Outlet /></main>
       </div>
     </div>
   );

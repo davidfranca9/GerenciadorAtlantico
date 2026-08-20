@@ -44,7 +44,7 @@ export default function BsoftPage() {
         categoriaVeiculo: veiculo.categoriaVeiculo ? Number(veiculo.categoriaVeiculo) : null,
         grupoVeiculo: veiculo.grupoVeiculo ? Number(veiculo.grupoVeiculo) : null,
       });
-      setStatus("Veiculo cadastrado na Bsoft com sucesso.");
+      setStatus("Veículo cadastrado na Bsoft com sucesso.");
     } catch (err) {
       setError(err.message);
     }
@@ -57,7 +57,7 @@ export default function BsoftPage() {
       {status && <div style={{ color: "var(--success)" }}>{status}</div>}
 
       <form onSubmit={handleCadastrarPF} className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <strong>Cadastrar Motorista (Pessoa Fisica)</strong>
+        <strong>Cadastrar motorista (pessoa física)</strong>
         <div className="field-grid">
           <div className="field"><label>Nome</label><input value={pf.nome} onChange={(e) => setPf({ ...pf, nome: formatNome(e.target.value) })} required /></div>
           <div className="field"><label>CPF</label><input value={pf.cpf} onChange={(e) => setPf({ ...pf, cpf: e.target.value })} required /></div>
@@ -73,7 +73,7 @@ export default function BsoftPage() {
       </form>
 
       <form onSubmit={handleCadastrarVeiculo} className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <strong>Cadastrar Veiculo</strong>
+        <strong>Cadastrar veículo</strong>
         <div className="field-grid">
           <div className="field"><label>Placa</label><input value={veiculo.placa} onChange={(e) => setVeiculo({ ...veiculo, placa: formatPlaca(e.target.value) })} placeholder="ABC-1D23" required /></div>
           <div className="field"><label>Renavam</label><input value={veiculo.renavam} onChange={(e) => setVeiculo({ ...veiculo, renavam: e.target.value })} /></div>
@@ -104,7 +104,7 @@ export default function BsoftPage() {
           <input type="checkbox" checked={veiculo.motoristaEhProprietario} onChange={(e) => setVeiculo({ ...veiculo, motoristaEhProprietario: e.target.checked })} />
           Motorista e proprietario do veiculo
         </label>
-        <button type="submit" className="btn-primary" style={{ alignSelf: "start" }}>Cadastrar Veiculo na Bsoft</button>
+        <button type="submit" className="btn-primary" style={{ alignSelf: "start" }}>Cadastrar veículo na Bsoft</button>
       </form>
     </div>
   );

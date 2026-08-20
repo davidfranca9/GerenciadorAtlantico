@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import Icon from "../components/Icon";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 
@@ -12,54 +13,46 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      await login(email, password);
-      navigate("/ordem-coleta");
-    } catch (err) {
-      setError(err.message || "Falha no login");
-    } finally {
-      setLoading(false);
-    }
+  async function handleSubmit(event) {
+    event.preventDefault(); setError(""); setLoading(true);
+    try { await login(email, password); navigate("/ordem-coleta"); }
+    catch (err) { setError(err.message || "Falha no login"); }
+    finally { setLoading(false); }
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, position: "relative" }}>
-      <button
-        type="button"
-        className="theme-toggle"
-        onClick={toggleTheme}
-        title={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
-        style={{ position: "absolute", top: 20, right: 20 }}
-      >
-        {theme === "dark" ? "☀" : "☽"}
-      </button>
-      <form onSubmit={handleSubmit} className="card" style={{ width: 360, display: "flex", flexDirection: "column", gap: 18 }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-          <div className="brand-logo" style={{ width: 56, height: 56, borderRadius: 16 }}>
-            <img src="/logo.svg" alt="Atlantico Fertlog" />
+    <div className="login-page">
+      <section className="login-panel">
+        <div className="login-brand">
+          <div className="brand-logo"><img src="/logo.svg" alt="Atlântico Fertlog" /></div>
+          <div className="brand-copy"><strong>ATLÂNTICO</strong><span>FERTLOG</span></div>
+        </div>
+        <button type="button" className="icon-btn login-theme" onClick={toggleTheme} title="Alternar tema"><Icon name={theme === "dark" ? "sun" : "moon"} /></button>
+        <div className="login-form-wrap">
+          <span className="login-kicker">ACESSO SEGURO</span>
+          <h1>Bem-vindo de volta.</h1>
+          <p>Entre com suas credenciais para acessar a central de operações.</p>
+          <form onSubmit={handleSubmit} className="login-form">
+            <div className="field"><label>E-mail corporativo</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nome@empresa.com.br" required autoFocus /></div>
+            <div className="field"><label>Senha</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Digite sua senha" required /></div>
+            {error && <div style={{ color: "var(--danger)", fontSize: 12 }}>{error}</div>}
+            <button type="submit" className="btn-primary" disabled={loading}>{loading ? "Autenticando..." : "Entrar no sistema"}</button>
+          </form>
+        </div>
+        <div className="login-footer">© {new Date().getFullYear()} Atlântico Fertlog · Ambiente protegido</div>
+      </section>
+      <aside className="login-visual">
+        <div className="login-visual-content">
+          <span className="visual-pill"><span className="status-dot" /> GESTÃO LOGÍSTICA INTEGRADA</span>
+          <h2>Operação fluida.<br />Decisões precisas.</h2>
+          <p>Contratos, coletas, agendamentos e parceiros conectados em uma única central operacional.</p>
+          <div className="visual-stats">
+            <div><strong>Centralizado</strong><span>Dados e documentos</span></div>
+            <div><strong>Ágil</strong><span>Rotina operacional</span></div>
+            <div><strong>Seguro</strong><span>Acesso controlado</span></div>
           </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontWeight: 700, fontSize: 18, letterSpacing: 0.3 }}>ATLANTICO FERTLOG</div>
-            <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>Entrar no sistema</div>
-          </div>
         </div>
-        <div className="field">
-          <label>Email</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
-        </div>
-        <div className="field">
-          <label>Senha</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        </div>
-        {error && <div style={{ color: "var(--danger)", fontSize: 13 }}>{error}</div>}
-        <button type="submit" className="btn-primary" disabled={loading}>
-          {loading ? "Entrando..." : "Entrar"}
-        </button>
-      </form>
+      </aside>
     </div>
   );
 }

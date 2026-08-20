@@ -68,7 +68,7 @@ export default function BuonnyPage() {
         <div className="field"><label>Codigo Cliente</label><input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} /></div>
         <div className="field"><label>CPF Motorista</label><input value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} /></div>
         <div className="field"><label>Nome Motorista</label><input value={form.nome} onChange={(e) => setForm({ ...form, nome: formatNome(e.target.value) })} /></div>
-        <div className="field"><label>Placa Veiculo</label><input value={form.placa_veiculo} onChange={(e) => setForm({ ...form, placa_veiculo: formatPlaca(e.target.value) })} placeholder="ABC-1D23" /></div>
+        <div className="field"><label>Placa veículo</label><input value={form.placa_veiculo} onChange={(e) => setForm({ ...form, placa_veiculo: formatPlaca(e.target.value) })} placeholder="ABC-1D23" /></div>
         <div className="field"><label>Placa Carreta</label><input value={form.placa_carreta} onChange={(e) => setForm({ ...form, placa_carreta: formatPlaca(e.target.value) })} placeholder="ABC-1D23" /></div>
         <div className="field">
           <label>Tipo de Carga</label>
