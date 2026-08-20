@@ -70,9 +70,8 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .inbox-detail-header-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .inbox-detail-header-top h2{flex:1}
 .inbox-compose-btn{flex-shrink:0;height:36px;padding:0 16px;font-size:13px}
-.inbox-compose-inline{display:flex;flex-direction:column;gap:14px;height:100%;min-height:0}
-.inbox-compose-body-field{flex:1;display:flex;flex-direction:column;min-height:0}
-.inbox-compose-body-field textarea{flex:1;resize:none;min-height:160px}
+.inbox-compose-inline{display:flex;flex-direction:column;gap:14px}
+.inbox-compose-body-field textarea{height:220px;resize:vertical}
 .inbox-compose-header{display:flex;align-items:center;justify-content:space-between}
 .inbox-compose-header strong{font:700 17px Manrope,sans-serif}
 .inbox-compose-actions{display:flex;justify-content:flex-end;gap:10px}
