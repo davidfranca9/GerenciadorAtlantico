@@ -17,7 +17,6 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 from openpyxl import load_workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 SHEET_NAME = "Ordem de Carregamento"
@@ -384,40 +383,9 @@ def get_headers_from_sheet(ws):
 
 
 def _format_autorizacao_sheet(ws, headers, total_row=AUTORIZACAO_TOTAL_ROW):
-    header_fill = PatternFill("solid", fgColor="0F766E")
-    total_fill = PatternFill("solid", fgColor="E6F4F1")
-    thin = Side(style="thin", color="C7D2D0")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-
-    for col_idx, header in enumerate(headers, start=1):
-        for row_idx in (1, 2):
-            cell = ws.cell(row=row_idx, column=col_idx)
-            cell.fill = header_fill
-            cell.font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            cell.border = border
-
-        width = {
-            "Cliente": 34,
-            "Data de Carregamento": 18,
-            "Placa cavalo mecânico": 18,
-            "Nome do condutor": 28,
-            "Número do pedido": 16,
-            "Produto": 34,
-            "Embalagem": 16,
-            "Quantidade": 14,
-            "Cidade/UF": 22,
-        }.get(header, 16)
-        ws.column_dimensions[get_column_letter(col_idx)].width = width
-
-    for row_idx in range(AUTORIZACAO_FIRST_DATA_ROW, total_row + 1):
-        ws.row_dimensions[row_idx].height = 22
-        for col_idx, _header in enumerate(headers, start=1):
-            cell = ws.cell(row=row_idx, column=col_idx)
-            cell.font = Font(name="Arial", size=10)
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            cell.border = border
-
+    """Preenche apenas o rotulo/formula da linha de total. Nao mexe em cor,
+    fonte, borda ou largura de coluna: o template do usuario ja define isso
+    e deve ser preservado exatamente como enviado."""
     try:
         qty_col_idx = headers.index("Quantidade") + 1
     except ValueError:
@@ -429,12 +397,6 @@ def _format_autorizacao_sheet(ws, headers, total_row=AUTORIZACAO_TOTAL_ROW):
     label_cell.value = TOTAL_LABEL
     total_cell.value = f"=SUM({get_column_letter(qty_col_idx)}{AUTORIZACAO_FIRST_DATA_ROW}:{get_column_letter(qty_col_idx)}{total_row - 1})"
     total_cell.number_format = "0.###"
-
-    for cell in (label_cell, total_cell):
-        cell.fill = total_fill
-        cell.font = Font(name="Arial", size=10, bold=True, color="0F3D36")
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-        cell.border = border
 
 
 def _clear_autorizacao_data_rows(ws, headers, total_row=AUTORIZACAO_TOTAL_ROW):
