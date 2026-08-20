@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import * as api from "../api/client";
 import Icon from "../components/Icon";
 
@@ -54,6 +53,7 @@ export default function EmailsPage() {
   }
 
   async function abrirMensagem(msg) {
+    setCompor(null);
     setSelecionado(msg.id);
     setCarregandoDetalhe(true);
     setDetalhe(null);
@@ -142,7 +142,33 @@ export default function EmailsPage() {
           )}
         </section>
         <section className="card inbox-detail">
-          {!selecionado ? (
+          {compor ? (
+            <div className="inbox-compose-inline">
+              <div className="inbox-compose-header">
+                <strong>Novo e-mail</strong>
+                <button className="icon-btn" onClick={() => !enviando && setCompor(null)}><Icon name="close" /></button>
+              </div>
+              {erroEnvio && <div className="inline-alert error">{erroEnvio}</div>}
+              <div className="field">
+                <label>Para</label>
+                <input value={compor.para} onChange={(e) => setCompor({ ...compor, para: e.target.value })} placeholder="destinatario@exemplo.com, outro@exemplo.com" />
+              </div>
+              <div className="field">
+                <label>Assunto</label>
+                <input value={compor.assunto} onChange={(e) => setCompor({ ...compor, assunto: e.target.value })} placeholder="Assunto do e-mail" />
+              </div>
+              <div className="field inbox-compose-body-field">
+                <label>Mensagem</label>
+                <textarea value={compor.corpo} onChange={(e) => setCompor({ ...compor, corpo: e.target.value })} placeholder="Escreva sua mensagem..." />
+              </div>
+              <div className="inbox-compose-actions">
+                <button className="btn-ghost" disabled={enviando} onClick={() => setCompor(null)}>Cancelar</button>
+                <button className="btn-primary" disabled={enviando} onClick={enviarComposicao}>
+                  <Icon name="mail" size={16} />{enviando ? "Enviando..." : "Enviar"}
+                </button>
+              </div>
+            </div>
+          ) : !selecionado ? (
             <div className="inbox-empty">
               <Icon name="mail" size={32} />
               <p>Selecione uma mensagem para ler.</p>
@@ -180,36 +206,6 @@ export default function EmailsPage() {
           ) : null}
         </section>
       </div>
-      {compor && createPortal(
-        <div className="inbox-compose-backdrop" onClick={() => !enviando && setCompor(null)}>
-          <div className="card inbox-compose-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="inbox-compose-header">
-              <strong>Novo e-mail</strong>
-              <button className="icon-btn" onClick={() => !enviando && setCompor(null)}><Icon name="close" /></button>
-            </div>
-            {erroEnvio && <div className="inline-alert error">{erroEnvio}</div>}
-            <div className="field">
-              <label>Para</label>
-              <input value={compor.para} onChange={(e) => setCompor({ ...compor, para: e.target.value })} placeholder="destinatario@exemplo.com, outro@exemplo.com" />
-            </div>
-            <div className="field">
-              <label>Assunto</label>
-              <input value={compor.assunto} onChange={(e) => setCompor({ ...compor, assunto: e.target.value })} placeholder="Assunto do e-mail" />
-            </div>
-            <div className="field">
-              <label>Mensagem</label>
-              <textarea value={compor.corpo} onChange={(e) => setCompor({ ...compor, corpo: e.target.value })} rows={10} placeholder="Escreva sua mensagem..." />
-            </div>
-            <div className="inbox-compose-actions">
-              <button className="btn-ghost" disabled={enviando} onClick={() => setCompor(null)}>Cancelar</button>
-              <button className="btn-primary" disabled={enviando} onClick={enviarComposicao}>
-                <Icon name="mail" size={16} />{enviando ? "Enviando..." : "Enviar"}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
     </div>
   );
 }
