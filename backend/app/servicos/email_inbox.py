@@ -21,10 +21,19 @@ class InboxIndisponivel(Exception):
 
 
 def _conectar() -> imaplib.IMAP4_SSL:
-    if not settings.gmail_sender_email or not settings.gmail_app_password_imap:
+    usuario = settings.gmail_sender_email.strip()
+    senha = settings.gmail_app_password_imap.replace(" ", "").strip()
+    if not usuario or not senha:
         raise InboxIndisponivel("GMAIL_SENDER_EMAIL / GMAIL_APP_PASSWORD_IMAP nao configurados")
     conexao = imaplib.IMAP4_SSL(IMAP_HOST)
-    conexao.login(settings.gmail_sender_email, settings.gmail_app_password_imap)
+    try:
+        conexao.login(usuario, senha)
+    except imaplib.IMAP4.error as exc:
+        raise InboxIndisponivel(
+            "Login IMAP falhou. Confira: (1) a senha de app em GMAIL_APP_PASSWORD_IMAP esta correta e sem "
+            "espacos, (2) o IMAP esta habilitado nas configuracoes do Gmail (Config. > Encaminhamento e "
+            f"POP/IMAP > Ativar IMAP) da conta {usuario}. Erro original: {exc}"
+        ) from exc
     return conexao
 
 
