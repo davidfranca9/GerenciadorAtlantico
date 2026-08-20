@@ -21,6 +21,24 @@ const ENDERECO_VAZIO = {
 
 const PROPRIETARIO_VAZIO = { cnpj: "", razao_social: "", rntrc: "", tipo: "", endereco_cnpj_data: {} };
 
+const CATEGORIAS_TRATORAS = new Set([
+  "CAVALO", "TRUCK", "CAVALO 4 EIXOS", "CAVALO TRUCADO 3 EIXOS", "BITRUCK", "TOCO", "3/4", "VAN", "AUTOMÓVEIS",
+]);
+const CATEGORIAS_REBOCADAS = new Set(["SEMI-REBOQUE 1", "SEMI-REBOQUE 2", "CARRETA", "DOLLY"]);
+
+function ordenarVeiculosPorCategoria(veiculos) {
+  const tratores = [];
+  const reboques = [];
+  const outros = [];
+  for (const v of veiculos) {
+    const categoria = (v.categoria_veiculo || "").trim().toUpperCase();
+    if (CATEGORIAS_TRATORAS.has(categoria)) tratores.push(v);
+    else if (CATEGORIAS_REBOCADAS.has(categoria)) reboques.push(v);
+    else outros.push(v);
+  }
+  return [...tratores, ...reboques, ...outros].slice(0, 3);
+}
+
 function limparOcr(valor) {
   const texto = String(valor || "").trim();
   const lower = texto.toLowerCase();
@@ -225,7 +243,7 @@ export default function BsoftPage() {
         { setter: setReboque1, categoriaFallback: "SEMI-REBOQUE 1" },
         { setter: setReboque2, categoriaFallback: "SEMI-REBOQUE 2" },
       ];
-      (dadosVeiculos || []).slice(0, 3).forEach((dado, idx) => {
+      ordenarVeiculosPorCategoria(dadosVeiculos || []).forEach((dado, idx) => {
         if (idx === 1) setReboque1Ativo(true);
         if (idx === 2) { setReboque1Ativo(true); setReboque2Ativo(true); }
         const { setter, categoriaFallback } = slots[idx];

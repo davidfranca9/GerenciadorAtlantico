@@ -41,27 +41,6 @@ async def ocr_pedido_heringer(file: UploadFile):
         os.remove(path)
 
 
-@router.post("/ocr/raw")
-async def ocr_raw(file: UploadFile):
-    path = await _save_upload(file)
-    try:
-        return {"texto": _ocr_texto_ou_erro(path)}
-    finally:
-        os.remove(path)
-
-
-@router.post("/ocr/gemini-debug")
-async def ocr_gemini_debug(file: UploadFile):
-    path = await _save_upload(file)
-    try:
-        try:
-            return {"ok": True, "dados": ocr_gemini.extrair_dados_cnh_com_gemini(path)}
-        except Exception as exc:
-            return {"ok": False, "erro": f"{type(exc).__name__}: {exc}"}
-    finally:
-        os.remove(path)
-
-
 @router.post("/ocr/cnh")
 async def ocr_cnh(file: UploadFile):
     path = await _save_upload(file)
