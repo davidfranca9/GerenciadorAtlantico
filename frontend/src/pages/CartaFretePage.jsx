@@ -1,7 +1,7 @@
 import { useState } from "react";
 import * as api from "../api/client";
 import DateField from "../components/DateField";
-import { formatCPF, formatNome, formatPlaca } from "../utils/format";
+import { formatCPF, formatMoney, formatNome, formatPlaca } from "../utils/format";
 
 function hoje() {
   const d = new Date();
@@ -60,7 +60,7 @@ export default function CartaFretePage() {
         </div>
         <div className="field">
           <label>Valor do Frete</label>
-          <input placeholder="1500,00" value={valorFrete} onChange={(e) => setValorFrete(e.target.value)} />
+          <input placeholder="1.500,00" value={valorFrete} onChange={(e) => setValorFrete(formatMoney(e.target.value))} />
         </div>
         <div className="field">
           <label>Número da autorização</label>

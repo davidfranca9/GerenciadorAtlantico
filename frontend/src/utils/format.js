@@ -15,6 +15,16 @@ export function formatDateInput(value) {
   return out;
 }
 
+export function formatMoney(value) {
+  const digits = String(value || "").replace(/\D/g, "").replace(/^0+(?=\d)/, "").slice(0, 12);
+  if (!digits) return "";
+  const cents = digits.padStart(3, "0");
+  const intPart = cents.slice(0, -2).replace(/^0+(?=\d)/, "");
+  const decPart = cents.slice(-2);
+  const withThousands = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${withThousands},${decPart}`;
+}
+
 export function formatPhone(value) {
   const digits = String(value || "").replace(/\D/g, "").slice(0, 11);
   if (digits.length === 0) return "";
