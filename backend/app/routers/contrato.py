@@ -41,6 +41,15 @@ async def ocr_pedido_heringer(file: UploadFile):
         os.remove(path)
 
 
+@router.post("/ocr/raw")
+async def ocr_raw(file: UploadFile):
+    path = await _save_upload(file)
+    try:
+        return {"texto": _ocr_texto_ou_erro(path)}
+    finally:
+        os.remove(path)
+
+
 @router.post("/ocr/cnh")
 async def ocr_cnh(file: UploadFile):
     path = await _save_upload(file)
