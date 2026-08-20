@@ -25,13 +25,17 @@ export default function OrdemColetaPage() {
   }
   async function handleImportCnh(e) {
     const file=e.target.files?.[0]; e.target.value=""; if(!file)return; setError("");
+    setLoadingAction("cnh"); setStatus("Lendo a CNH, isso pode levar alguns segundos...");
     try { const data=await api.ocrCnh(file); setNome(formatNome(cleanOcrValue(data.nome))); setCpf(formatCPF(cleanOcrValue(data.cpf))); setCnh(cleanOcrValue(data.numero)); setStatus(`CNH importada com sucesso de ${file.name}.`); }
     catch(err){ setError(`Erro ao ler CNH: ${err.message}`); }
+    finally { setLoadingAction(""); }
   }
   async function handleImportCrlv(e) {
     const file=e.target.files?.[0]; e.target.value=""; if(!file)return; setError("");
+    setLoadingAction("crlv"); setStatus("Lendo o CRLV, isso pode levar alguns segundos...");
     try { const data=await api.ocrCrlv(file); const placa=cleanOcrValue(data.placa); const categoria=cleanOcrValue(data.categoria_veiculo).toUpperCase(); if(!placa){setError("Nenhuma placa foi encontrada no CRLV.");return;} const value=formatPlaca(placa); if(categoryIsTruck(categoria)){setPlaca1(value);setStatus("CRLV importado para a placa do cavalo.");}else if(!placa2){setPlaca2(value);setStatus("CRLV importado para a primeira carreta.");}else{setPlaca3(value);setStatus("CRLV importado para a segunda carreta.");} }
     catch(err){ setError(`Erro ao ler CRLV: ${err.message}`); }
+    finally { setLoadingAction(""); }
   }
   function categoryIsTruck(category){ return CATEGORIAS_TRATORAS.has(category); }
   async function handleGerar(){ setError(""); if(!selectedRows.length){setError("Selecione os contratos antes de gerar a O.C.");return;} if(!nome.trim()){setError("O nome do motorista é obrigatório.");return;} setLoadingAction("pdf"); try{const payload=buildPayload();const result=await api.gerarOrdemColeta(payload);if(result?.agendamentoId)setAgendamentoId(result.agendamentoId);if(supplier!=="HERINGER"){await api.gerarAutorizacaoColeta({...payload,agendamento_id:result?.agendamentoId??agendamentoId});setStatus("O.C. e autorização de coleta geradas com sucesso.");}else setStatus("O.C. gerada com sucesso.");}catch(err){setError(err.message);}finally{setLoadingAction("");} }
@@ -68,8 +72,8 @@ export default function OrdemColetaPage() {
       </section>
       <aside className="document-panel">
         <div className="panel-label">IMPORTAÇÃO INTELIGENTE</div>
-        <label className="upload-zone"><span className="upload-icon"><Icon name="upload"/></span><div><strong>Importar CNH</strong><small>PDF, JPG ou PNG</small></div><Icon name="chevron" size={15}/><input type="file" accept=".pdf,.jpg,.jpeg,.png,.bmp" onChange={handleImportCnh}/></label>
-        <label className="upload-zone"><span className="upload-icon"><Icon name="upload"/></span><div><strong>Importar CRLV</strong><small>Preenche a próxima placa livre</small></div><Icon name="chevron" size={15}/><input type="file" accept=".pdf,.jpg,.jpeg,.png,.bmp" onChange={handleImportCrlv}/></label>
+        <label className={`upload-zone ${loadingAction==="cnh"?"loading":""}`}><span className="upload-icon"><Icon name="upload"/></span><div><strong>{loadingAction==="cnh"?"Processando...":"Importar CNH"}</strong><small>PDF, JPG ou PNG</small></div><Icon name="chevron" size={15}/><input type="file" accept=".pdf,.jpg,.jpeg,.png,.bmp" onChange={handleImportCnh} disabled={!!loadingAction}/></label>
+        <label className={`upload-zone ${loadingAction==="crlv"?"loading":""}`}><span className="upload-icon"><Icon name="upload"/></span><div><strong>{loadingAction==="crlv"?"Processando...":"Importar CRLV"}</strong><small>Preenche a próxima placa livre</small></div><Icon name="chevron" size={15}/><input type="file" accept=".pdf,.jpg,.jpeg,.png,.bmp" onChange={handleImportCrlv} disabled={!!loadingAction}/></label>
         <div className="document-tip"><Icon name="shield"/><p><strong>Leitura automática</strong><span>Revise os dados extraídos antes de gerar os documentos.</span></p></div>
       </aside>
     </div>
