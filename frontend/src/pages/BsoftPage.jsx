@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import * as api from "../api/client";
 import DateField from "../components/DateField";
 import { formatCEP, formatCNPJ, formatCPF, formatNome, formatPhone, formatPlaca } from "../utils/format";
+import { ordenarVeiculosPorCategoria } from "../utils/vehicleCategory";
 
 const VEICULO_VAZIO = {
   placa: "", renavam: "", eixos: "", estado: "", cidade: "",
@@ -20,24 +21,6 @@ const ENDERECO_VAZIO = {
 };
 
 const PROPRIETARIO_VAZIO = { cnpj: "", razao_social: "", rntrc: "", tipo: "", endereco_cnpj_data: {} };
-
-const CATEGORIAS_TRATORAS = new Set([
-  "CAVALO", "TRUCK", "CAVALO 4 EIXOS", "CAVALO TRUCADO 3 EIXOS", "BITRUCK", "TOCO", "3/4", "VAN", "AUTOMÓVEIS",
-]);
-const CATEGORIAS_REBOCADAS = new Set(["SEMI-REBOQUE 1", "SEMI-REBOQUE 2", "CARRETA", "DOLLY"]);
-
-function ordenarVeiculosPorCategoria(veiculos) {
-  const tratores = [];
-  const reboques = [];
-  const outros = [];
-  for (const v of veiculos) {
-    const categoria = (v.categoria_veiculo || "").trim().toUpperCase();
-    if (CATEGORIAS_TRATORAS.has(categoria)) tratores.push(v);
-    else if (CATEGORIAS_REBOCADAS.has(categoria)) reboques.push(v);
-    else outros.push(v);
-  }
-  return [...tratores, ...reboques, ...outros].slice(0, 3);
-}
 
 function limparOcr(valor) {
   const texto = String(valor || "").trim();

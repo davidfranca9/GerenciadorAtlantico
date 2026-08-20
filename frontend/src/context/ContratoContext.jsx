@@ -15,10 +15,24 @@ function todayFormatted() {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+const MOTORISTA_VAZIO = {
+  nome: "", cpf: "", cnh: "", fone: "", placa1: "", placa2: "", placa3: "",
+  roteiro: "", localizador: "", contatoCliente: "", observacoes: "", agendamentoId: null,
+};
+
 export function ContratoProvider({ children }) {
   const [rows, setRows] = useState([]);
   const [dataCarregamento, setDataCarregamento] = useState(todayFormatted);
   const [supplier, setSupplier] = useState("AFL");
+  const [motorista, setMotorista] = useState(MOTORISTA_VAZIO);
+
+  function updateMotorista(campo, valor) {
+    setMotorista((prev) => ({ ...prev, [campo]: valor }));
+  }
+
+  function limparMotorista() {
+    setMotorista(MOTORISTA_VAZIO);
+  }
 
   function addRows(newRows) {
     setRows((prev) => [
@@ -69,6 +83,9 @@ export function ContratoProvider({ children }) {
         setDataCarregamento,
         supplier,
         setSupplier,
+        motorista,
+        updateMotorista,
+        limparMotorista,
         addRows,
         toggleRow,
         removeRow,
