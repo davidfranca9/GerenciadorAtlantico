@@ -196,6 +196,10 @@ export function obterEmail(id) {
   return request(`/email/mensagens/${encodeURIComponent(id)}`);
 }
 
+export function enviarEmail(payload) {
+  return request("/email/enviar", { method: "POST", body: payload });
+}
+
 export function bsoftCidades() {
   return request("/bsoft/cidades");
 }

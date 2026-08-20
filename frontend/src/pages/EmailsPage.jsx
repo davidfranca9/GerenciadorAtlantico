@@ -15,6 +15,8 @@ function escapeHtml(texto) {
   return String(texto).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+const RASCUNHO_VAZIO = { para: "", assunto: "", corpo: "" };
+
 export default function EmailsPage() {
   const [mensagens, setMensagens] = useState([]);
   const [pagina, setPagina] = useState(1);
@@ -25,6 +27,9 @@ export default function EmailsPage() {
   const [selecionado, setSelecionado] = useState(null);
   const [detalhe, setDetalhe] = useState(null);
   const [carregandoDetalhe, setCarregandoDetalhe] = useState(false);
+  const [compor, setCompor] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [erroEnvio, setErroEnvio] = useState("");
 
   useEffect(() => {
     carregarPagina(1, false);
@@ -63,6 +68,37 @@ export default function EmailsPage() {
     }
   }
 
+  function abrirComposicao(rascunho) {
+    setErroEnvio("");
+    setCompor({ ...RASCUNHO_VAZIO, ...rascunho });
+  }
+
+  function responder() {
+    if (!detalhe) return;
+    const original = detalhe.corpo_texto || (detalhe.corpo_html ? detalhe.corpo_html.replace(/<[^>]+>/g, " ") : "");
+    abrirComposicao({
+      para: detalhe.remetente.email || "",
+      assunto: detalhe.assunto?.toLowerCase().startsWith("re:") ? detalhe.assunto : `Re: ${detalhe.assunto || ""}`,
+      corpo: `\n\n---\nEm ${formatarData(detalhe.data)}, ${detalhe.remetente.nome || detalhe.remetente.email} escreveu:\n${original.trim()}`,
+    });
+  }
+
+  async function enviarComposicao() {
+    if (!compor) return;
+    const destinatarios = compor.para.split(/[,;]/).map((e) => e.trim()).filter(Boolean);
+    if (!destinatarios.length) { setErroEnvio("Informe ao menos um destinatário."); return; }
+    setEnviando(true);
+    setErroEnvio("");
+    try {
+      await api.enviarEmail({ destinatarios, assunto: compor.assunto, corpo: compor.corpo });
+      setCompor(null);
+    } catch (err) {
+      setErroEnvio(err.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
   const temMais = mensagens.length < total;
 
   return (
@@ -74,6 +110,9 @@ export default function EmailsPage() {
             <strong>Caixa de entrada</strong>
             <span>{total} mensagem{total === 1 ? "" : "s"}</span>
           </div>
+          <button className="btn-primary inbox-compose-btn" onClick={() => abrirComposicao({})}>
+            <Icon name="mail" size={16} />Escrever
+          </button>
           {carregandoLista ? (
             <div className="inline-alert info"><span className="status-dot" />Carregando mensagens...</div>
           ) : mensagens.length === 0 ? (
@@ -113,7 +152,10 @@ export default function EmailsPage() {
           ) : detalhe ? (
             <>
               <div className="inbox-detail-header">
-                <h2>{detalhe.assunto}</h2>
+                <div className="inbox-detail-header-top">
+                  <h2>{detalhe.assunto}</h2>
+                  <button className="btn-ghost" onClick={responder}><Icon name="mail" size={14} />Responder</button>
+                </div>
                 <div>
                   <strong>{detalhe.remetente.nome || detalhe.remetente.email}</strong>{" "}
                   <span>&lt;{detalhe.remetente.email}&gt;</span>
@@ -138,6 +180,35 @@ export default function EmailsPage() {
           ) : null}
         </section>
       </div>
+      {compor && (
+        <div className="inbox-compose-backdrop" onClick={() => !enviando && setCompor(null)}>
+          <div className="card inbox-compose-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="inbox-compose-header">
+              <strong>Novo e-mail</strong>
+              <button className="icon-btn" onClick={() => !enviando && setCompor(null)}><Icon name="close" /></button>
+            </div>
+            {erroEnvio && <div className="inline-alert error">{erroEnvio}</div>}
+            <div className="field">
+              <label>Para</label>
+              <input value={compor.para} onChange={(e) => setCompor({ ...compor, para: e.target.value })} placeholder="destinatario@exemplo.com, outro@exemplo.com" />
+            </div>
+            <div className="field">
+              <label>Assunto</label>
+              <input value={compor.assunto} onChange={(e) => setCompor({ ...compor, assunto: e.target.value })} placeholder="Assunto do e-mail" />
+            </div>
+            <div className="field">
+              <label>Mensagem</label>
+              <textarea value={compor.corpo} onChange={(e) => setCompor({ ...compor, corpo: e.target.value })} rows={10} placeholder="Escreva sua mensagem..." />
+            </div>
+            <div className="inbox-compose-actions">
+              <button className="btn-ghost" disabled={enviando} onClick={() => setCompor(null)}>Cancelar</button>
+              <button className="btn-primary" disabled={enviando} onClick={enviarComposicao}>
+                <Icon name="mail" size={16} />{enviando ? "Enviando..." : "Enviar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -80,7 +80,7 @@ def listar_mensagens(pagina: int = 1, tamanho_pagina: int = 25) -> dict:
         if status != "OK":
             raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
 
-        status, dados = conexao.search(None, "ALL")
+        status, dados = conexao.search(None, "X-GM-RAW", '"-category:promotions"')
         if status != "OK":
             raise InboxIndisponivel("Nao foi possivel listar as mensagens")
 
