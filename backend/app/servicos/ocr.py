@@ -16,12 +16,28 @@ from datetime import datetime
 import fitz  # PyMuPDF
 import pdfplumber
 import pytesseract
-from PIL import Image, ImageOps
+from PIL import Image, ImageChops, ImageOps
+
+_RESOLUCAO_MINIMA_LADO_MAIOR = 1900
 
 
 def _preprocessar_imagem(image: Image.Image) -> Image.Image:
-    image = ImageOps.exif_transpose(image)
-    return image.convert("L")
+    """Prepara a imagem para o Tesseract: corrige orientacao EXIF, amplia
+    fotos de baixa resolucao e converte para escala de cinza usando o canal
+    mais escuro entre R/G/B (em vez da luminancia padrao), o que preserva
+    tinta colorida (ex: numeros em vermelho na CNH) que a conversao normal
+    apaga quando o fundo do documento tambem e claro."""
+    image = ImageOps.exif_transpose(image).convert("RGB")
+
+    largura, altura = image.size
+    maior_lado = max(largura, altura)
+    if maior_lado < _RESOLUCAO_MINIMA_LADO_MAIOR:
+        fator = _RESOLUCAO_MINIMA_LADO_MAIOR / maior_lado
+        image = image.resize((round(largura * fator), round(altura * fator)), Image.LANCZOS)
+
+    r, g, b = image.split()
+    cinza = ImageChops.darker(ImageChops.darker(r, g), b)
+    return ImageOps.autocontrast(cinza, cutoff=1)
 
 
 def obter_texto_do_arquivo_ocr(caminho_arquivo: str) -> str:
@@ -36,7 +52,7 @@ def obter_texto_do_arquivo_ocr(caminho_arquivo: str) -> str:
         image = Image.open(caminho_arquivo)
 
     image = _preprocessar_imagem(image)
-    return pytesseract.image_to_string(image, lang="por")
+    return pytesseract.image_to_string(image, lang="por", config="--psm 11")
 
 
 def extrair_dados_pedido_heringer(texto_completo: str) -> list:
