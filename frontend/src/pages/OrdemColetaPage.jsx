@@ -40,9 +40,16 @@ export default function OrdemColetaPage() {
   const preview=selectedRows.slice(0,3).map((r)=>`Pedido ${r.contrato||"-"} · ${r.produto||"Produto"} · ${r.toneladas||0} t${r.cidade?` · ${r.cidade}`:""}`);
   if(selectedRows.length>3)preview.push(`+ ${selectedRows.length-3} item(ns)`);
   const summary=[["Fornecedor",SUPPLIER_LABEL[supplier]||supplier,"truck"],["Carregamento",dataCarregamento||"Não definido","calendar"],["Pedidos",new Set(selectedRows.map((r)=>r.contrato).filter(Boolean)).size,"contract"],["Produtos",metrics.selectedCount,"clipboard"]];
+  const hasContracts = selectedRows.length > 0;
+  const hasDriver = Boolean(nome.trim());
+  const workflow = [
+    { label:"Selecionar contratos", state:hasContracts ? "done" : "current" },
+    { label:"Conferir motorista", state:!hasContracts ? "locked" : hasDriver ? "done" : "current" },
+    { label:"Emitir documentos", state:hasContracts && hasDriver ? "current" : "locked" },
+  ];
 
   return <div className="ops-page">
-    <div className="workflow-steps">{["Selecionar contratos","Conferir motorista","Emitir documentos"].map((step,index)=><div className={`workflow-step ${index===1?"current":index===0?"done":""}`} key={step}><span>{index===0?"✓":index+1}</span><div><small>ETAPA {index+1}</small><strong>{step}</strong></div></div>)}</div>
+    <div className="workflow-steps">{workflow.map((step,index)=><div className={`workflow-step ${step.state}`} key={step.label}><span>{step.state==="done"?"✓":index+1}</span><div><small>ETAPA {index+1}</small><strong>{step.label}</strong></div></div>)}</div>
     <div className="metric-grid">{summary.map(([label,value,icon])=><div className="metric-card" key={label}><span className="metric-icon"><Icon name={icon}/></span><div><small>{label}</small><strong>{value}</strong></div></div>)}</div>
     <div className="ops-content-grid">
       <section className="card section-card">
@@ -70,6 +77,6 @@ export default function OrdemColetaPage() {
       <div className="field-grid route-grid"><div className="field"><label>Localizador</label><input value={localizador} onChange={(e)=>setLocalizador(e.target.value)} placeholder="Código ou referência"/></div><div className="field"><label>Contato do cliente</label><input value={contatoCliente} onChange={(e)=>setContatoCliente(e.target.value)} placeholder="Nome ou telefone"/></div><div className="field field-wide"><label>Roteiro</label><input value={roteiro} onChange={(e)=>setRoteiro(e.target.value)} placeholder="Detalhes do roteiro de entrega"/></div><div className="field field-full"><label>Observações</label><textarea value={observacoes} onChange={(e)=>setObservacoes(e.target.value)} placeholder="Observações que aparecerão na O.C." rows={3}/></div></div>
     </section>
     {status&&<div className="inline-alert info"><span className="status-dot"/>{status}</div>}{error&&<div className="inline-alert error">{error}</div>}
-    <div className="action-dock"><div><span>ETAPA FINAL</span><strong>Revise os dados e escolha uma ação</strong></div><div className="action-buttons"><button className="btn-ghost" disabled={!!loadingAction} onClick={handleLimpar}><Icon name="trash" size={16}/>Limpar</button><button className="btn-secondary" disabled={!!loadingAction} onClick={handleEnviarEmail}><Icon name="mail" size={16}/>{loadingAction==="email"?"Enviando...":"Enviar por e-mail"}</button><button className="btn-primary" disabled={!!loadingAction} onClick={handleGerar}><Icon name="file" size={16}/>{loadingAction==="pdf"?"Gerando...":"Gerar O.C. em PDF"}</button></div></div>
+    <div className="action-dock"><div><span>ETAPA FINAL</span><strong>{hasContracts && hasDriver ? "Tudo pronto para emitir" : "Conclua as etapas anteriores para emitir"}</strong></div><div className="action-buttons"><button className="btn-ghost" disabled={!!loadingAction} onClick={handleLimpar}><Icon name="trash" size={16}/>Limpar</button><button className="btn-secondary" disabled={!!loadingAction || !hasContracts || !hasDriver} onClick={handleEnviarEmail}><Icon name="mail" size={16}/>{loadingAction==="email"?"Enviando...":"Enviar por e-mail"}</button><button className="btn-primary" disabled={!!loadingAction || !hasContracts || !hasDriver} onClick={handleGerar}><Icon name="file" size={16}/>{loadingAction==="pdf"?"Gerando...":"Gerar O.C. em PDF"}</button></div></div>
   </div>;
 }
