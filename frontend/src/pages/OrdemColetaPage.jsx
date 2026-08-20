@@ -5,6 +5,7 @@ import { useContrato } from "../context/ContratoContext";
 import { formatCPF, formatNome, formatPhone, formatPlaca } from "../utils/format";
 
 const SUPPLIER_LABEL = { AFL: "Fertimax", HERINGER: "Heringer" };
+const CATEGORIAS_TRATORAS = new Set(["CAVALO", "TRUCK", "CAVALO 4 EIXOS", "CAVALO TRUCADO 3 EIXOS", "BITRUCK", "TOCO", "3/4", "VAN", "AUTOMÓVEIS"]);
 function cleanOcrValue(value) {
   const text = String(value || "").trim();
   return ["nao encontrado", "não encontrado", "nao encontrada", "não encontrada"].includes(text.toLowerCase()) ? "" : text;
@@ -32,7 +33,7 @@ export default function OrdemColetaPage() {
     try { const data=await api.ocrCrlv(file); const placa=cleanOcrValue(data.placa); const categoria=cleanOcrValue(data.categoria_veiculo).toUpperCase(); if(!placa){setError("Nenhuma placa foi encontrada no CRLV.");return;} const value=formatPlaca(placa); if(categoryIsTruck(categoria)){setPlaca1(value);setStatus("CRLV importado para a placa do cavalo.");}else if(!placa2){setPlaca2(value);setStatus("CRLV importado para a primeira carreta.");}else{setPlaca3(value);setStatus("CRLV importado para a segunda carreta.");} }
     catch(err){ setError(`Erro ao ler CRLV: ${err.message}`); }
   }
-  function categoryIsTruck(category){ return category === "CAVALO" || category === "TRUCK"; }
+  function categoryIsTruck(category){ return CATEGORIAS_TRATORAS.has(category); }
   async function handleGerar(){ setError(""); if(!selectedRows.length){setError("Selecione os contratos antes de gerar a O.C.");return;} if(!nome.trim()){setError("O nome do motorista é obrigatório.");return;} setLoadingAction("pdf"); try{const payload=buildPayload();const result=await api.gerarOrdemColeta(payload);if(result?.agendamentoId)setAgendamentoId(result.agendamentoId);if(supplier!=="HERINGER"){await api.gerarAutorizacaoColeta({...payload,agendamento_id:result?.agendamentoId??agendamentoId});setStatus("O.C. e autorização de coleta geradas com sucesso.");}else setStatus("O.C. gerada com sucesso.");}catch(err){setError(err.message);}finally{setLoadingAction("");} }
   async function handleEnviarEmail(){ setError(""); if(!selectedRows.length){setError("Selecione os contratos antes de enviar a O.C.");return;} if(!nome.trim()){setError("O nome do motorista é obrigatório.");return;} setLoadingAction("email"); try{const result=await api.enviarOrdemColetaEmail({...buildPayload(),roteiro,localizador,contato_cliente:contatoCliente});if(result?.agendamento_id)setAgendamentoId(result.agendamento_id);setStatus(`E-mail enviado e agendamento #${result.agendamento_id} registrado.`);}catch(err){setError(err.message);}finally{setLoadingAction("");} }
   function handleLimpar(){setNome("");setCpf("");setCnh("");setFone("");setPlaca1("");setPlaca2("");setPlaca3("");setRoteiro("");setLocalizador("");setContatoCliente("");setObservacoes("");setAgendamentoId(null);setStatus("Campos limpos. Importe novamente CNH e CRLV se necessário.");setError("");}
