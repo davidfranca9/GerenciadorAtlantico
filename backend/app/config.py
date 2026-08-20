@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     bsoft_api_user: str = ""
     bsoft_api_password: str = ""
 
+    gemini_api_key: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]

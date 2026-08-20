@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import Cidade
-from ..servicos import bsoft_api, bsoft_orquestracao, ocr
+from ..servicos import bsoft_api, bsoft_orquestracao, ocr, ocr_gemini
 from ..servicos.bsoft_lookup import (
     BSOFT_CATEGORY_ID_TO_RODADO_ID_MAP,
     BSOFT_CATEGORIAS_VEICULO,
@@ -113,6 +113,20 @@ async def importar_oc(file: UploadFile):
         os.remove(path)
 
 
+def _classificar_e_extrair_fallback(path: str) -> dict:
+    texto = ocr.obter_texto_do_arquivo_ocr(path)
+    if not texto:
+        return {"tipo": "DESCONHECIDO", "dados": {}}
+    tipo = ocr.classificar_documento(texto)
+    if tipo == "CNH":
+        return {"tipo": tipo, "dados": ocr.extrair_dados_cnh_com_azure_api(texto)}
+    if tipo == "CRLV":
+        return {"tipo": tipo, "dados": ocr.extrair_dados_crlv_com_azure_api(texto, BSOFT_SIMPLE_BRANDS_LIST, BSOFT_TIPOS_CARROCERIA_NOMES)}
+    if tipo == "RNTRC":
+        return {"tipo": tipo, "dados": ocr.extrair_dados_rntrc_com_azure_api(texto)}
+    return {"tipo": tipo, "dados": {}}
+
+
 @router.post("/importar-documentos")
 async def importar_documentos(files: list[UploadFile]):
     driver_data: dict = {}
@@ -121,16 +135,15 @@ async def importar_documentos(files: list[UploadFile]):
     for file in files:
         path = await _salvar_upload(file)
         try:
-            texto = ocr.obter_texto_do_arquivo_ocr(path)
-            if not texto:
-                continue
-            tipo = ocr.classificar_documento(texto)
-            if tipo == "CNH":
-                driver_data.update(ocr.extrair_dados_cnh_com_azure_api(texto))
-            elif tipo == "CRLV":
-                vehicle_docs.append(ocr.extrair_dados_crlv_com_azure_api(texto, BSOFT_SIMPLE_BRANDS_LIST, BSOFT_TIPOS_CARROCERIA_NOMES))
-            elif tipo == "RNTRC":
-                driver_data.update(ocr.extrair_dados_rntrc_com_azure_api(texto))
+            try:
+                resultado = ocr_gemini.classificar_e_extrair_documento_com_gemini(path)
+            except Exception:
+                resultado = _classificar_e_extrair_fallback(path)
+
+            if resultado["tipo"] in ("CNH", "RNTRC"):
+                driver_data.update(resultado["dados"])
+            elif resultado["tipo"] == "CRLV":
+                vehicle_docs.append(resultado["dados"])
         finally:
             os.remove(path)
 

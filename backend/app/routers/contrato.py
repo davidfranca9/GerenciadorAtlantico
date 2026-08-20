@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import Cidade
-from ..servicos import ocr
+from ..servicos import ocr, ocr_gemini
 from ..servicos.bsoft_lookup import BSOFT_SIMPLE_BRANDS_LIST, BSOFT_TIPOS_CARROCERIA_NOMES
 
 router = APIRouter(prefix="/contrato", tags=["contrato"], dependencies=[Depends(get_current_user)])
@@ -54,6 +54,12 @@ async def ocr_raw(file: UploadFile):
 async def ocr_cnh(file: UploadFile):
     path = await _save_upload(file)
     try:
+        try:
+            return ocr_gemini.extrair_dados_cnh_com_gemini(path)
+        except ocr_gemini.GeminiIndisponivel:
+            pass
+        except Exception:
+            pass
         texto = _ocr_texto_ou_erro(path)
         return ocr.extrair_dados_cnh_com_azure_api(texto)
     finally:
@@ -64,6 +70,12 @@ async def ocr_cnh(file: UploadFile):
 async def ocr_crlv(file: UploadFile):
     path = await _save_upload(file)
     try:
+        try:
+            return ocr_gemini.extrair_dados_crlv_com_gemini(path)
+        except ocr_gemini.GeminiIndisponivel:
+            pass
+        except Exception:
+            pass
         texto = _ocr_texto_ou_erro(path)
         return ocr.extrair_dados_crlv_com_azure_api(texto, BSOFT_SIMPLE_BRANDS_LIST, BSOFT_TIPOS_CARROCERIA_NOMES)
     finally:
