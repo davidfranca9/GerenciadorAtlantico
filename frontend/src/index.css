@@ -48,7 +48,8 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 
 .inbox-page{height:100%}.inbox-layout{display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;align-items:stretch;min-height:calc(100vh - 220px)}
 .inbox-list{padding:0;display:flex;flex-direction:column;overflow:hidden}
-.inbox-list-header{display:flex;align-items:baseline;justify-content:space-between;padding:17px 20px;border-bottom:1px solid var(--panel-border)}
+.inbox-list-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 20px;border-bottom:1px solid var(--panel-border)}
+.inbox-list-header>div{display:flex;align-items:baseline;gap:8px}
 .inbox-list-header span{color:var(--muted);font-size:12px}
 .inbox-messages{list-style:none;margin:0;padding:0;overflow-y:auto;flex:1}
 .inbox-message{width:100%;text-align:left;display:flex;flex-direction:column;gap:5px;padding:13px 20px;background:transparent;border:0;border-bottom:1px solid var(--panel-border);cursor:pointer;transition:.15s}
@@ -68,9 +69,9 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .inbox-detail-header small{color:var(--muted-soft)}
 .inbox-detail-header-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .inbox-detail-header-top h2{flex:1}
-.inbox-compose-btn{margin:0 20px 12px}
-.inbox-compose-backdrop{position:fixed;inset:0;z-index:30;background:rgba(5,20,16,.45);display:flex;align-items:center;justify-content:center;padding:20px}
-.inbox-compose-modal{width:100%;max-width:560px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+.inbox-compose-btn{flex-shrink:0;height:36px;padding:0 16px;font-size:13px}
+.inbox-compose-backdrop{position:fixed;inset:0;z-index:200;background:rgba(5,20,16,.45);display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto}
+.inbox-compose-modal{width:100%;max-width:560px;flex-shrink:0;display:flex;flex-direction:column;gap:14px}
 .inbox-compose-header{display:flex;align-items:center;justify-content:space-between}
 .inbox-compose-header strong{font:700 17px Manrope,sans-serif}
 .inbox-compose-actions{display:flex;justify-content:flex-end;gap:10px}

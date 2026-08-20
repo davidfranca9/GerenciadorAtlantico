@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import * as api from "../api/client";
 import Icon from "../components/Icon";
 
@@ -107,12 +108,11 @@ export default function EmailsPage() {
       <div className="inbox-layout">
         <section className="card inbox-list">
           <div className="inbox-list-header">
-            <strong>Caixa de entrada</strong>
-            <span>{total} mensagem{total === 1 ? "" : "s"}</span>
+            <div><strong>Caixa de entrada</strong><span>{total} mensagem{total === 1 ? "" : "s"}</span></div>
+            <button className="btn-primary inbox-compose-btn" onClick={() => abrirComposicao({})}>
+              <Icon name="mail" size={16} />Escrever
+            </button>
           </div>
-          <button className="btn-primary inbox-compose-btn" onClick={() => abrirComposicao({})}>
-            <Icon name="mail" size={16} />Escrever
-          </button>
           {carregandoLista ? (
             <div className="inline-alert info"><span className="status-dot" />Carregando mensagens...</div>
           ) : mensagens.length === 0 ? (
@@ -180,7 +180,7 @@ export default function EmailsPage() {
           ) : null}
         </section>
       </div>
-      {compor && (
+      {compor && createPortal(
         <div className="inbox-compose-backdrop" onClick={() => !enviando && setCompor(null)}>
           <div className="card inbox-compose-modal" onClick={(e) => e.stopPropagation()}>
             <div className="inbox-compose-header">
@@ -207,7 +207,8 @@ export default function EmailsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

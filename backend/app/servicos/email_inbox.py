@@ -6,6 +6,7 @@ OAuth/credenciais do Google Cloud Console.
 """
 from __future__ import annotations
 
+import base64
 import email
 import imaplib
 import re
@@ -128,14 +129,24 @@ def obter_mensagem(msg_id: str) -> dict:
         corpo_html = ""
         corpo_texto = ""
         anexos: list[str] = []
+        imagens_inline: dict[str, str] = {}
 
         if msg.is_multipart():
             for parte in msg.walk():
                 content_type = parte.get_content_type()
                 disposicao = str(parte.get("Content-Disposition", ""))
+                content_id = (parte.get("Content-ID") or "").strip().strip("<>")
+
+                if content_type.startswith("image/") and (content_id or "inline" in disposicao):
+                    payload = parte.get_payload(decode=True)
+                    if payload and content_id:
+                        imagens_inline[content_id] = f"data:{content_type};base64,{base64.b64encode(payload).decode('ascii')}"
+                    continue
+
                 if "attachment" in disposicao:
                     anexos.append(_decodificar(parte.get_filename()) or "arquivo")
                     continue
+
                 payload = parte.get_payload(decode=True)
                 if payload is None:
                     continue
@@ -151,6 +162,13 @@ def obter_mensagem(msg_id: str) -> dict:
                 corpo_html = texto
             else:
                 corpo_texto = texto
+
+        if corpo_html and imagens_inline:
+            def _substituir_cid(match: re.Match) -> str:
+                cid = match.group(1).strip("'\"")
+                return f"cid:{cid}" if cid not in imagens_inline else imagens_inline[cid]
+
+            corpo_html = re.sub(r"cid:([^\"'\)\s]+)", _substituir_cid, corpo_html)
 
         return {
             "id": msg_id,
