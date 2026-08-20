@@ -12,6 +12,7 @@ from .routers.buonny import router as buonny_router
 from .routers.clientes import router as clientes_router
 from .routers.contrato import router as contrato_router
 from .routers.documentos import router as documentos_router
+from .routers.email_inbox import router as email_inbox_router
 from .routers.fretes import router as fretes_router
 
 app = FastAPI(title="Atlantico Fertlog API")
@@ -34,6 +35,7 @@ app.include_router(admin_router)
 app.include_router(contrato_router)
 app.include_router(bsoft_router)
 app.include_router(buonny_router)
+app.include_router(email_inbox_router)
 
 
 @app.on_event("startup")

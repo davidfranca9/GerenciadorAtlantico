@@ -11,6 +11,7 @@ import BuonnyPage from "./pages/BuonnyPage";
 import CartaFretePage from "./pages/CartaFretePage";
 import ClientesPage from "./pages/ClientesPage";
 import ContratoPage from "./pages/ContratoPage";
+import EmailsPage from "./pages/EmailsPage";
 import LoginPage from "./pages/LoginPage";
 import OrdemColetaPage from "./pages/OrdemColetaPage";
 import TrocarSenhaPage from "./pages/TrocarSenhaPage";
@@ -48,6 +49,7 @@ function AppRoutes() {
         <Route path="/agendamentos" element={<AgendamentosPage />} />
         <Route path="/analise-fretes" element={<AnaliseFretesPage />} />
         <Route path="/clientes" element={<ClientesPage />} />
+        <Route path="/emails" element={<EmailsPage />} />
         <Route path="/buonny" element={<BuonnyPage />} />
         <Route path="/bsoft" element={<BsoftPage />} />
         <Route path="/trocar-senha" element={<TrocarSenhaPage />} />

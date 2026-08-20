@@ -188,6 +188,14 @@ export function bsoftLookups() {
   return request("/bsoft/lookups");
 }
 
+export function listarEmails(pagina = 1, tamanhoPagina = 25) {
+  return request(`/email/mensagens?pagina=${pagina}&tamanho_pagina=${tamanhoPagina}`);
+}
+
+export function obterEmail(id) {
+  return request(`/email/mensagens/${encodeURIComponent(id)}`);
+}
+
 export function bsoftCidades() {
   return request("/bsoft/cidades");
 }
