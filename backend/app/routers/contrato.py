@@ -4,6 +4,7 @@ import os
 import tempfile
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
@@ -23,9 +24,9 @@ async def _save_upload(file: UploadFile) -> str:
     return path
 
 
-def _ocr_texto_ou_erro(path: str) -> str:
+async def _ocr_texto_ou_erro(path: str) -> str:
     try:
-        return ocr.obter_texto_do_arquivo_ocr(path)
+        return await run_in_threadpool(ocr.obter_texto_do_arquivo_ocr, path)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Erro no OCR: {exc!r}")
 
@@ -34,7 +35,7 @@ def _ocr_texto_ou_erro(path: str) -> str:
 async def ocr_pedido_heringer(file: UploadFile):
     path = await _save_upload(file)
     try:
-        texto = _ocr_texto_ou_erro(path)
+        texto = await _ocr_texto_ou_erro(path)
         produtos = ocr.extrair_dados_pedido_heringer(texto)
         return {"produtos": produtos}
     finally:
@@ -46,12 +47,12 @@ async def ocr_cnh(file: UploadFile):
     path = await _save_upload(file)
     try:
         try:
-            return ocr_gemini.extrair_dados_cnh_com_gemini(path)
+            return await run_in_threadpool(ocr_gemini.extrair_dados_cnh_com_gemini, path)
         except ocr_gemini.GeminiIndisponivel:
             pass
         except Exception:
             pass
-        texto = _ocr_texto_ou_erro(path)
+        texto = await _ocr_texto_ou_erro(path)
         return ocr.extrair_dados_cnh_com_azure_api(texto)
     finally:
         os.remove(path)
@@ -62,12 +63,12 @@ async def ocr_crlv(file: UploadFile):
     path = await _save_upload(file)
     try:
         try:
-            return ocr_gemini.extrair_dados_crlv_com_gemini(path)
+            return await run_in_threadpool(ocr_gemini.extrair_dados_crlv_com_gemini, path)
         except ocr_gemini.GeminiIndisponivel:
             pass
         except Exception:
             pass
-        texto = _ocr_texto_ou_erro(path)
+        texto = await _ocr_texto_ou_erro(path)
         return ocr.extrair_dados_crlv_com_azure_api(texto, BSOFT_SIMPLE_BRANDS_LIST, BSOFT_TIPOS_CARROCERIA_NOMES)
     finally:
         os.remove(path)
@@ -80,6 +81,6 @@ async def parse_pdf(file: UploadFile, db: Session = Depends(get_db)):
     path = await _save_upload(file)
     try:
         cidades = [(c.nome, c.uf) for c in db.query(Cidade).all()]
-        return ocr.parse_pdf_fields(path, cidades)
+        return await run_in_threadpool(ocr.parse_pdf_fields, path, cidades)
     finally:
         os.remove(path)

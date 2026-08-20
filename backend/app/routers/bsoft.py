@@ -7,6 +7,7 @@ from typing import Optional
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -106,7 +107,7 @@ async def _salvar_upload(file: UploadFile) -> str:
 async def importar_oc(file: UploadFile):
     path = await _salvar_upload(file)
     try:
-        return bsoft_orquestracao.extrair_dados_oc(path)
+        return await run_in_threadpool(bsoft_orquestracao.extrair_dados_oc, path)
     except bsoft_orquestracao.CadastroBsoftError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     finally:
@@ -136,9 +137,9 @@ async def importar_documentos(files: list[UploadFile]):
         path = await _salvar_upload(file)
         try:
             try:
-                resultado = ocr_gemini.classificar_e_extrair_documento_com_gemini(path)
+                resultado = await run_in_threadpool(ocr_gemini.classificar_e_extrair_documento_com_gemini, path)
             except Exception:
-                resultado = _classificar_e_extrair_fallback(path)
+                resultado = await run_in_threadpool(_classificar_e_extrair_fallback, path)
 
             if resultado["tipo"] in ("CNH", "RNTRC"):
                 driver_data.update(resultado["dados"])
