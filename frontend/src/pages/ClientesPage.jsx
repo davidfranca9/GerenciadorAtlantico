@@ -3,6 +3,14 @@ import * as api from "../api/client";
 
 const VAZIO = { nome: "", cnpj_cpf: "", cidade: "", uf: "", contato: "", email: "", telefone: "", observacoes: "" };
 
+const CAPITAIS_POR_UF = {
+  AC: "Rio Branco", AL: "Maceió", AP: "Macapá", AM: "Manaus", BA: "Salvador", CE: "Fortaleza",
+  DF: "Brasília", ES: "Vitória", GO: "Goiânia", MA: "São Luís", MT: "Cuiabá", MS: "Campo Grande",
+  MG: "Belo Horizonte", PA: "Belém", PB: "João Pessoa", PR: "Curitiba", PE: "Recife", PI: "Teresina",
+  RJ: "Rio de Janeiro", RN: "Natal", RS: "Porto Alegre", RO: "Porto Velho", RR: "Boa Vista",
+  SC: "Florianópolis", SP: "São Paulo", SE: "Aracaju", TO: "Palmas",
+};
+
 export default function ClientesPage() {
   const [clientes, setClientes] = useState([]);
   const [busca, setBusca] = useState("");
@@ -28,26 +36,22 @@ export default function ClientesPage() {
     api.bsoftCidades().then(setCidadesPorUf).catch((err) => setError(err.message));
   }, []);
 
-  const { cidadesOrdenadas, ufPorCidade } = useMemo(() => {
-    const mapa = {};
-    const nomes = new Set();
-    if (cidadesPorUf) {
-      for (const [uf, cidades] of Object.entries(cidadesPorUf)) {
-        for (const [nome] of cidades) {
-          nomes.add(nome);
-          mapa[nome] = uf;
-        }
-      }
-    }
-    return { cidadesOrdenadas: [...nomes].sort(), ufPorCidade: mapa };
-  }, [cidadesPorUf]);
+  const cidadesDoEstado = useMemo(() => {
+    if (!cidadesPorUf || !form.uf) return [];
+    const nomes = (cidadesPorUf[form.uf] || []).map(([nome]) => nome);
+    const capital = CAPITAIS_POR_UF[form.uf];
+    const capitalNorm = (capital || "").toUpperCase();
+    const encontrouCapital = nomes.find((n) => n.toUpperCase() === capitalNorm);
+    const resto = nomes.filter((n) => n.toUpperCase() !== capitalNorm).sort();
+    return encontrouCapital ? [encontrouCapital, ...resto] : resto;
+  }, [cidadesPorUf, form.uf]);
 
   function updateField(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
-  function updateCidade(cidade) {
-    setForm((prev) => ({ ...prev, cidade, uf: ufPorCidade[cidade] || "" }));
+  function updateUf(uf) {
+    setForm((prev) => ({ ...prev, uf, cidade: "" }));
   }
 
   async function handleSubmit(e) {
@@ -105,15 +109,20 @@ export default function ClientesPage() {
             <input value={form.cnpj_cpf} onChange={(e) => updateField("cnpj_cpf", e.target.value)} />
           </div>
           <div className="field">
-            <label>Cidade</label>
-            <select value={form.cidade} onChange={(e) => updateCidade(e.target.value)}>
+            <label>UF</label>
+            <select value={form.uf} onChange={(e) => updateUf(e.target.value)}>
               <option value="">Selecione</option>
-              {cidadesOrdenadas.map((c) => <option key={c} value={c}>{c}</option>)}
+              {cidadesPorUf && Object.keys(cidadesPorUf).sort().map((uf) => <option key={uf} value={uf}>{uf}</option>)}
             </select>
           </div>
           <div className="field">
-            <label>UF</label>
-            <input value={form.uf} maxLength={2} disabled />
+            <label>Cidade</label>
+            <select value={form.cidade} onChange={(e) => updateField("cidade", e.target.value)}>
+              <option value="">Selecione</option>
+              {cidadesDoEstado.map((c) => (
+                <option key={c} value={c}>{c === CAPITAIS_POR_UF[form.uf] ? `★ ${c} (Capital)` : c}</option>
+              ))}
+            </select>
           </div>
           <div className="field">
             <label>Contato</label>
