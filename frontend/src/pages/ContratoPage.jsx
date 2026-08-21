@@ -15,6 +15,7 @@ export default function ContratoPage() {
     setSupplier,
     addRows,
     toggleRow,
+    updateRowField,
     removeRow,
     clearRows,
   } = useContrato();
@@ -156,7 +157,13 @@ export default function ContratoPage() {
                 <tr key={idx} style={{ opacity: row.checked ? 1 : 0.45 }}>
                   <td><input type="checkbox" checked={row.checked} onChange={() => toggleRow(idx)} /></td>
                   <td>{row.produto}</td>
-                  <td>{row.toneladas}</td>
+                  <td>
+                    <input
+                      value={row.toneladas}
+                      onChange={(e) => updateRowField(idx, "toneladas", e.target.value)}
+                      style={{ width: 80, height: 32 }}
+                    />
+                  </td>
                   <td>{row.embalagem}</td>
                   <td>{row.contrato}</td>
                   <td>{row.cliente}</td>

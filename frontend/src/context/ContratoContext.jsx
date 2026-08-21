@@ -53,6 +53,10 @@ export function ContratoProvider({ children }) {
     setRows((prev) => prev.map((r, i) => (i === index ? { ...r, checked: !r.checked } : r)));
   }
 
+  function updateRowField(index, field, value) {
+    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+  }
+
   function removeRow(index) {
     setRows((prev) => prev.filter((_, i) => i !== index));
   }
@@ -88,6 +92,7 @@ export function ContratoProvider({ children }) {
         limparMotorista,
         addRows,
         toggleRow,
+        updateRowField,
         removeRow,
         clearRows,
       }}
