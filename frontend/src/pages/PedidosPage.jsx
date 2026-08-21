@@ -105,6 +105,22 @@ export default function PedidosPage() {
     );
   }, [pedidos, busca]);
 
+  // Cada linha de produto do PDF vira um "Pedido" no banco, mas
+  // visualmente todo mundo que compartilha o mesmo numero de contrato
+  // e o mesmo pedido - entao agrupa por contrato pra exibir um card so
+  // com os produtos listados dentro.
+  const gruposFiltrados = useMemo(() => {
+    const mapa = new Map();
+    for (const p of pedidosFiltrados) {
+      const chave = p.contrato ? p.contrato : `__sem-numero-${p.id}`;
+      if (!mapa.has(chave)) {
+        mapa.set(chave, { contrato: p.contrato, cliente: p.cliente, cidade: p.cidade, supplier: p.supplier, itens: [] });
+      }
+      mapa.get(chave).itens.push(p);
+    }
+    return [...mapa.values()];
+  }, [pedidosFiltrados]);
+
   const selecionadosLista = Object.entries(selecionados).filter(([, qtd]) => parseNumero(qtd) > 0);
   const totalSelecionado = selecionadosLista.reduce((soma, [, qtd]) => soma + parseNumero(qtd), 0);
 
@@ -159,55 +175,64 @@ export default function PedidosPage() {
 
       {loading ? (
         <div className="inline-alert info"><span className="status-dot" />Carregando pedidos...</div>
-      ) : pedidosFiltrados.length === 0 ? (
+      ) : gruposFiltrados.length === 0 ? (
         <div className="inline-alert warning">Nenhum pedido encontrado. Importe PDFs para começar.</div>
       ) : (
         <div className="pedidos-grid">
-          {pedidosFiltrados.map((p) => {
-            const percentual = p.toneladas_total > 0 ? Math.min(100, (p.toneladas_usadas / p.toneladas_total) * 100) : 0;
-            const selecionado = selecionados[p.id] !== undefined;
-            const esgotando = p.toneladas_restante <= p.toneladas_total * 0.1;
-            return (
-              <div key={p.id} className={`pedido-card ${selecionado ? "selected" : ""}`}>
-                <div className="pedido-card-top">
-                  <span className="pedido-badge">{SUPPLIER_LABEL[p.supplier] || p.supplier}</span>
-                  <button className="icon-btn" title="Excluir pedido" onClick={() => handleExcluir(p)}><Icon name="trash" size={14} /></button>
-                </div>
-                <strong className="pedido-produto">{p.produto || "Produto"}</strong>
-                <div className="pedido-meta">
-                  <span><Icon name="contract" size={13} />{p.contrato || "Sem número"}</span>
-                  <span><Icon name="truck" size={13} />{p.embalagem || "-"}</span>
-                </div>
-                <div className="pedido-meta">
-                  <span>{p.cliente || "Cliente não identificado"}</span>
-                  <span>{p.cidade || "-"}</span>
-                </div>
-
-                <div className="pedido-progress">
-                  <div className="pedido-progress-bar"><div className="pedido-progress-fill" style={{ width: `${percentual}%` }} /></div>
-                  <div className="pedido-progress-labels">
-                    <span>{formatTon(p.toneladas_usadas)} / {formatTon(p.toneladas_total)} t usadas</span>
-                    <span className={`pedido-restante ${esgotando ? "low" : ""}`}>{formatTon(p.toneladas_restante)} t restantes</span>
-                  </div>
-                </div>
-
-                <div className="pedido-select-row">
-                  <label className="pedido-select">
-                    <input type="checkbox" checked={selecionado} onChange={() => toggleSelecionado(p)} />
-                    <span>Selecionar</span>
-                  </label>
-                  {selecionado && (
-                    <input
-                      className="pedido-qtd-input"
-                      value={selecionados[p.id]}
-                      onChange={(e) => updateQuantidade(p, e.target.value)}
-                      title={`Máximo: ${formatTon(p.toneladas_restante)}`}
-                    />
-                  )}
-                </div>
+          {gruposFiltrados.map((grupo) => (
+            <div key={grupo.contrato || grupo.itens[0].id} className="pedido-card">
+              <div className="pedido-card-top">
+                <span className="pedido-badge">{SUPPLIER_LABEL[grupo.supplier] || grupo.supplier}</span>
+                <span className="pedido-numero"><Icon name="contract" size={13} />Pedido {grupo.contrato || "sem número"}</span>
               </div>
-            );
-          })}
+              <div className="pedido-meta">
+                <span>{grupo.cliente || "Cliente não identificado"}</span>
+                <span>{grupo.cidade || "-"}</span>
+              </div>
+
+              <div className="pedido-itens">
+                {grupo.itens.map((p) => {
+                  const percentual = p.toneladas_total > 0 ? Math.min(100, (p.toneladas_usadas / p.toneladas_total) * 100) : 0;
+                  const selecionado = selecionados[p.id] !== undefined;
+                  const esgotando = p.toneladas_restante <= p.toneladas_total * 0.1;
+                  return (
+                    <div key={p.id} className={`pedido-item ${selecionado ? "selected" : ""}`}>
+                      <div className="pedido-item-top">
+                        <strong>{p.produto || "Produto"}</strong>
+                        <div className="pedido-item-actions">
+                          <span className="pedido-embalagem"><Icon name="truck" size={12} />{p.embalagem || "-"}</span>
+                          <button className="icon-btn" title="Excluir produto" onClick={() => handleExcluir(p)}><Icon name="trash" size={13} /></button>
+                        </div>
+                      </div>
+
+                      <div className="pedido-progress">
+                        <div className="pedido-progress-bar"><div className="pedido-progress-fill" style={{ width: `${percentual}%` }} /></div>
+                        <div className="pedido-progress-labels">
+                          <span>{formatTon(p.toneladas_usadas)} / {formatTon(p.toneladas_total)} t usadas</span>
+                          <span className={`pedido-restante ${esgotando ? "low" : ""}`}>{formatTon(p.toneladas_restante)} t restantes</span>
+                        </div>
+                      </div>
+
+                      <div className="pedido-select-row">
+                        <label className="pedido-select">
+                          <input type="checkbox" checked={selecionado} onChange={() => toggleSelecionado(p)} />
+                          <span>Selecionar</span>
+                        </label>
+                        {selecionado && (
+                          <input
+                            className="pedido-qtd-input"
+                            value={selecionados[p.id]}
+                            onChange={(e) => updateQuantidade(p, e.target.value)}
+                            title={`Máximo: ${formatTon(p.toneladas_restante)}`}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
