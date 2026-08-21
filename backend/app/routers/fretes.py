@@ -17,6 +17,7 @@ router = APIRouter(prefix="/cotacoes-frete", tags=["analise-fretes"], dependenci
 class CotacaoIn(BaseModel):
     data_cotacao: str
     destino: str
+    fabrica: str = ""
     valor_tonelada: float
     cliente_id: Optional[int] = None
     cliente_nome: str = ""
@@ -28,6 +29,7 @@ def _to_dict(c: CotacaoFrete) -> dict:
         "id": c.id,
         "data_cotacao": c.data_cotacao,
         "destino": c.destino,
+        "fabrica": c.fabrica,
         "valor_tonelada": c.valor_tonelada,
         "cliente_id": c.cliente_id,
         "cliente_nome": c.cliente_nome,

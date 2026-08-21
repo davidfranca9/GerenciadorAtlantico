@@ -19,6 +19,7 @@ export default function AnaliseFretesPage() {
   const [cotacoes, setCotacoes] = useState([]);
   const [busca, setBusca] = useState("");
   const [dataCotacao, setDataCotacao] = useState("");
+  const [fabrica, setFabrica] = useState("");
   const [ufDestino, setUfDestino] = useState("");
   const [cidadeDestino, setCidadeDestino] = useState("");
   const [bairroDestino, setBairroDestino] = useState("");
@@ -65,6 +66,7 @@ export default function AnaliseFretesPage() {
       const clienteSelecionado = clientes.find((c) => String(c.id) === clienteId);
       await api.cadastrarCotacao({
         data_cotacao: dataCotacao,
+        fabrica,
         destino: montarDestino({ bairro: bairroDestino, cidade: cidadeDestino, uf: ufDestino }),
         valor_tonelada: parseFloat(String(valorTonelada).replace(",", ".")) || 0,
         cliente_id: clienteSelecionado ? clienteSelecionado.id : null,
@@ -72,6 +74,7 @@ export default function AnaliseFretesPage() {
         observacoes,
       });
       setDataCotacao("");
+      setFabrica("");
       setUfDestino("");
       setCidadeDestino("");
       setBairroDestino("");
@@ -95,6 +98,10 @@ export default function AnaliseFretesPage() {
             <option value="">Selecione</option>
             {clientes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
           </select>
+        </div>
+        <div className="field">
+          <label>Fábrica</label>
+          <input value={fabrica} onChange={(e) => setFabrica(e.target.value)} placeholder="Origem da carga" />
         </div>
         <div className="field">
           <label>UF</label>
@@ -140,6 +147,7 @@ export default function AnaliseFretesPage() {
             <tr>
               <th>Data</th>
               <th>Cliente</th>
+              <th>Fábrica</th>
               <th>Destino</th>
               <th>Valor/Tonelada</th>
               <th>Observações</th>
@@ -150,6 +158,7 @@ export default function AnaliseFretesPage() {
               <tr key={c.id}>
                 <td>{c.data_cotacao}</td>
                 <td>{c.cliente_nome || "-"}</td>
+                <td>{c.fabrica || "-"}</td>
                 <td>{c.destino}</td>
                 <td>R$ {Number(c.valor_tonelada).toFixed(2)}</td>
                 <td style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={c.observacoes}>{c.observacoes || "-"}</td>
@@ -157,7 +166,7 @@ export default function AnaliseFretesPage() {
             ))}
             {cotacoes.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ color: "var(--muted)" }}>Nenhuma cotacao encontrada.</td>
+                <td colSpan={6} style={{ color: "var(--muted)" }}>Nenhuma cotacao encontrada.</td>
               </tr>
             )}
           </tbody>

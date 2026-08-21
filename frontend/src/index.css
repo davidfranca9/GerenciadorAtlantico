@@ -93,6 +93,10 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .pedidos-toolbar-group{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
 .pedidos-import{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .pedidos-supplier-toggle,.pedidos-ordenacao-toggle{display:flex;gap:8px}
+.pedidos-busca-field{width:340px;flex:1 1 260px}
+.pedidos-busca-wrap{position:relative;display:flex;align-items:center}
+.pedidos-busca-wrap svg{position:absolute;left:13px;color:var(--muted-soft);pointer-events:none}
+.pedidos-busca-wrap input{padding-left:37px}
 .pedidos-import label.btn-primary{gap:8px}
 .pedidos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;align-items:start}
 .pedido-card{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--panel-border);border-radius:14px;box-shadow:var(--shadow);transition:.16s;overflow:hidden}

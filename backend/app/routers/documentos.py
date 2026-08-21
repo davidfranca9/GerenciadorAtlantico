@@ -146,7 +146,7 @@ def _salvar_agendamento_oc(
         agendamento = Agendamento()
         db.add(agendamento)
 
-    agendamento.supplier = "Heringer" if payload.template.upper() == "HERINGER" else "Fertimax"
+    agendamento.supplier = "Heringer" if payload.template.upper() == "HERINGER" else "Fertimaxi"
     agendamento.loading_date = payload.data_carregamento
     agendamento.driver_name = payload.nome.strip()
     agendamento.driver_cpf = payload.cpf.strip()
@@ -256,7 +256,7 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
     if not payload.nome.strip():
         raise HTTPException(status_code=400, detail="Nome do motorista e obrigatorio")
 
-    supplier_label = "Heringer" if payload.template.upper() == "HERINGER" else "Fertimax"
+    supplier_label = "Heringer" if payload.template.upper() == "HERINGER" else "Fertimaxi"
     recipients = RECIPIENTS_HERINGER if supplier_label == "Heringer" else RECIPIENTS_FERTIMAX
 
     tmp_dir = tempfile.mkdtemp()

@@ -51,6 +51,7 @@ def on_startup():
             conn.execute(text("ALTER TABLE cotacoes_frete ADD COLUMN IF NOT EXISTS cliente_id INTEGER"))
             conn.execute(text("ALTER TABLE cotacoes_frete ADD COLUMN IF NOT EXISTS cliente_nome VARCHAR(255) DEFAULT ''"))
             conn.execute(text("ALTER TABLE cotacoes_frete ADD COLUMN IF NOT EXISTS observacoes VARCHAR(1000) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE cotacoes_frete ADD COLUMN IF NOT EXISTS fabrica VARCHAR(255) DEFAULT ''"))
     except Exception:
         pass
 

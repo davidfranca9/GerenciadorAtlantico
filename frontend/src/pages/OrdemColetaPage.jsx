@@ -5,7 +5,7 @@ import { useContrato } from "../context/ContratoContext";
 import { formatCPF, formatNome, formatPhone, formatPlaca } from "../utils/format";
 import { CATEGORIAS_TRATORAS, ordenarVeiculosPorCategoria } from "../utils/vehicleCategory";
 
-const SUPPLIER_LABEL = { AFL: "Fertimax", HERINGER: "Heringer" };
+const SUPPLIER_LABEL = { AFL: "Fertimaxi", HERINGER: "Heringer" };
 function cleanOcrValue(value) {
   const text = String(value || "").trim();
   return ["nao encontrado", "não encontrado", "nao encontrada", "não encontrada"].includes(text.toLowerCase()) ? "" : text;

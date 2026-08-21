@@ -126,6 +126,7 @@ class CotacaoFrete(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     data_cotacao: Mapped[str] = mapped_column(String(32))
     destino: Mapped[str] = mapped_column(String(255), index=True)
+    fabrica: Mapped[str] = mapped_column(String(255), default="")
     valor_tonelada: Mapped[float] = mapped_column(Float)
     cliente_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     cliente_nome: Mapped[str] = mapped_column(String(255), default="")

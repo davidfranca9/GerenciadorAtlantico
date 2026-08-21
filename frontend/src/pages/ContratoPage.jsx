@@ -129,7 +129,7 @@ export default function ContratoPage() {
           <div className="field">
             <label>Fornecedor</label>
             <div style={{ display: "flex", gap: 10, height: 40, alignItems: "center" }}>
-              {[["AFL", "Fertimax"], ["HERINGER", "Heringer"]].map(([value, texto]) => (
+              {[["AFL", "Fertimaxi"], ["HERINGER", "Heringer"]].map(([value, texto]) => (
                 <button
                   key={value}
                   type="button"

@@ -6,7 +6,7 @@ import { formatCPF, formatNome, formatPhone, formatPlaca } from "../utils/format
 const STATUS_OPTIONS = ["Aguardando Agendamento", "Agendado", "Cancelado", "Carregou"];
 const ITEM_VAZIO = { pedido: "", cliente: "", produto: "", cidade: "", embalagem: "", toneladas: "" };
 const OC_ITEM_VAZIO = { contrato: "", cliente: "", produto: "", cidade: "", embalagem: "", toneladas: "" };
-const SUPPLIER_LABEL = { AFL: "Fertimax", HERINGER: "Heringer" };
+const SUPPLIER_LABEL = { AFL: "Fertimaxi", HERINGER: "Heringer" };
 
 function templateFromSupplierLabel(label) {
   return label === "Heringer" ? "HERINGER" : "AFL";

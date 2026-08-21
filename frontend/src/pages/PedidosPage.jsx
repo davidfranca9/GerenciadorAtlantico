@@ -4,7 +4,7 @@ import * as api from "../api/client";
 import Icon from "../components/Icon";
 import { useContrato } from "../context/ContratoContext";
 
-const SUPPLIER_LABEL = { AFL: "Fertimax", HERINGER: "Heringer" };
+const SUPPLIER_LABEL = { AFL: "Fertimaxi", HERINGER: "Heringer" };
 
 function parseNumero(texto) {
   const num = parseFloat(String(texto ?? "").replace(",", "."));
@@ -170,9 +170,12 @@ export default function PedidosPage() {
     <div className="ops-page pedidos-page">
       <div className="pedidos-toolbar">
         <div className="pedidos-toolbar-group">
-          <div className="field" style={{ maxWidth: 280 }}>
+          <div className="field pedidos-busca-field">
             <label>Buscar pedido</label>
-            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pedido, produto, cliente ou cidade" />
+            <div className="pedidos-busca-wrap">
+              <Icon name="search" size={15} />
+              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pedido, produto, cliente ou cidade" />
+            </div>
           </div>
           <div className="field" style={{ maxWidth: 220 }}>
             <label>Ordenar por</label>
@@ -188,7 +191,7 @@ export default function PedidosPage() {
         </div>
         <div className="pedidos-import">
           <div className="pedidos-supplier-toggle">
-            {[["AFL", "Fertimax"], ["HERINGER", "Heringer"]].map(([value, texto]) => (
+            {[["AFL", "Fertimaxi"], ["HERINGER", "Heringer"]].map(([value, texto]) => (
               <button key={value} type="button" className={importSupplier === value ? "btn-primary" : "btn-secondary"} onClick={() => setImportSupplier(value)}>
                 {texto}
               </button>
