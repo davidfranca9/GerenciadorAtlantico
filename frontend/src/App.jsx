@@ -11,6 +11,7 @@ import BuonnyPage from "./pages/BuonnyPage";
 import CartaFretePage from "./pages/CartaFretePage";
 import ClientesPage from "./pages/ClientesPage";
 import ContratoPage from "./pages/ContratoPage";
+import DashboardPage from "./pages/DashboardPage";
 import EmailsPage from "./pages/EmailsPage";
 import LoginPage from "./pages/LoginPage";
 import OrdemColetaPage from "./pages/OrdemColetaPage";
@@ -44,6 +45,7 @@ function AppRoutes() {
         }
       >
         <Route path="/" element={<Navigate to="/ordem-coleta" replace />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/contrato" element={<ContratoPage />} />
         <Route path="/pedidos" element={<PedidosPage />} />
         <Route path="/ordem-coleta" element={<OrdemColetaPage />} />

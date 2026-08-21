@@ -95,6 +95,10 @@ export function excluirAgendamento(id) {
   return request(`/agendamentos/${id}`, { method: "DELETE" });
 }
 
+export function obterResumoDashboard() {
+  return request("/dashboard/resumo");
+}
+
 export function listarPedidos(mostrarEsgotados = false) {
   return request(`/pedidos?mostrar_esgotados=${mostrarEsgotados}`);
 }

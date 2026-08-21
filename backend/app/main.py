@@ -11,6 +11,7 @@ from .routers.bsoft import router as bsoft_router
 from .routers.buonny import router as buonny_router
 from .routers.clientes import router as clientes_router
 from .routers.contrato import router as contrato_router
+from .routers.dashboard import router as dashboard_router
 from .routers.documentos import router as documentos_router
 from .routers.email_inbox import router as email_inbox_router
 from .routers.fretes import router as fretes_router
@@ -38,6 +39,7 @@ app.include_router(bsoft_router)
 app.include_router(buonny_router)
 app.include_router(email_inbox_router)
 app.include_router(pedidos_router)
+app.include_router(dashboard_router)
 
 
 @app.on_event("startup")

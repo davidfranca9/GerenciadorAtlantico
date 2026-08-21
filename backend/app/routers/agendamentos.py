@@ -21,6 +21,7 @@ class AgendamentoItemIn(BaseModel):
     cidade: str = ""
     embalagem: str = ""
     toneladas: float = 0
+    pedido_id: Optional[int] = None
 
 
 class AgendamentoIn(BaseModel):
@@ -98,8 +99,21 @@ def criar_agendamento(payload: AgendamentoIn, db: Session = Depends(get_db)):
         total_items=len(itens),
         total_tons=sum(i.toneladas for i in itens),
     )
-    agendamento.itens = [AgendamentoItem(**i.model_dump()) for i in itens]
+    agendamento.itens = [
+        AgendamentoItem(**i.model_dump(exclude={"pedido_id"}), pedido_ref_id=i.pedido_id) for i in itens
+    ]
     db.add(agendamento)
+
+    # Desconta o saldo dos pedidos vinculados, igual acontece quando a O.C.
+    # e gerada pelo fluxo normal (Pedidos -> Ordem de Coleta).
+    for item in itens:
+        if not item.pedido_id:
+            continue
+        pedido = db.get(Pedido, item.pedido_id)
+        if pedido is None:
+            continue
+        pedido.toneladas_usadas = min(pedido.toneladas_total, pedido.toneladas_usadas + item.toneladas)
+
     db.commit()
     db.refresh(agendamento)
     return _to_dict(agendamento)

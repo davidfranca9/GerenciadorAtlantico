@@ -4,12 +4,21 @@ import DateField from "../components/DateField";
 import { formatCPF, formatNome, formatPhone, formatPlaca } from "../utils/format";
 
 const STATUS_OPTIONS = ["Aguardando Agendamento", "Agendado", "Cancelado", "Carregou"];
-const ITEM_VAZIO = { pedido: "", cliente: "", produto: "", cidade: "", embalagem: "", toneladas: "" };
+const ITEM_VAZIO = { pedidoId: null, pedido: "", cliente: "", produto: "", cidade: "", embalagem: "", toneladas: "", toneladasMax: 0 };
 const OC_ITEM_VAZIO = { contrato: "", cliente: "", produto: "", cidade: "", embalagem: "", toneladas: "" };
 const SUPPLIER_LABEL = { AFL: "Fertimaxi", HERINGER: "Heringer" };
 
 function templateFromSupplierLabel(label) {
   return label === "Heringer" ? "HERINGER" : "AFL";
+}
+
+function parseNumero(texto) {
+  const num = parseFloat(String(texto ?? "").replace(",", "."));
+  return Number.isFinite(num) ? num : 0;
+}
+
+function formatTon(valor) {
+  return parseNumero(valor).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 }
 
 export default function AgendamentosPage() {
@@ -23,6 +32,7 @@ export default function AgendamentosPage() {
   const [plateCavalo, setPlateCavalo] = useState("");
   const [itens, setItens] = useState([{ ...ITEM_VAZIO }]);
   const [error, setError] = useState("");
+  const [pedidosDisponiveis, setPedidosDisponiveis] = useState([]);
 
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -47,8 +57,35 @@ export default function AgendamentosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtroStatus]);
 
-  function updateItem(idx, field, value) {
-    setItens((prev) => prev.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
+  useEffect(() => {
+    if (showForm) {
+      api.listarPedidos().then(setPedidosDisponiveis).catch((err) => setError(err.message));
+    }
+  }, [showForm]);
+
+  function selecionarPedidoNoItem(idx, pedidoId) {
+    const pedido = pedidosDisponiveis.find((p) => String(p.id) === pedidoId);
+    setItens((prev) => prev.map((it, i) => (i !== idx ? it : pedido ? {
+      ...it,
+      pedidoId: pedido.id,
+      pedido: pedido.contrato,
+      cliente: pedido.cliente,
+      produto: pedido.produto,
+      cidade: pedido.cidade,
+      embalagem: pedido.embalagem,
+      toneladas: String(pedido.toneladas_restante),
+      toneladasMax: pedido.toneladas_restante,
+    } : { ...ITEM_VAZIO })));
+  }
+
+  function updateItemToneladas(idx, texto) {
+    setItens((prev) => prev.map((it, i) => {
+      if (i !== idx) return it;
+      const max = it.toneladasMax;
+      const valor = parseNumero(texto);
+      const limitado = texto !== "" && max > 0 && valor > max ? it.toneladas : texto;
+      return { ...it, toneladas: limitado };
+    }));
   }
 
   async function handleCriar(e) {
@@ -60,7 +97,15 @@ export default function AgendamentosPage() {
         loading_date: loadingDate,
         driver_name: driverName,
         plate_cavalo: plateCavalo,
-        itens: itens.map((it) => ({ ...it, toneladas: parseFloat(String(it.toneladas).replace(",", ".")) || 0 })),
+        itens: itens.map((it) => ({
+          pedido: it.pedido,
+          cliente: it.cliente,
+          produto: it.produto,
+          cidade: it.cidade,
+          embalagem: it.embalagem,
+          toneladas: parseFloat(String(it.toneladas).replace(",", ".")) || 0,
+          pedido_id: it.pedidoId || null,
+        })),
       });
       setShowForm(false);
       setSupplier("");
@@ -213,16 +258,40 @@ export default function AgendamentosPage() {
                 <th>Produto</th>
                 <th>Cidade/UF</th>
                 <th>Toneladas</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {itens.map((it, idx) => (
                 <tr key={idx}>
-                  <td><input value={it.pedido} onChange={(e) => updateItem(idx, "pedido", e.target.value)} /></td>
-                  <td><input value={it.cliente} onChange={(e) => updateItem(idx, "cliente", e.target.value)} /></td>
-                  <td><input value={it.produto} onChange={(e) => updateItem(idx, "produto", e.target.value)} /></td>
-                  <td><input value={it.cidade} onChange={(e) => updateItem(idx, "cidade", e.target.value)} /></td>
-                  <td><input value={it.toneladas} onChange={(e) => updateItem(idx, "toneladas", e.target.value)} /></td>
+                  <td>
+                    <select value={it.pedidoId ?? ""} onChange={(e) => selecionarPedidoNoItem(idx, e.target.value)}>
+                      <option value="">Selecione um pedido</option>
+                      {pedidosDisponiveis.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.contrato || "s/nº"} · {p.produto} · {formatTon(p.toneladas_restante)}t restantes
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td><input value={it.cliente} disabled /></td>
+                  <td><input value={it.produto} disabled /></td>
+                  <td><input value={it.cidade} disabled /></td>
+                  <td>
+                    <input
+                      value={it.toneladas}
+                      onChange={(e) => updateItemToneladas(idx, e.target.value)}
+                      disabled={!it.pedidoId}
+                      title={it.pedidoId ? `Máximo: ${formatTon(it.toneladasMax)}` : ""}
+                    />
+                  </td>
+                  <td>
+                    {itens.length > 1 && (
+                      <button type="button" className="btn-secondary" onClick={() => setItens((prev) => prev.filter((_, i) => i !== idx))}>
+                        Remover
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

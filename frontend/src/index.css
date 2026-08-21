@@ -97,6 +97,22 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .pedidos-supplier-toggle button.btn-secondary,.pedidos-ordenacao-toggle button.btn-secondary{background:transparent;color:var(--muted)}
 .pedidos-supplier-toggle button.btn-secondary:hover,.pedidos-ordenacao-toggle button.btn-secondary:hover{background:var(--panel);color:var(--text);transform:none;box-shadow:none}
 .pedidos-supplier-toggle button.btn-primary,.pedidos-ordenacao-toggle button.btn-primary{box-shadow:0 3px 10px color-mix(in srgb,var(--accent) 30%,transparent)}
+
+.dashboard-header{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.dashboard-header h2{font:800 22px/1.15 Manrope,sans-serif;letter-spacing:-.4px;margin:0}
+.dashboard-header p{color:var(--muted);font-size:12.5px;margin:5px 0 0}
+.dashboard-week-card{padding:0;overflow:hidden}
+.dashboard-week-list{display:flex;flex-direction:column;margin:0 20px 18px}
+.dashboard-week-row{display:grid;grid-template-columns:130px minmax(0,1fr) 110px;align-items:center;gap:18px;padding:12px 0;border-bottom:1px solid var(--border-soft)}
+.dashboard-week-row:last-child{border-bottom:0}
+.dashboard-week-day{display:flex;flex-direction:column;gap:2px}
+.dashboard-week-day strong{font-size:12.5px}
+.dashboard-week-day span{color:var(--muted);font-size:10.5px}
+.dashboard-week-bar-wrap{height:9px;border-radius:999px;background:var(--panel-soft);overflow:hidden}
+.dashboard-week-bar{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent-strong));transition:width .3s ease;min-width:3px}
+.dashboard-week-values{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.dashboard-week-values strong{font:700 12.5px Manrope,sans-serif;color:var(--accent-glow)}
+.dashboard-week-values span{color:var(--muted-soft);font-size:10px}
 .pedidos-busca-field{width:340px;flex:1 1 260px}
 .pedidos-busca-wrap{position:relative;display:flex;align-items:center}
 .pedidos-busca-wrap svg{position:absolute;left:13px;color:var(--muted-soft);pointer-events:none}

@@ -6,6 +6,7 @@ import Icon from "./Icon";
 
 const NAV_SECTIONS = [
   { title: "Operação", items: [
+    { to: "/dashboard", label: "Dashboard", icon: "chart", description: "Visão geral dos carregamentos da semana" },
     { to: "/pedidos", label: "Pedidos", icon: "route", description: "Pedidos disponíveis e saldo de toneladas" },
     { to: "/contrato", label: "Contratos", icon: "contract", description: "Importação e seleção de cargas" },
     { to: "/ordem-coleta", label: "Ordem de coleta", icon: "clipboard", description: "Emissão de documentos operacionais" },
@@ -15,7 +16,6 @@ const NAV_SECTIONS = [
   { title: "Financeiro", items: [{ to: "/carta-frete", label: "Carta frete", icon: "wallet", description: "Geração de autorizações financeiras" }] },
   { title: "Comunicação", items: [{ to: "/emails", label: "E-mails", icon: "mail", description: "Caixa de entrada do Gmail" }] },
   { title: "Integrações", items: [
-    { to: "/buonny", label: "Buonny", icon: "shield", description: "Consulta e gerenciamento de risco" },
     { to: "/bsoft", label: "Bsoft TMS", icon: "truck", description: "Cadastro de motoristas e veículos" },
   ]},
   { title: "Cadastros", items: [{ to: "/clientes", label: "Clientes", icon: "users", description: "Base de clientes e contatos" }] },
