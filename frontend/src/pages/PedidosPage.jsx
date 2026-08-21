@@ -123,7 +123,14 @@ export default function PedidosPage() {
       }
       mapa.get(chave).itens.push(p);
     }
-    return [...mapa.values()];
+    return [...mapa.values()].sort((a, b) => {
+      const numA = parseInt((a.contrato || "").replace(/\D/g, ""), 10);
+      const numB = parseInt((b.contrato || "").replace(/\D/g, ""), 10);
+      if (Number.isNaN(numA) && Number.isNaN(numB)) return 0;
+      if (Number.isNaN(numA)) return 1;
+      if (Number.isNaN(numB)) return -1;
+      return numA - numB;
+    });
   }, [pedidosFiltrados]);
 
   const selecionadosLista = Object.entries(selecionados).filter(([, qtd]) => parseNumero(qtd) > 0);
