@@ -91,7 +91,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 
 .pedidos-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .pedidos-import{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.pedidos-supplier-toggle{display:flex;gap:8px}
+.pedidos-supplier-toggle,.pedidos-ordenacao-toggle{display:flex;gap:8px}
 .pedidos-import label.btn-primary{gap:8px}
 .pedidos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;align-items:start}
 .pedido-card{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--panel-border);border-radius:14px;box-shadow:var(--shadow);transition:.16s;overflow:hidden}

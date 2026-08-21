@@ -23,6 +23,7 @@ export default function PedidosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busca, setBusca] = useState("");
+  const [ordenacao, setOrdenacao] = useState("numero"); // "numero" | "alfabetica"
 
   const [importSupplier, setImportSupplier] = useState("AFL");
   const [importando, setImportando] = useState(false);
@@ -123,7 +124,12 @@ export default function PedidosPage() {
       }
       mapa.get(chave).itens.push(p);
     }
-    return [...mapa.values()].sort((a, b) => {
+    const grupos = [...mapa.values()];
+
+    if (ordenacao === "alfabetica") {
+      return grupos.sort((a, b) => (a.cliente || "").localeCompare(b.cliente || "", "pt-BR"));
+    }
+    return grupos.sort((a, b) => {
       const numA = parseInt((a.contrato || "").replace(/\D/g, ""), 10);
       const numB = parseInt((b.contrato || "").replace(/\D/g, ""), 10);
       if (Number.isNaN(numA) && Number.isNaN(numB)) return 0;
@@ -131,7 +137,7 @@ export default function PedidosPage() {
       if (Number.isNaN(numB)) return -1;
       return numA - numB;
     });
-  }, [pedidosFiltrados]);
+  }, [pedidosFiltrados, ordenacao]);
 
   const selecionadosLista = Object.entries(selecionados).filter(([, qtd]) => parseNumero(qtd) > 0);
   const totalSelecionado = selecionadosLista.reduce((soma, [, qtd]) => soma + parseNumero(qtd), 0);
@@ -166,6 +172,17 @@ export default function PedidosPage() {
         <div className="field" style={{ maxWidth: 320 }}>
           <label>Buscar pedido</label>
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pedido, produto, cliente ou cidade" />
+        </div>
+        <div className="field" style={{ maxWidth: 260 }}>
+          <label>Ordenar por</label>
+          <div className="pedidos-ordenacao-toggle">
+            <button type="button" className={ordenacao === "numero" ? "btn-primary" : "btn-secondary"} onClick={() => setOrdenacao("numero")}>
+              Nº do pedido
+            </button>
+            <button type="button" className={ordenacao === "alfabetica" ? "btn-primary" : "btn-secondary"} onClick={() => setOrdenacao("alfabetica")}>
+              Alfabética
+            </button>
+          </div>
         </div>
         <div className="pedidos-import">
           <div className="pedidos-supplier-toggle">
