@@ -29,6 +29,7 @@ export default function PedidosPage() {
   const [status, setStatus] = useState("");
 
   const [selecionados, setSelecionados] = useState({}); // { [pedidoId]: quantidade }
+  const [expandidos, setExpandidos] = useState({}); // { [chaveGrupo]: true }
 
   async function carregar() {
     setLoading(true);
@@ -88,6 +89,10 @@ export default function PedidosPage() {
       }
       return { ...prev, [pedido.id]: pedido.toneladas_restante };
     });
+  }
+
+  function toggleExpandido(chave) {
+    setExpandidos((prev) => ({ ...prev, [chave]: !prev[chave] }));
   }
 
   function updateQuantidade(pedido, texto) {
@@ -179,17 +184,29 @@ export default function PedidosPage() {
         <div className="inline-alert warning">Nenhum pedido encontrado. Importe PDFs para começar.</div>
       ) : (
         <div className="pedidos-grid">
-          {gruposFiltrados.map((grupo) => (
-            <div key={grupo.contrato || grupo.itens[0].id} className="pedido-card">
-              <div className="pedido-card-top">
-                <span className="pedido-badge">{SUPPLIER_LABEL[grupo.supplier] || grupo.supplier}</span>
-                <span className="pedido-numero"><Icon name="contract" size={13} />Pedido {grupo.contrato || "sem número"}</span>
-              </div>
-              <div className="pedido-meta">
-                <span>{grupo.cliente || "Cliente não identificado"}</span>
-                <span>{grupo.cidade || "-"}</span>
-              </div>
+          {gruposFiltrados.map((grupo) => {
+            const chave = grupo.contrato || grupo.itens[0].id;
+            const temSelecionado = grupo.itens.some((p) => selecionados[p.id] !== undefined);
+            const expandido = expandidos[chave] ?? temSelecionado;
+            const restanteGrupo = grupo.itens.reduce((soma, p) => soma + p.toneladas_restante, 0);
+            return (
+            <div key={chave} className="pedido-card">
+              <button type="button" className="pedido-card-header" onClick={() => toggleExpandido(chave)}>
+                <div className="pedido-card-top">
+                  <span className="pedido-badge">{SUPPLIER_LABEL[grupo.supplier] || grupo.supplier}</span>
+                  <span className="pedido-numero"><Icon name="contract" size={13} />Pedido {grupo.contrato || "sem número"}</span>
+                </div>
+                <div className="pedido-meta">
+                  <span>{grupo.cliente || "Cliente não identificado"}</span>
+                  <span>{grupo.cidade || "-"}</span>
+                </div>
+                <div className="pedido-card-summary">
+                  <span>{grupo.itens.length} produto{grupo.itens.length === 1 ? "" : "s"} · {formatTon(restanteGrupo)} t restantes</span>
+                  <Icon name="chevron" size={14} className={`pedido-chevron ${expandido ? "open" : ""}`} />
+                </div>
+              </button>
 
+              {expandido && (
               <div className="pedido-itens">
                 {grupo.itens.map((p) => {
                   const percentual = p.toneladas_total > 0 ? Math.min(100, (p.toneladas_usadas / p.toneladas_total) * 100) : 0;
@@ -231,8 +248,10 @@ export default function PedidosPage() {
                   );
                 })}
               </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
