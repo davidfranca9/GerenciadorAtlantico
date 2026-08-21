@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as api from "../api/client";
 
 const VAZIO = { nome: "", cnpj_cpf: "", cidade: "", uf: "", contato: "", email: "", telefone: "", observacoes: "" };
@@ -9,6 +9,7 @@ export default function ClientesPage() {
   const [form, setForm] = useState(VAZIO);
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState("");
+  const [cidadesPorUf, setCidadesPorUf] = useState(null);
 
   async function carregar() {
     try {
@@ -23,8 +24,30 @@ export default function ClientesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busca]);
 
+  useEffect(() => {
+    api.bsoftCidades().then(setCidadesPorUf).catch((err) => setError(err.message));
+  }, []);
+
+  const { cidadesOrdenadas, ufPorCidade } = useMemo(() => {
+    const mapa = {};
+    const nomes = new Set();
+    if (cidadesPorUf) {
+      for (const [uf, cidades] of Object.entries(cidadesPorUf)) {
+        for (const [nome] of cidades) {
+          nomes.add(nome);
+          mapa[nome] = uf;
+        }
+      }
+    }
+    return { cidadesOrdenadas: [...nomes].sort(), ufPorCidade: mapa };
+  }, [cidadesPorUf]);
+
   function updateField(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function updateCidade(cidade) {
+    setForm((prev) => ({ ...prev, cidade, uf: ufPorCidade[cidade] || "" }));
   }
 
   async function handleSubmit(e) {
@@ -83,11 +106,14 @@ export default function ClientesPage() {
           </div>
           <div className="field">
             <label>Cidade</label>
-            <input value={form.cidade} onChange={(e) => updateField("cidade", e.target.value)} />
+            <select value={form.cidade} onChange={(e) => updateCidade(e.target.value)}>
+              <option value="">Selecione</option>
+              {cidadesOrdenadas.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
           <div className="field">
             <label>UF</label>
-            <input value={form.uf} maxLength={2} onChange={(e) => updateField("uf", e.target.value.toUpperCase())} />
+            <input value={form.uf} maxLength={2} disabled />
           </div>
           <div className="field">
             <label>Contato</label>
