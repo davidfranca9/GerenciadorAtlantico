@@ -141,6 +141,9 @@ export default function PedidosPage() {
 
   const selecionadosLista = Object.entries(selecionados).filter(([, qtd]) => parseNumero(qtd) > 0);
   const totalSelecionado = selecionadosLista.reduce((soma, [, qtd]) => soma + parseNumero(qtd), 0);
+  const pedidosSelecionados = new Set(
+    selecionadosLista.map(([id]) => pedidos.find((p) => String(p.id) === id)?.contrato || id)
+  ).size;
 
   function handleEnviarParaOc() {
     const linhas = selecionadosLista
@@ -288,7 +291,7 @@ export default function PedidosPage() {
         <div className="action-dock">
           <div>
             <span>SELECIONADOS</span>
-            <strong>{selecionadosLista.length} pedido(s) · {formatTon(totalSelecionado)} toneladas</strong>
+            <strong>{selecionadosLista.length} produto(s) de {pedidosSelecionados} pedido(s) · {formatTon(totalSelecionado)} toneladas</strong>
           </div>
           <div className="action-buttons">
             <button className="btn-primary" onClick={handleEnviarParaOc}>
