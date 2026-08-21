@@ -91,6 +91,10 @@ export function obterAgendamento(id) {
   return request(`/agendamentos/${id}`);
 }
 
+export function excluirAgendamento(id) {
+  return request(`/agendamentos/${id}`, { method: "DELETE" });
+}
+
 export function listarCotacoes(destino) {
   const query = destino ? `?destino=${encodeURIComponent(destino)}` : "";
   return request(`/cotacoes-frete${query}`);

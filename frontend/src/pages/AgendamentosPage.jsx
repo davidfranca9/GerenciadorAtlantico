@@ -125,6 +125,19 @@ export default function AgendamentosPage() {
     setEditError("");
   }
 
+  async function handleExcluir(a) {
+    const rotulo = a.driver_name || a.observacoes || `#${a.id}`;
+    if (!window.confirm(`Excluir o agendamento de "${rotulo}" (${a.loading_date})? Essa ação não pode ser desfeita.`)) return;
+    setError("");
+    try {
+      await api.excluirAgendamento(a.id);
+      if (editId === a.id) fecharEdicao();
+      setAgendamentos((prev) => prev.filter((x) => x.id !== a.id));
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   function updateEditField(field, value) {
     setEditForm((prev) => ({ ...prev, [field]: value }));
   }
@@ -266,10 +279,11 @@ export default function AgendamentosPage() {
                       ))}
                     </select>
                   </td>
-                  <td>
+                  <td style={{ display: "flex", gap: 8 }}>
                     <button className="btn-secondary" onClick={() => (editId === a.id ? fecharEdicao() : abrirEdicao(a))}>
                       {editId === a.id ? "Fechar" : "Editar"}
                     </button>
+                    <button className="btn-ghost" onClick={() => handleExcluir(a)}>Excluir</button>
                   </td>
                 </tr>
                 {editId === a.id && (

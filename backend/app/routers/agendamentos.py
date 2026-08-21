@@ -113,6 +113,16 @@ def obter_agendamento(agendamento_id: int, db: Session = Depends(get_db)):
     return _to_dict(agendamento)
 
 
+@router.delete("/{agendamento_id}")
+def excluir_agendamento(agendamento_id: int, db: Session = Depends(get_db)):
+    agendamento = db.get(Agendamento, agendamento_id)
+    if agendamento is None:
+        raise HTTPException(status_code=404, detail="Agendamento nao encontrado")
+    db.delete(agendamento)
+    db.commit()
+    return {"ok": True}
+
+
 @router.patch("/{agendamento_id}/status")
 def atualizar_status(agendamento_id: int, payload: AgendamentoStatusIn, db: Session = Depends(get_db)):
     agendamento = db.get(Agendamento, agendamento_id)
