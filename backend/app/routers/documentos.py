@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import Agendamento, AgendamentoItem
+from ..models import Agendamento, AgendamentoItem, Pedido
 from ..servicos.comunicacao import send_email_message
 from ..servicos.documentos import fill_carta_frete_docx, gerar_autorizacao_xlsx
 from ..servicos.oc_html import gerar_oc_pdf_html
@@ -60,6 +60,7 @@ class Produto(BaseModel):
     toneladas: str = ""
     cidade: str = ""
     cliente: str = ""
+    pedido_id: Optional[int] = None
 
 
 class OrdemColetaRequest(BaseModel):
@@ -136,6 +137,7 @@ def _salvar_agendamento_oc(
 ) -> Agendamento:
     """Cria ou atualiza (quando payload.agendamento_id e informado) o registro
     da Ordem de Coleta no banco, funcionando como o "banco de OCs geradas"."""
+    eh_novo = not payload.agendamento_id
     if payload.agendamento_id:
         agendamento = db.get(Agendamento, payload.agendamento_id)
         if agendamento is None:
@@ -162,6 +164,7 @@ def _salvar_agendamento_oc(
             cidade=p.get("cidade", ""),
             embalagem=p.get("embalagem", ""),
             toneladas=_safe_float(p.get("toneladas")),
+            pedido_ref_id=p.get("pedido_id"),
         )
         for p in produtos_dict
     ]
@@ -172,6 +175,20 @@ def _salvar_agendamento_oc(
     if arquivos.get("xlsx"):
         agendamento.planilha_path = arquivos["xlsx"]
     agendamento.updated_at = datetime.utcnow()
+
+    # So desconta o saldo do pedido na criacao da O.C. (nao em edicao/
+    # regeracao), pra nao descontar duas vezes quando o frontend chama
+    # gerar-oc e gerar-autorizacao em sequencia pro mesmo agendamento.
+    if eh_novo:
+        for p in produtos_dict:
+            pedido_id = p.get("pedido_id")
+            if not pedido_id:
+                continue
+            pedido = db.get(Pedido, pedido_id)
+            if pedido is None:
+                continue
+            usado = _safe_float(p.get("toneladas"))
+            pedido.toneladas_usadas = min(pedido.toneladas_total, pedido.toneladas_usadas + usado)
 
     db.commit()
     db.refresh(agendamento)

@@ -6,6 +6,7 @@ import Icon from "./Icon";
 
 const NAV_SECTIONS = [
   { title: "Operação", items: [
+    { to: "/pedidos", label: "Pedidos", icon: "route", description: "Pedidos disponíveis e saldo de toneladas" },
     { to: "/contrato", label: "Contratos", icon: "contract", description: "Importação e seleção de cargas" },
     { to: "/ordem-coleta", label: "Ordem de coleta", icon: "clipboard", description: "Emissão de documentos operacionais" },
     { to: "/agendamentos", label: "Agendamentos", icon: "calendar", description: "Controle de coletas programadas" },

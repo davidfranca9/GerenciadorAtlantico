@@ -95,6 +95,30 @@ export function excluirAgendamento(id) {
   return request(`/agendamentos/${id}`, { method: "DELETE" });
 }
 
+export function listarPedidos(mostrarEsgotados = false) {
+  return request(`/pedidos?mostrar_esgotados=${mostrarEsgotados}`);
+}
+
+export async function importarPedidoPdf(file, supplier) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_URL}/pedidos/importar-pdf?supplier=${encodeURIComponent(supplier)}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || "Falha no upload");
+  }
+  return res.json();
+}
+
+export function excluirPedido(id) {
+  return request(`/pedidos/${id}`, { method: "DELETE" });
+}
+
 export function listarCotacoes(destino) {
   const query = destino ? `?destino=${encodeURIComponent(destino)}` : "";
   return request(`/cotacoes-frete${query}`);

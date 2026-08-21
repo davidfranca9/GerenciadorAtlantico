@@ -14,6 +14,7 @@ from .routers.contrato import router as contrato_router
 from .routers.documentos import router as documentos_router
 from .routers.email_inbox import router as email_inbox_router
 from .routers.fretes import router as fretes_router
+from .routers.pedidos import router as pedidos_router
 
 app = FastAPI(title="Atlantico Fertlog API")
 
@@ -36,6 +37,7 @@ app.include_router(contrato_router)
 app.include_router(bsoft_router)
 app.include_router(buonny_router)
 app.include_router(email_inbox_router)
+app.include_router(pedidos_router)
 
 
 @app.on_event("startup")
@@ -45,6 +47,7 @@ def on_startup():
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS observacoes VARCHAR(2000) DEFAULT ''"))
             conn.execute(text("ALTER TABLE cidades ADD COLUMN IF NOT EXISTS ibge VARCHAR(16) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE agendamento_itens ADD COLUMN IF NOT EXISTS pedido_ref_id INTEGER"))
     except Exception:
         pass
 

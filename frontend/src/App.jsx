@@ -14,6 +14,7 @@ import ContratoPage from "./pages/ContratoPage";
 import EmailsPage from "./pages/EmailsPage";
 import LoginPage from "./pages/LoginPage";
 import OrdemColetaPage from "./pages/OrdemColetaPage";
+import PedidosPage from "./pages/PedidosPage";
 import TrocarSenhaPage from "./pages/TrocarSenhaPage";
 
 function PrivateRoute({ children }) {
@@ -44,6 +45,7 @@ function AppRoutes() {
       >
         <Route path="/" element={<Navigate to="/ordem-coleta" replace />} />
         <Route path="/contrato" element={<ContratoPage />} />
+        <Route path="/pedidos" element={<PedidosPage />} />
         <Route path="/ordem-coleta" element={<OrdemColetaPage />} />
         <Route path="/carta-frete" element={<CartaFretePage />} />
         <Route path="/agendamentos" element={<AgendamentosPage />} />

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import Float, ForeignKey, Integer, String, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -99,8 +100,24 @@ class AgendamentoItem(Base):
     cidade: Mapped[str] = mapped_column(String(255), default="")
     embalagem: Mapped[str] = mapped_column(String(255), default="")
     toneladas: Mapped[float] = mapped_column(Float, default=0)
+    pedido_ref_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
 
     agendamento: Mapped[Agendamento] = relationship(back_populates="itens")
+
+
+class Pedido(Base):
+    __tablename__ = "pedidos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    contrato: Mapped[str] = mapped_column(String(255), default="")
+    produto: Mapped[str] = mapped_column(String(255), default="")
+    embalagem: Mapped[str] = mapped_column(String(255), default="")
+    cidade: Mapped[str] = mapped_column(String(255), default="")
+    cliente: Mapped[str] = mapped_column(String(255), default="")
+    supplier: Mapped[str] = mapped_column(String(20), default="AFL")
+    toneladas_total: Mapped[float] = mapped_column(Float, default=0)
+    toneladas_usadas: Mapped[float] = mapped_column(Float, default=0)
 
 
 class CotacaoFrete(Base):

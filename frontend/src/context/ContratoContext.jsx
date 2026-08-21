@@ -46,8 +46,25 @@ export function ContratoProvider({ children }) {
         toneladasOriginal: r.toneladas ?? "",
         cidade: r.cidade || "",
         cliente: r.cliente || "",
+        pedidoId: r.pedidoId ?? null,
       })),
     ]);
+  }
+
+  function substituirRows(newRows) {
+    setRows(
+      newRows.map((r) => ({
+        checked: true,
+        contrato: r.contrato || "",
+        produto: r.produto || "",
+        embalagem: r.embalagem || "",
+        toneladas: r.toneladas ?? "",
+        toneladasOriginal: r.toneladas ?? "",
+        cidade: r.cidade || "",
+        cliente: r.cliente || "",
+        pedidoId: r.pedidoId ?? null,
+      }))
+    );
   }
 
   function toggleRow(index) {
@@ -92,6 +109,7 @@ export function ContratoProvider({ children }) {
         updateMotorista,
         limparMotorista,
         addRows,
+        substituirRows,
         toggleRow,
         updateRowField,
         removeRow,

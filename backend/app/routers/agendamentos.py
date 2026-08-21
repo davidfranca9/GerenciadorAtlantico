@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoItem
+from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoItem, Pedido
 
 router = APIRouter(prefix="/agendamentos", tags=["agendamentos"], dependencies=[Depends(get_current_user)])
 
@@ -118,6 +118,17 @@ def excluir_agendamento(agendamento_id: int, db: Session = Depends(get_db)):
     agendamento = db.get(Agendamento, agendamento_id)
     if agendamento is None:
         raise HTTPException(status_code=404, detail="Agendamento nao encontrado")
+
+    # Devolve o saldo pros pedidos vinculados antes de apagar - excluir uma
+    # O.C. libera de volta a tonelada que tinha sido descontada dela.
+    for item in agendamento.itens:
+        if not item.pedido_ref_id:
+            continue
+        pedido = db.get(Pedido, item.pedido_ref_id)
+        if pedido is None:
+            continue
+        pedido.toneladas_usadas = max(0.0, pedido.toneladas_usadas - item.toneladas)
+
     db.delete(agendamento)
     db.commit()
     return {"ok": True}

@@ -18,7 +18,7 @@ export default function OrdemColetaPage() {
   const [error, setError] = useState(""); const [loadingAction, setLoadingAction] = useState("");
 
   function buildPayload() {
-    return { template: supplier, produtos: selectedRows.map((r) => ({ contrato:r.contrato, produto:r.produto, embalagem:r.embalagem, toneladas:String(r.toneladas), cidade:r.cidade, cliente:r.cliente })), cpf, nome, cnh, fone, placa1, placa2, placa3, data_carregamento:dataCarregamento, observacoes, agendamento_id:agendamentoId };
+    return { template: supplier, produtos: selectedRows.map((r) => ({ contrato:r.contrato, produto:r.produto, embalagem:r.embalagem, toneladas:String(r.toneladas), cidade:r.cidade, cliente:r.cliente, pedido_id:r.pedidoId||undefined })), cpf, nome, cnh, fone, placa1, placa2, placa3, data_carregamento:dataCarregamento, observacoes, agendamento_id:agendamentoId };
   }
   async function handleImportCnh(e) {
     const file=e.target.files?.[0]; e.target.value=""; if(!file)return; setError("");
