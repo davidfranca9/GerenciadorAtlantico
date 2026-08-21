@@ -92,7 +92,11 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .pedidos-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 18px;background:var(--panel);border:1px solid var(--panel-border);border-radius:14px;box-shadow:var(--shadow)}
 .pedidos-toolbar-group{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
 .pedidos-import{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.pedidos-supplier-toggle,.pedidos-ordenacao-toggle{display:flex;gap:8px}
+.pedidos-supplier-toggle,.pedidos-ordenacao-toggle{display:inline-flex;gap:2px;padding:3px;height:40px;background:var(--panel-soft);border:1px solid var(--border);border-radius:999px}
+.pedidos-supplier-toggle button,.pedidos-ordenacao-toggle button{min-height:0;height:100%;padding:0 16px;border-radius:999px;font-size:11.5px;border:0}
+.pedidos-supplier-toggle button.btn-secondary,.pedidos-ordenacao-toggle button.btn-secondary{background:transparent;color:var(--muted)}
+.pedidos-supplier-toggle button.btn-secondary:hover,.pedidos-ordenacao-toggle button.btn-secondary:hover{background:var(--panel);color:var(--text);transform:none;box-shadow:none}
+.pedidos-supplier-toggle button.btn-primary,.pedidos-ordenacao-toggle button.btn-primary{box-shadow:0 3px 10px color-mix(in srgb,var(--accent) 30%,transparent)}
 .pedidos-busca-field{width:340px;flex:1 1 260px}
 .pedidos-busca-wrap{position:relative;display:flex;align-items:center}
 .pedidos-busca-wrap svg{position:absolute;left:13px;color:var(--muted-soft);pointer-events:none}
