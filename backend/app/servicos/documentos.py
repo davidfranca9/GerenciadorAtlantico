@@ -392,7 +392,7 @@ def _format_autorizacao_sheet(ws, headers, total_row=AUTORIZACAO_TOTAL_ROW):
 
     total_cell = ws.cell(row=total_row, column=qty_col_idx)
     total_cell.value = f"=SUM({get_column_letter(qty_col_idx)}{AUTORIZACAO_FIRST_DATA_ROW}:{get_column_letter(qty_col_idx)}{total_row - 1})"
-    total_cell.number_format = "0"
+    total_cell.number_format = "General"
 
 
 def _clear_autorizacao_data_rows(ws, headers, total_row=AUTORIZACAO_TOTAL_ROW):

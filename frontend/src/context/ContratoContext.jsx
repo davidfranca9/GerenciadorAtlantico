@@ -43,6 +43,7 @@ export function ContratoProvider({ children }) {
         produto: r.produto || "",
         embalagem: r.embalagem || "",
         toneladas: r.toneladas ?? "",
+        toneladasOriginal: r.toneladas ?? "",
         cidade: r.cidade || "",
         cliente: r.cliente || "",
       })),

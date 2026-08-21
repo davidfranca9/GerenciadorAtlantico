@@ -4,6 +4,11 @@ import DateField from "../components/DateField";
 import { useContrato } from "../context/ContratoContext";
 import { formatNome, formatPlaca } from "../utils/format";
 
+function parseNumero(texto) {
+  const num = parseFloat(String(texto ?? "").replace(",", "."));
+  return Number.isFinite(num) ? num : NaN;
+}
+
 export default function ContratoPage() {
   const {
     rows,
@@ -63,6 +68,15 @@ export default function ContratoPage() {
     } else {
       setStatus("Nenhum contrato foi extraido dos PDFs selecionados.");
     }
+  }
+
+  function handleToneladasChange(idx, row, novoTexto) {
+    const max = parseNumero(row.toneladasOriginal);
+    const novoValor = parseNumero(novoTexto);
+    if (novoTexto !== "" && Number.isFinite(max) && Number.isFinite(novoValor) && novoValor > max) {
+      return; // nao deixa ultrapassar o valor que veio do PDF
+    }
+    updateRowField(idx, "toneladas", novoTexto);
   }
 
   async function handleGerarAutorizacao() {
@@ -160,7 +174,8 @@ export default function ContratoPage() {
                   <td>
                     <input
                       value={row.toneladas}
-                      onChange={(e) => updateRowField(idx, "toneladas", e.target.value)}
+                      onChange={(e) => handleToneladasChange(idx, row, e.target.value)}
+                      title={`Máximo: ${row.toneladasOriginal}`}
                       style={{ width: 80, height: 32 }}
                     />
                   </td>
