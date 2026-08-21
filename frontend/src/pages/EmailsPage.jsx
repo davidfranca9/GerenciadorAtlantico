@@ -1,6 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as api from "../api/client";
 import Icon from "../components/Icon";
+
+const FORMATOS_TOOLBAR = [
+  { comando: "bold", rotulo: "N", titulo: "Negrito", estilo: { fontWeight: 800 } },
+  { comando: "italic", rotulo: "I", titulo: "Itálico", estilo: { fontStyle: "italic" } },
+  { comando: "underline", rotulo: "S", titulo: "Sublinhado", estilo: { textDecoration: "underline" } },
+  { comando: "insertUnorderedList", rotulo: "•", titulo: "Lista" },
+];
 
 const TAMANHO_PAGINA = 25;
 
@@ -15,7 +22,7 @@ function escapeHtml(texto) {
   return String(texto).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-const RASCUNHO_VAZIO = { para: "", assunto: "", corpo: "" };
+const RASCUNHO_VAZIO = { para: "", assunto: "", corpoInicial: "" };
 const CHAVE_CACHE = "emails_inbox_cache_v1";
 
 function lerCacheSalvo() {
@@ -61,8 +68,11 @@ export default function EmailsPage() {
   const [detalhe, setDetalhe] = useState(cache.detalhe);
   const [carregandoDetalhe, setCarregandoDetalhe] = useState(false);
   const [compor, setCompor] = useState(null);
+  const [composeKey, setComposeKey] = useState(0);
+  const [anexos, setAnexos] = useState([]);
   const [enviando, setEnviando] = useState(false);
   const [erroEnvio, setErroEnvio] = useState("");
+  const corpoRef = useRef(null);
 
   useEffect(() => {
     // Se ja tem algo em cache, mostra na hora e so atualiza por baixo dos
@@ -123,16 +133,39 @@ export default function EmailsPage() {
 
   function abrirComposicao(rascunho) {
     setErroEnvio("");
+    setAnexos([]);
+    setComposeKey((k) => k + 1);
     setCompor({ ...RASCUNHO_VAZIO, ...rascunho });
+  }
+
+  function fecharComposicao() {
+    if (enviando) return;
+    setCompor(null);
+    setAnexos([]);
+  }
+
+  function aplicarFormatacao(comando) {
+    document.execCommand(comando, false, null);
+  }
+
+  function adicionarAnexos(e) {
+    const novos = Array.from(e.target.files || []);
+    e.target.value = "";
+    setAnexos((prev) => [...prev, ...novos]);
+  }
+
+  function removerAnexo(indice) {
+    setAnexos((prev) => prev.filter((_, i) => i !== indice));
   }
 
   function responder() {
     if (!detalhe) return;
-    const original = detalhe.corpo_texto || (detalhe.corpo_html ? detalhe.corpo_html.replace(/<[^>]+>/g, " ") : "");
+    const original = detalhe.corpo_html || `<pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(detalhe.corpo_texto || "")}</pre>`;
+    const citacao = `<br><br><div style="border-left:2px solid #ccc;margin-left:4px;padding-left:10px;color:#666">Em ${formatarData(detalhe.data)}, ${escapeHtml(detalhe.remetente.nome || detalhe.remetente.email)} escreveu:<br>${original}</div>`;
     abrirComposicao({
       para: detalhe.remetente.email || "",
       assunto: detalhe.assunto?.toLowerCase().startsWith("re:") ? detalhe.assunto : `Re: ${detalhe.assunto || ""}`,
-      corpo: `\n\n---\nEm ${formatarData(detalhe.data)}, ${detalhe.remetente.nome || detalhe.remetente.email} escreveu:\n${original.trim()}`,
+      corpoInicial: citacao,
     });
   }
 
@@ -143,8 +176,10 @@ export default function EmailsPage() {
     setEnviando(true);
     setErroEnvio("");
     try {
-      await api.enviarEmail({ destinatarios, assunto: compor.assunto, corpo: compor.corpo });
+      const corpoHtml = corpoRef.current?.innerHTML || "";
+      await api.enviarEmail({ destinatarios, assunto: compor.assunto, corpo: corpoHtml, anexos });
       setCompor(null);
+      setAnexos([]);
     } catch (err) {
       setErroEnvio(err.message);
     } finally {
@@ -198,7 +233,7 @@ export default function EmailsPage() {
             <div className="inbox-compose-inline">
               <div className="inbox-compose-header">
                 <strong>Novo e-mail</strong>
-                <button className="icon-btn" onClick={() => !enviando && setCompor(null)}><Icon name="close" /></button>
+                <button className="icon-btn" onClick={fecharComposicao}><Icon name="close" /></button>
               </div>
               {erroEnvio && <div className="inline-alert error">{erroEnvio}</div>}
               <div className="field">
@@ -211,10 +246,42 @@ export default function EmailsPage() {
               </div>
               <div className="field inbox-compose-body-field">
                 <label>Mensagem</label>
-                <textarea value={compor.corpo} onChange={(e) => setCompor({ ...compor, corpo: e.target.value })} placeholder="Escreva sua mensagem..." />
+                <div className="inbox-compose-toolbar">
+                  {FORMATOS_TOOLBAR.map((f) => (
+                    <button key={f.comando} type="button" title={f.titulo} style={f.estilo} onMouseDown={(e) => e.preventDefault()} onClick={() => aplicarFormatacao(f.comando)}>
+                      {f.rotulo}
+                    </button>
+                  ))}
+                </div>
+                <div
+                  key={composeKey}
+                  ref={corpoRef}
+                  className="inbox-compose-editor"
+                  contentEditable
+                  suppressContentEditableWarning
+                  data-placeholder="Escreva sua mensagem..."
+                  dangerouslySetInnerHTML={{ __html: compor.corpoInicial || "" }}
+                />
+              </div>
+              <div className="field">
+                <label>Anexos</label>
+                <label className="inbox-attach-btn">
+                  <Icon name="upload" size={14} />Anexar arquivo
+                  <input type="file" multiple onChange={adicionarAnexos} style={{ display: "none" }} />
+                </label>
+                {anexos.length > 0 && (
+                  <ul className="inbox-attach-list">
+                    {anexos.map((arquivo, indice) => (
+                      <li key={`${arquivo.name}-${indice}`}>
+                        <Icon name="file" size={13} /><span>{arquivo.name}</span>
+                        <button type="button" onClick={() => removerAnexo(indice)}><Icon name="close" size={12} /></button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div className="inbox-compose-actions">
-                <button className="btn-ghost" disabled={enviando} onClick={() => setCompor(null)}>Cancelar</button>
+                <button className="btn-ghost" disabled={enviando} onClick={fecharComposicao}>Cancelar</button>
                 <button className="btn-primary" disabled={enviando} onClick={enviarComposicao}>
                   <Icon name="mail" size={16} />{enviando ? "Enviando..." : "Enviar"}
                 </button>

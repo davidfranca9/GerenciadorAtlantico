@@ -196,8 +196,23 @@ export function obterEmail(id) {
   return request(`/email/mensagens/${encodeURIComponent(id)}`);
 }
 
-export function enviarEmail(payload) {
-  return request("/email/enviar", { method: "POST", body: payload });
+export async function enviarEmail({ destinatarios, assunto, corpo, anexos }) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("destinatarios", destinatarios.join(","));
+  formData.append("assunto", assunto || "");
+  formData.append("corpo", corpo || "");
+  for (const arquivo of anexos || []) formData.append("anexos", arquivo);
+  const res = await fetch(`${API_URL}/email/enviar`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || "Falha ao enviar e-mail");
+  }
+  return res.json();
 }
 
 export function bsoftCidades() {
