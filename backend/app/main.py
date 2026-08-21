@@ -48,6 +48,9 @@ def on_startup():
             conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS observacoes VARCHAR(2000) DEFAULT ''"))
             conn.execute(text("ALTER TABLE cidades ADD COLUMN IF NOT EXISTS ibge VARCHAR(16) DEFAULT ''"))
             conn.execute(text("ALTER TABLE agendamento_itens ADD COLUMN IF NOT EXISTS pedido_ref_id INTEGER"))
+            conn.execute(text("ALTER TABLE cotacoes_frete ADD COLUMN IF NOT EXISTS cliente_id INTEGER"))
+            conn.execute(text("ALTER TABLE cotacoes_frete ADD COLUMN IF NOT EXISTS cliente_nome VARCHAR(255) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE cotacoes_frete ADD COLUMN IF NOT EXISTS observacoes VARCHAR(1000) DEFAULT ''"))
     except Exception:
         pass
 

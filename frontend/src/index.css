@@ -89,7 +89,8 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .inbox-attach-list li button:hover{color:var(--danger)}
 .inbox-compose-actions{display:flex;justify-content:flex-end;gap:10px}
 
-.pedidos-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.pedidos-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 18px;background:var(--panel);border:1px solid var(--panel-border);border-radius:14px;box-shadow:var(--shadow)}
+.pedidos-toolbar-group{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
 .pedidos-import{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .pedidos-supplier-toggle,.pedidos-ordenacao-toggle{display:flex;gap:8px}
 .pedidos-import label.btn-primary{gap:8px}

@@ -169,19 +169,21 @@ export default function PedidosPage() {
   return (
     <div className="ops-page pedidos-page">
       <div className="pedidos-toolbar">
-        <div className="field" style={{ maxWidth: 320 }}>
-          <label>Buscar pedido</label>
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pedido, produto, cliente ou cidade" />
-        </div>
-        <div className="field" style={{ maxWidth: 260 }}>
-          <label>Ordenar por</label>
-          <div className="pedidos-ordenacao-toggle">
-            <button type="button" className={ordenacao === "numero" ? "btn-primary" : "btn-secondary"} onClick={() => setOrdenacao("numero")}>
-              Nº do pedido
-            </button>
-            <button type="button" className={ordenacao === "alfabetica" ? "btn-primary" : "btn-secondary"} onClick={() => setOrdenacao("alfabetica")}>
-              Alfabética
-            </button>
+        <div className="pedidos-toolbar-group">
+          <div className="field" style={{ maxWidth: 280 }}>
+            <label>Buscar pedido</label>
+            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pedido, produto, cliente ou cidade" />
+          </div>
+          <div className="field" style={{ maxWidth: 220 }}>
+            <label>Ordenar por</label>
+            <div className="pedidos-ordenacao-toggle">
+              <button type="button" className={ordenacao === "numero" ? "btn-primary" : "btn-secondary"} onClick={() => setOrdenacao("numero")}>
+                Nº do pedido
+              </button>
+              <button type="button" className={ordenacao === "alfabetica" ? "btn-primary" : "btn-secondary"} onClick={() => setOrdenacao("alfabetica")}>
+                Alfabética
+              </button>
+            </div>
           </div>
         </div>
         <div className="pedidos-import">

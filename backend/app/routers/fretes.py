@@ -18,6 +18,9 @@ class CotacaoIn(BaseModel):
     data_cotacao: str
     destino: str
     valor_tonelada: float
+    cliente_id: Optional[int] = None
+    cliente_nome: str = ""
+    observacoes: str = ""
 
 
 def _to_dict(c: CotacaoFrete) -> dict:
@@ -26,6 +29,9 @@ def _to_dict(c: CotacaoFrete) -> dict:
         "data_cotacao": c.data_cotacao,
         "destino": c.destino,
         "valor_tonelada": c.valor_tonelada,
+        "cliente_id": c.cliente_id,
+        "cliente_nome": c.cliente_nome,
+        "observacoes": c.observacoes,
         "created_at": c.created_at,
     }
 

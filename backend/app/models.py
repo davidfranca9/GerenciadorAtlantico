@@ -127,4 +127,7 @@ class CotacaoFrete(Base):
     data_cotacao: Mapped[str] = mapped_column(String(32))
     destino: Mapped[str] = mapped_column(String(255), index=True)
     valor_tonelada: Mapped[float] = mapped_column(Float)
+    cliente_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
+    cliente_nome: Mapped[str] = mapped_column(String(255), default="")
+    observacoes: Mapped[str] = mapped_column(String(1000), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
