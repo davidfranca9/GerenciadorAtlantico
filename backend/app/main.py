@@ -16,6 +16,7 @@ from .routers.documentos import router as documentos_router
 from .routers.email_inbox import router as email_inbox_router
 from .routers.fretes import router as fretes_router
 from .routers.pedidos import router as pedidos_router
+from .routers.whatsapp import router as whatsapp_router
 
 app = FastAPI(title="Atlantico Fertlog API")
 
@@ -40,6 +41,7 @@ app.include_router(buonny_router)
 app.include_router(email_inbox_router)
 app.include_router(pedidos_router)
 app.include_router(dashboard_router)
+app.include_router(whatsapp_router)
 
 
 @app.on_event("startup")
