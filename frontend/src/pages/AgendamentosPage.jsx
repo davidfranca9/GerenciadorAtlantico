@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import * as api from "../api/client";
 import DateField from "../components/DateField";
 import { formatCPF, formatNome, formatPhone, formatPlaca } from "../utils/format";
@@ -21,6 +21,28 @@ function formatTon(valor) {
   return parseNumero(valor).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 }
 
+const DIAS_SEMANA_LABEL = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+function formatarDataBR(date) {
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = date.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+function gerarGradeDoMes(referencia) {
+  const ano = referencia.getFullYear();
+  const mes = referencia.getMonth();
+  const primeiroDia = new Date(ano, mes, 1);
+  const diaSemanaPrimeiro = (primeiroDia.getDay() + 6) % 7; // 0 = segunda
+  const inicioGrade = new Date(ano, mes, 1 - diaSemanaPrimeiro);
+  return Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(inicioGrade);
+    d.setDate(inicioGrade.getDate() + i);
+    return d;
+  });
+}
+
 export default function AgendamentosPage() {
   const [agendamentos, setAgendamentos] = useState([]);
   const [filtroStatus, setFiltroStatus] = useState("");
@@ -32,6 +54,9 @@ export default function AgendamentosPage() {
   const [plateCavalo, setPlateCavalo] = useState("");
   const [itens, setItens] = useState([{ ...ITEM_VAZIO }]);
   const [error, setError] = useState("");
+  const [viewMode, setViewMode] = useState("lista");
+  const [mesReferencia, setMesReferencia] = useState(() => { const d = new Date(); d.setDate(1); return d; });
+  const [diaSelecionado, setDiaSelecionado] = useState(null);
   const [pedidosDisponiveis, setPedidosDisponiveis] = useState([]);
 
   const [editId, setEditId] = useState(null);
@@ -56,6 +81,38 @@ export default function AgendamentosPage() {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtroStatus]);
+
+  const agendamentosPorDia = useMemo(() => {
+    const mapa = {};
+    for (const a of agendamentos) {
+      if (!a.loading_date) continue;
+      (mapa[a.loading_date] ||= []).push(a);
+    }
+    return mapa;
+  }, [agendamentos]);
+
+  const gradeDoMes = useMemo(() => gerarGradeDoMes(mesReferencia), [mesReferencia]);
+  const hojeStr = formatarDataBR(new Date());
+
+  function mudarMes(delta) {
+    setMesReferencia((prev) => {
+      const d = new Date(prev);
+      d.setMonth(d.getMonth() + delta);
+      return d;
+    });
+    setDiaSelecionado(null);
+  }
+
+  function irParaHoje() {
+    const hoje = new Date();
+    hoje.setDate(1);
+    setMesReferencia(hoje);
+    setDiaSelecionado(hojeStr);
+  }
+
+  const agendamentosExibidos = viewMode === "agenda" && diaSelecionado
+    ? agendamentos.filter((a) => a.loading_date === diaSelecionado)
+    : agendamentos;
 
   useEffect(() => {
     if (showForm) {
@@ -227,11 +284,65 @@ export default function AgendamentosPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+        <div className="pedidos-ordenacao-toggle">
+          <button type="button" className={viewMode === "lista" ? "btn-primary" : "btn-secondary"} onClick={() => { setViewMode("lista"); setDiaSelecionado(null); }}>
+            Lista
+          </button>
+          <button type="button" className={viewMode === "agenda" ? "btn-primary" : "btn-secondary"} onClick={() => setViewMode("agenda")}>
+            Agenda
+          </button>
+        </div>
         <button className="btn-primary" onClick={() => setShowForm((v) => !v)}>
           {showForm ? "Cancelar" : "+ Novo Agendamento"}
         </button>
       </div>
+
+      {viewMode === "agenda" && (
+        <div className="card agenda-card">
+          <div className="agenda-header">
+            <strong>{mesReferencia.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong>
+            <div className="agenda-nav">
+              <button type="button" className="btn-secondary" onClick={() => mudarMes(-1)}>‹</button>
+              <button type="button" className="btn-secondary" onClick={irParaHoje}>Hoje</button>
+              <button type="button" className="btn-secondary" onClick={() => mudarMes(1)}>›</button>
+            </div>
+          </div>
+          <div className="agenda-grid agenda-grid-header">
+            {DIAS_SEMANA_LABEL.map((d) => <div key={d}>{d}</div>)}
+          </div>
+          <div className="agenda-grid">
+            {gradeDoMes.map((dia) => {
+              const chave = formatarDataBR(dia);
+              const doMes = dia.getMonth() === mesReferencia.getMonth();
+              const itensDoDia = agendamentosPorDia[chave] || [];
+              const totalTons = itensDoDia.reduce((soma, a) => soma + (a.total_tons || 0), 0);
+              return (
+                <button
+                  type="button"
+                  key={chave}
+                  className={`agenda-day ${doMes ? "" : "outro-mes"} ${chave === hojeStr ? "hoje" : ""} ${chave === diaSelecionado ? "selecionado" : ""}`}
+                  onClick={() => setDiaSelecionado(chave === diaSelecionado ? null : chave)}
+                >
+                  <span className="agenda-day-number">{dia.getDate()}</span>
+                  {itensDoDia.length > 0 && (
+                    <div className="agenda-day-info">
+                      <span className="agenda-day-count">{itensDoDia.length}</span>
+                      <span className="agenda-day-tons">{formatTon(totalTons)}t</span>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {diaSelecionado && (
+            <div className="agenda-selecionado-bar">
+              <span>Mostrando agendamentos de <strong>{diaSelecionado}</strong></span>
+              <button type="button" className="btn-ghost" onClick={() => setDiaSelecionado(null)}>Limpar seleção</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {showForm && (
         <form onSubmit={handleCriar} className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -330,7 +441,7 @@ export default function AgendamentosPage() {
             </tr>
           </thead>
           <tbody>
-            {agendamentos.map((a) => (
+            {agendamentosExibidos.map((a) => (
               <Fragment key={a.id}>
                 <tr>
                   <td>{a.supplier}</td>
@@ -468,9 +579,11 @@ export default function AgendamentosPage() {
                 )}
               </Fragment>
             ))}
-            {!loading && agendamentos.length === 0 && (
+            {!loading && agendamentosExibidos.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ color: "var(--muted)" }}>Nenhum agendamento encontrado.</td>
+                <td colSpan={8} style={{ color: "var(--muted)" }}>
+                  {diaSelecionado ? `Nenhum agendamento em ${diaSelecionado}.` : "Nenhum agendamento encontrado."}
+                </td>
               </tr>
             )}
           </tbody>
