@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import * as api from "../api/client";
+import { formatPhone } from "../utils/format";
 
 const VAZIO = { nome: "", cnpj_cpf: "", cidade: "", uf: "", contato: "", email: "", telefone: "", observacoes: "" };
 
@@ -80,7 +81,7 @@ export default function ClientesPage() {
       uf: cliente.uf,
       contato: cliente.contato,
       email: cliente.email,
-      telefone: cliente.telefone,
+      telefone: formatPhone(cliente.telefone),
       observacoes: cliente.observacoes,
     });
   }
@@ -125,7 +126,7 @@ export default function ClientesPage() {
             </select>
           </div>
           <div className="field">
-            <label>Contato</label>
+            <label>Contato Descarga</label>
             <input value={form.contato} onChange={(e) => updateField("contato", e.target.value)} />
           </div>
           <div className="field">
@@ -133,8 +134,8 @@ export default function ClientesPage() {
             <input value={form.email} onChange={(e) => updateField("email", e.target.value)} />
           </div>
           <div className="field">
-            <label>Telefone</label>
-            <input value={form.telefone} onChange={(e) => updateField("telefone", e.target.value)} />
+            <label>Contato Contratante</label>
+            <input value={form.telefone} onChange={(e) => updateField("telefone", formatPhone(e.target.value))} placeholder="(00) 9 0000-0000" />
           </div>
         </div>
         <div className="field">
@@ -165,7 +166,7 @@ export default function ClientesPage() {
               <th>Nome</th>
               <th>CNPJ/CPF</th>
               <th>Cidade/UF</th>
-              <th>Contato</th>
+              <th>Contato Descarga</th>
               <th></th>
             </tr>
           </thead>
