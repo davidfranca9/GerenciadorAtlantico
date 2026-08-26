@@ -423,3 +423,13 @@ def listar_cartas_frete(db: Session = Depends(get_db)):
         }
         for r in registros
     ]
+
+
+@router.delete("/cartas-frete/{carta_id}")
+def excluir_carta_frete(carta_id: int, db: Session = Depends(get_db)):
+    registro = db.get(CartaFreteEnviada, carta_id)
+    if registro is None:
+        raise HTTPException(status_code=404, detail="Registro nao encontrado")
+    db.delete(registro)
+    db.commit()
+    return {"ok": True}

@@ -402,3 +402,7 @@ export function enviarCartaFreteEmail(payload) {
 export function listarCartasFrete() {
   return request("/cartas-frete");
 }
+
+export function excluirCartaFrete(id) {
+  return request(`/cartas-frete/${id}`, { method: "DELETE" });
+}
