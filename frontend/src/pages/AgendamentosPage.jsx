@@ -64,6 +64,7 @@ export default function AgendamentosPage() {
   const [editLoading, setEditLoading] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  const [docGerandoId, setDocGerandoId] = useState(null);
 
   async function carregar() {
     setLoading(true);
@@ -282,6 +283,43 @@ export default function AgendamentosPage() {
     }
   }
 
+  async function salvarDocumentos(a) {
+    setError("");
+    setDocGerandoId(a.id);
+    try {
+      const template = templateFromSupplierLabel(a.supplier);
+      const payload = {
+        template,
+        produtos: a.itens.map((it) => ({
+          contrato: it.pedido || "",
+          cliente: it.cliente || "",
+          produto: it.produto || "",
+          cidade: it.cidade || "",
+          embalagem: it.embalagem || "",
+          toneladas: String(it.toneladas ?? ""),
+        })),
+        cpf: a.driver_cpf,
+        nome: a.driver_name,
+        cnh: a.cnh,
+        fone: a.driver_phone,
+        placa1: a.plate_cavalo,
+        placa2: a.plate_carreta1,
+        placa3: a.plate_carreta2,
+        data_carregamento: a.loading_date,
+        observacoes: a.observacoes,
+        agendamento_id: a.id,
+      };
+      const result = await api.gerarOrdemColeta(payload);
+      if (template !== "HERINGER") {
+        await api.gerarAutorizacaoColeta({ ...payload, agendamento_id: result?.agendamentoId ?? a.id });
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDocGerandoId(null);
+    }
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
@@ -467,6 +505,9 @@ export default function AgendamentosPage() {
                   <td style={{ display: "flex", gap: 8 }}>
                     <button className="btn-secondary" onClick={() => (editId === a.id ? fecharEdicao() : abrirEdicao(a))}>
                       {editId === a.id ? "Fechar" : "Editar"}
+                    </button>
+                    <button className="btn-secondary" disabled={docGerandoId === a.id} onClick={() => salvarDocumentos(a)}>
+                      {docGerandoId === a.id ? "Gerando..." : "Salvar Documentos"}
                     </button>
                     <button className="btn-ghost" onClick={() => handleExcluir(a)}>Excluir</button>
                   </td>
