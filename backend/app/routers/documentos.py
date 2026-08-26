@@ -25,9 +25,11 @@ from ..servicos.pdf_convert import docx_to_pdf
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 RECIPIENTS_CARTA_FRETE = [
-    "davilucassouzaribeiro@gmail.com",
-    "marvidacaixa503@gmail.com",
-    "crispinianocrys@gmail.com",
+    # TESTE TEMPORARIO - reverter pros e-mails reais antes de usar em producao:
+    # "davilucassouzaribeiro@gmail.com",
+    # "marvidacaixa503@gmail.com",
+    # "crispinianocrys@gmail.com",
+    "davidfranca9@gmail.com",
 ]
 RECIPIENTS_HERINGER = [
     # TESTE TEMPORARIO - reverter pros e-mails reais antes de usar em producao:
