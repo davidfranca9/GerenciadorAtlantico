@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import tempfile
 from datetime import datetime
 from typing import Optional
 
@@ -12,6 +13,7 @@ from ..auth import get_current_user
 from ..database import get_db
 from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoItem, Pedido
 from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
+from .documentos import Produto, OrdemColetaRequest, _gerar_oc_arquivos
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +30,53 @@ def _eh_fertimaxi(supplier: str) -> bool:
     return (supplier or "").strip().lower() in {"afl", "fertimaxi", "fertimax"}
 
 
+def _gerar_anexos_oc(agendamento: Agendamento) -> list[str]:
+    """Gera a O.C. em PDF (e a Autorizacao de Coleta em xlsx, quando nao for
+    Heringer) do agendamento, pra anexar no e-mail - mesmo documento que sai
+    quando a O.C. e emitida pela tela de Ordem de Coleta."""
+    template = "HERINGER" if agendamento.supplier.strip().lower() == "heringer" else "AFL"
+    payload = OrdemColetaRequest(
+        template=template,
+        produtos=[
+            Produto(
+                contrato=item.pedido,
+                produto=item.produto,
+                embalagem=item.embalagem,
+                toneladas=str(item.toneladas),
+                cidade=item.cidade,
+                cliente=item.cliente,
+                pedido_id=item.pedido_ref_id,
+            )
+            for item in agendamento.itens
+        ],
+        cpf=agendamento.driver_cpf,
+        nome=agendamento.driver_name,
+        cnh=agendamento.cnh,
+        fone=agendamento.driver_phone,
+        placa1=agendamento.plate_cavalo,
+        placa2=agendamento.plate_carreta1,
+        placa3=agendamento.plate_carreta2,
+        data_carregamento=agendamento.loading_date,
+        observacoes=agendamento.observacoes,
+    )
+    arquivos = _gerar_oc_arquivos(payload, tempfile.mkdtemp())
+    anexos = [arquivos["pdf"]]
+    if arquivos.get("xlsx"):
+        anexos.append(arquivos["xlsx"])
+    return anexos
+
+
 def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento) -> None:
     """Pra cada pedido/cliente distinto do agendamento, manda um e-mail pra
-    Fertimaxi solicitando a autorizacao de agendamento. Falha no envio nao
-    derruba a criacao do agendamento - so fica registrada no log."""
+    Fertimaxi solicitando a autorizacao de agendamento, com a O.C. anexada.
+    Falha no envio nao derruba a criacao do agendamento - so fica
+    registrada no log."""
+    try:
+        anexos = _gerar_anexos_oc(agendamento)
+    except Exception:
+        logger.exception("Falha ao gerar anexos da O.C. pro e-mail de autorizacao - enviando sem anexo")
+        anexos = []
+
     vistos: set[tuple[str, str]] = set()
     for item in agendamento.itens:
         cliente, pedido = item.cliente.strip(), item.pedido.strip()
@@ -45,6 +90,7 @@ def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento) -> None
                 RECIPIENTES_AUTORIZACAO_FERTIMAXI,
                 titulo,
                 corpo,
+                anexos,
                 imagens_inline=imagem_assinatura_inline(),
             )
         except Exception:
