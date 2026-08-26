@@ -211,5 +211,11 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .whatsapp-anexo-icone.midia{background:#3f8cdb}
 .whatsapp-anexo-icone.cam{background:#d5498a}
 .whatsapp-anexo-icone.audio{background:#e0a83e}
+.whatsapp-mic-btn{width:42px;height:42px;min-height:0;padding:0;flex-shrink:0;display:grid;place-items:center;background:var(--accent);border:1px solid var(--accent);border-radius:9px;color:#fff;cursor:pointer;transition:.16s}
+.whatsapp-mic-btn:hover:not(:disabled){background:var(--accent-strong);border-color:var(--accent-strong)}
+.whatsapp-gravando{display:flex;align-items:center;gap:10px;flex:1}
+.whatsapp-gravando-tempo{display:flex;align-items:center;gap:7px;font:700 12.5px Manrope,sans-serif;color:var(--danger);min-width:44px}
+.whatsapp-gravando-dot{width:9px;height:9px;border-radius:50%;background:var(--danger);animation:whatsapp-rec-pulse 1s ease-in-out infinite}
+@keyframes whatsapp-rec-pulse{0%,100%{opacity:1}50%{opacity:.25}}
 .whatsapp-compose-novo{padding:0 20px}
 @media(max-width:900px){.whatsapp-layout{grid-template-columns:1fr;min-height:auto}.whatsapp-list{max-height:320px}.whatsapp-thread-body{min-height:320px}}

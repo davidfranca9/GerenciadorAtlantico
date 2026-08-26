@@ -2,11 +2,25 @@ import { useEffect, useRef, useState } from "react";
 import * as api from "../api/client";
 import Icon from "../components/Icon";
 
+function paraDataUTC(iso) {
+  // O backend manda datetime em UTC sem indicar fuso no texto (ex: sem "Z"
+  // no final) - sem isso o navegador interpreta como hora local e erra o
+  // horario. Forca UTC quando o texto nao ja tem fuso indicado.
+  const temFuso = /Z$|[+-]\d\d:\d\d$/.test(iso);
+  return new Date(temFuso ? iso : `${iso}Z`);
+}
+
 function formatarData(iso) {
   if (!iso) return "";
-  const data = new Date(iso);
+  const data = paraDataUTC(iso);
   if (Number.isNaN(data.getTime())) return iso;
   return data.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function formatarTempoGravacao(segundos) {
+  const m = Math.floor(segundos / 60);
+  const s = segundos % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 const JANELA_24H_MS = 24 * 60 * 60 * 1000;
@@ -47,12 +61,25 @@ export default function WhatsAppPage() {
   const [salvandoNome, setSalvandoNome] = useState(false);
   const [agora, setAgora] = useState(() => Date.now());
   const [menuAnexoAberto, setMenuAnexoAberto] = useState(false);
+  const [gravando, setGravando] = useState(false);
+  const [tempoGravacao, setTempoGravacao] = useState(0);
   const threadRef = useRef(null);
   const anexoBtnRef = useRef(null);
   const inputDocumentoRef = useRef(null);
   const inputMidiaRef = useRef(null);
   const inputCameraRef = useRef(null);
   const inputAudioRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const chunksGravacaoRef = useRef([]);
+  const streamGravacaoRef = useRef(null);
+  const timerGravacaoRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      clearInterval(timerGravacaoRef.current);
+      streamGravacaoRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
   useEffect(() => {
     const intervalo = setInterval(() => setAgora(Date.now()), 30000);
@@ -69,7 +96,7 @@ export default function WhatsAppPage() {
   }, [menuAnexoAberto]);
 
   const ultimaEntrada = [...mensagens].reverse().find((m) => m.direcao === "entrada");
-  const prazoRestanteMs = ultimaEntrada ? new Date(ultimaEntrada.created_at).getTime() + JANELA_24H_MS - agora : null;
+  const prazoRestanteMs = ultimaEntrada ? paraDataUTC(ultimaEntrada.created_at).getTime() + JANELA_24H_MS - agora : null;
   const restanteFormatado = prazoRestanteMs != null ? formatarRestante(prazoRestanteMs) : null;
 
   function nomeDoContato(numero) {
@@ -168,6 +195,75 @@ export default function WhatsAppPage() {
   function acionarInput(ref) {
     setMenuAnexoAberto(false);
     ref.current?.click();
+  }
+
+  function melhorMimeAudio() {
+    const candidatos = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+    return candidatos.find((m) => window.MediaRecorder?.isTypeSupported?.(m)) || "";
+  }
+
+  async function iniciarGravacao() {
+    const numero = (selecionado || numeroNovo.replace(/\D/g, "")).trim();
+    if (!numero) { setErro("Informe um número antes de gravar um áudio."); return; }
+    setErro("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamGravacaoRef.current = stream;
+      const mimeType = melhorMimeAudio();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      chunksGravacaoRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksGravacaoRef.current.push(e.data); };
+      recorder.onstop = () => enviarGravacao(numero, recorder.mimeType || mimeType || "audio/webm");
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setGravando(true);
+      setTempoGravacao(0);
+      timerGravacaoRef.current = setInterval(() => setTempoGravacao((t) => t + 1), 1000);
+    } catch (err) {
+      setErro(`Não foi possível acessar o microfone: ${err.message}`);
+    }
+  }
+
+  function pararEEnviarGravacao() {
+    mediaRecorderRef.current?.stop();
+    streamGravacaoRef.current?.getTracks().forEach((t) => t.stop());
+    clearInterval(timerGravacaoRef.current);
+    setGravando(false);
+  }
+
+  function cancelarGravacao() {
+    if (mediaRecorderRef.current) mediaRecorderRef.current.onstop = null;
+    mediaRecorderRef.current?.stop();
+    streamGravacaoRef.current?.getTracks().forEach((t) => t.stop());
+    clearInterval(timerGravacaoRef.current);
+    setGravando(false);
+    setTempoGravacao(0);
+    chunksGravacaoRef.current = [];
+  }
+
+  async function enviarGravacao(numero, mimeType) {
+    const blob = new Blob(chunksGravacaoRef.current, { type: mimeType });
+    chunksGravacaoRef.current = [];
+    setTempoGravacao(0);
+    if (blob.size === 0) return;
+    const extensao = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "m4a" : "webm";
+    const arquivo = new File([blob], `audio-${Date.now()}.${extensao}`, { type: mimeType });
+    setEnviandoArquivo(true);
+    setErro("");
+    try {
+      await api.enviarArquivoWhatsapp(numero, arquivo, "");
+      if (!selecionado) {
+        setNumeroNovo("");
+        setSelecionado(numero);
+      }
+      const data = await api.listarMensagensWhatsapp(numero);
+      setMensagens(data);
+      carregarConversas();
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setEnviandoArquivo(false);
+    }
   }
 
   async function handleEnviar(e) {
@@ -320,10 +416,10 @@ export default function WhatsAppPage() {
                     <span className="whatsapp-anexo-icone midia"><Icon name="upload" size={16} /></span>Fotos e vídeos
                   </button>
                   <button type="button" onClick={() => acionarInput(inputCameraRef)}>
-                    <span className="whatsapp-anexo-icone cam"><Icon name="search" size={16} /></span>Câmera
+                    <span className="whatsapp-anexo-icone cam"><Icon name="camera" size={16} /></span>Câmera
                   </button>
                   <button type="button" onClick={() => acionarInput(inputAudioRef)}>
-                    <span className="whatsapp-anexo-icone audio"><Icon name="chat" size={16} /></span>Áudio
+                    <span className="whatsapp-anexo-icone audio"><Icon name="mic" size={16} /></span>Áudio
                   </button>
                 </div>
               )}
@@ -335,12 +431,34 @@ export default function WhatsAppPage() {
             <input
               value={texto}
               onChange={(e) => setTexto(e.target.value)}
-              placeholder={enviandoArquivo ? "Enviando arquivo..." : "Escreva uma mensagem..."}
-              disabled={enviando || enviandoArquivo || (!selecionado && !numeroNovo.trim())}
+              placeholder={gravando ? "Gravando áudio..." : enviandoArquivo ? "Enviando arquivo..." : "Escreva uma mensagem..."}
+              disabled={enviando || enviandoArquivo || gravando || (!selecionado && !numeroNovo.trim())}
             />
-            <button className="btn-primary" type="submit" disabled={enviando || enviandoArquivo || !texto.trim() || (!selecionado && !numeroNovo.trim())}>
-              <Icon name="mail" size={16} />{enviando ? "Enviando..." : "Enviar"}
-            </button>
+            {gravando ? (
+              <div className="whatsapp-gravando">
+                <button type="button" className="btn-ghost" onClick={cancelarGravacao} title="Cancelar gravação">
+                  <Icon name="close" size={16} />
+                </button>
+                <span className="whatsapp-gravando-tempo"><span className="whatsapp-gravando-dot" />{formatarTempoGravacao(tempoGravacao)}</span>
+                <button type="button" className="btn-primary" onClick={pararEEnviarGravacao} title="Enviar áudio">
+                  <Icon name="mail" size={16} />
+                </button>
+              </div>
+            ) : texto.trim() ? (
+              <button className="btn-primary" type="submit" disabled={enviando || enviandoArquivo}>
+                <Icon name="mail" size={16} />{enviando ? "Enviando..." : "Enviar"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="whatsapp-mic-btn"
+                onClick={iniciarGravacao}
+                disabled={enviando || enviandoArquivo || (!selecionado && !numeroNovo.trim())}
+                title="Gravar áudio"
+              >
+                <Icon name="mic" size={18} />
+              </button>
+            )}
           </form>
         </section>
       </div>
