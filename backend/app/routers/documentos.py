@@ -25,13 +25,17 @@ from ..servicos.pdf_convert import docx_to_pdf
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 RECIPIENTS_HERINGER = [
-    "expedicao.candeias@heringer.com.br",
-    "faturamento.candeias@heringer.com.br",
+    # TESTE TEMPORARIO - reverter pros e-mails reais antes de usar em producao:
+    # "expedicao.candeias@heringer.com.br",
+    # "faturamento.candeias@heringer.com.br",
+    "davidfranca9@gmail.com",
 ]
 RECIPIENTS_FERTIMAX = [
-    "agendamento@fertimaxi.com.br",
-    "luan.santos@fertimaxi.com.br",
-    "paulo.moura@fertimaxi.com.br",
+    # TESTE TEMPORARIO - reverter pros e-mails reais antes de usar em producao:
+    # "agendamento@fertimaxi.com.br",
+    # "luan.santos@fertimaxi.com.br",
+    # "paulo.moura@fertimaxi.com.br",
+    "davidfranca9@gmail.com",
 ]
 
 DADOS_DIR = Path(__file__).resolve().parents[2] / "dados"
