@@ -64,10 +64,22 @@ def enviar_mensagem_texto(numero_destino: str, texto: str) -> None:
     _levantar_com_corpo(resposta)
 
 
+def tipo_mensagem_para_mime(mime_type: str) -> str:
+    """Mapeia o mime type do arquivo pro tipo de mensagem do WhatsApp
+    (image/video/audio tem preview nativo no chat; o resto vira documento)."""
+    if mime_type.startswith("image/"):
+        return "image"
+    if mime_type.startswith("video/"):
+        return "video"
+    if mime_type.startswith("audio/"):
+        return "audio"
+    return "document"
+
+
 def enviar_arquivo(numero_destino: str, conteudo: bytes, mime_type: str, nome_arquivo: str, legenda: str = "") -> None:
-    """Sobe o arquivo pra Meta e manda como mensagem de documento ou imagem,
-    dependendo do mime_type. Documentos preservam o nome do arquivo original;
-    imagens sao exibidas inline no chat."""
+    """Sobe o arquivo pra Meta e manda como mensagem de imagem/video/audio ou
+    documento, dependendo do mime_type. Documentos, imagens e videos aceitam
+    legenda; audio nao (a API da Meta rejeita caption em mensagens de audio)."""
     token = _token_ou_erro()
     phone_number_id = _phone_number_id_ou_erro()
 
@@ -81,22 +93,17 @@ def enviar_arquivo(numero_destino: str, conteudo: bytes, mime_type: str, nome_ar
     _levantar_com_corpo(upload)
     media_id = upload.json()["id"]
 
-    eh_imagem = mime_type.startswith("image/")
+    tipo_msg = tipo_mensagem_para_mime(mime_type)
     corpo_midia = {"id": media_id}
-    if legenda:
+    if legenda and tipo_msg != "audio":
         corpo_midia["caption"] = legenda
-    if not eh_imagem:
+    if tipo_msg == "document":
         corpo_midia["filename"] = nome_arquivo
 
     resposta = requests.post(
         f"{GRAPH_URL}/{phone_number_id}/messages",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json={
-            "messaging_product": "whatsapp",
-            "to": numero_destino,
-            "type": "image" if eh_imagem else "document",
-            ("image" if eh_imagem else "document"): corpo_midia,
-        },
+        json={"messaging_product": "whatsapp", "to": numero_destino, "type": tipo_msg, tipo_msg: corpo_midia},
         timeout=30,
     )
     _levantar_com_corpo(resposta)

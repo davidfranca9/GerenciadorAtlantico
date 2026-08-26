@@ -9,6 +9,16 @@ function formatarData(iso) {
   return data.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+const JANELA_24H_MS = 24 * 60 * 60 * 1000;
+
+function formatarRestante(ms) {
+  if (ms <= 0) return null;
+  const horas = Math.floor(ms / (60 * 60 * 1000));
+  const minutos = Math.floor((ms % (60 * 60 * 1000)) / 60000);
+  if (horas > 0) return `${horas}h ${minutos}min`;
+  return `${minutos}min`;
+}
+
 function formatarNumero(numero) {
   // Numeros do WhatsApp vem so com digitos (ex: 557192855288) - formata como +55 71 99999-9999 quando possivel.
   const digitos = String(numero || "").replace(/\D/g, "");
@@ -35,7 +45,32 @@ export default function WhatsAppPage() {
   const [editandoNome, setEditandoNome] = useState(false);
   const [nomeEditado, setNomeEditado] = useState("");
   const [salvandoNome, setSalvandoNome] = useState(false);
+  const [agora, setAgora] = useState(() => Date.now());
+  const [menuAnexoAberto, setMenuAnexoAberto] = useState(false);
   const threadRef = useRef(null);
+  const anexoBtnRef = useRef(null);
+  const inputDocumentoRef = useRef(null);
+  const inputMidiaRef = useRef(null);
+  const inputCameraRef = useRef(null);
+  const inputAudioRef = useRef(null);
+
+  useEffect(() => {
+    const intervalo = setInterval(() => setAgora(Date.now()), 30000);
+    return () => clearInterval(intervalo);
+  }, []);
+
+  useEffect(() => {
+    if (!menuAnexoAberto) return;
+    function fechar(e) {
+      if (!anexoBtnRef.current?.contains(e.target)) setMenuAnexoAberto(false);
+    }
+    document.addEventListener("mousedown", fechar);
+    return () => document.removeEventListener("mousedown", fechar);
+  }, [menuAnexoAberto]);
+
+  const ultimaEntrada = [...mensagens].reverse().find((m) => m.direcao === "entrada");
+  const prazoRestanteMs = ultimaEntrada ? new Date(ultimaEntrada.created_at).getTime() + JANELA_24H_MS - agora : null;
+  const restanteFormatado = prazoRestanteMs != null ? formatarRestante(prazoRestanteMs) : null;
 
   function nomeDoContato(numero) {
     return conversas.find((c) => c.numero === numero)?.nome || "";
@@ -128,6 +163,11 @@ export default function WhatsAppPage() {
     } finally {
       setEnviandoArquivo(false);
     }
+  }
+
+  function acionarInput(ref) {
+    setMenuAnexoAberto(false);
+    ref.current?.click();
   }
 
   async function handleEnviar(e) {
@@ -246,21 +286,52 @@ export default function WhatsAppPage() {
             </>
           )}
 
-          <div className="inline-alert warning whatsapp-janela-aviso">
-            <Icon name="shield" size={14} />
-            Só é possível mandar texto livre pra quem escreveu nas últimas 24h. Fora desse prazo, é preciso um modelo de mensagem aprovado pela Meta.
-          </div>
+          {selecionado && ultimaEntrada ? (
+            <div className={`inline-alert whatsapp-janela-aviso ${restanteFormatado ? "info" : "error"}`}>
+              <Icon name="shield" size={14} />
+              {restanteFormatado
+                ? <>Janela de resposta livre: <strong>{restanteFormatado}</strong> restantes desde a última mensagem do contato.</>
+                : "Janela de 24h expirada — só é possível responder com um modelo de mensagem aprovado pela Meta."}
+            </div>
+          ) : (
+            <div className="inline-alert warning whatsapp-janela-aviso">
+              <Icon name="shield" size={14} />
+              Só é possível mandar texto livre pra quem escreveu nas últimas 24h. Fora desse prazo, é preciso um modelo de mensagem aprovado pela Meta.
+            </div>
+          )}
 
           <form className="whatsapp-compose-bar" onSubmit={handleEnviar}>
-            <label className="whatsapp-anexo-btn" title="Anexar arquivo">
-              <Icon name="paperclip" size={18} />
-              <input
-                type="file"
-                onChange={handleAnexar}
+            <div className="whatsapp-anexo-wrap" ref={anexoBtnRef}>
+              <button
+                type="button"
+                className="whatsapp-anexo-btn"
+                title="Anexar arquivo"
+                onClick={() => setMenuAnexoAberto((v) => !v)}
                 disabled={enviandoArquivo || enviando || (!selecionado && !numeroNovo.trim())}
-                style={{ display: "none" }}
-              />
-            </label>
+              >
+                <Icon name="paperclip" size={18} />
+              </button>
+              {menuAnexoAberto && (
+                <div className="whatsapp-anexo-menu">
+                  <button type="button" onClick={() => acionarInput(inputDocumentoRef)}>
+                    <span className="whatsapp-anexo-icone doc"><Icon name="file" size={16} /></span>Documento
+                  </button>
+                  <button type="button" onClick={() => acionarInput(inputMidiaRef)}>
+                    <span className="whatsapp-anexo-icone midia"><Icon name="upload" size={16} /></span>Fotos e vídeos
+                  </button>
+                  <button type="button" onClick={() => acionarInput(inputCameraRef)}>
+                    <span className="whatsapp-anexo-icone cam"><Icon name="search" size={16} /></span>Câmera
+                  </button>
+                  <button type="button" onClick={() => acionarInput(inputAudioRef)}>
+                    <span className="whatsapp-anexo-icone audio"><Icon name="chat" size={16} /></span>Áudio
+                  </button>
+                </div>
+              )}
+              <input ref={inputDocumentoRef} type="file" onChange={handleAnexar} style={{ display: "none" }} />
+              <input ref={inputMidiaRef} type="file" accept="image/*,video/*" onChange={handleAnexar} style={{ display: "none" }} />
+              <input ref={inputCameraRef} type="file" accept="image/*" capture="environment" onChange={handleAnexar} style={{ display: "none" }} />
+              <input ref={inputAudioRef} type="file" accept="audio/*" onChange={handleAnexar} style={{ display: "none" }} />
+            </div>
             <input
               value={texto}
               onChange={(e) => setTexto(e.target.value)}

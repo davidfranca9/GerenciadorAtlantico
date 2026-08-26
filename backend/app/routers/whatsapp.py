@@ -202,7 +202,8 @@ async def receber_webhook(request: Request, background_tasks: BackgroundTasks):
                     if not numero:
                         continue
                     tipo_msg = msg.get("type")
-                    anexo = msg.get("document") or msg.get("image")
+                    anexo = msg.get("document") or msg.get("image") or msg.get("audio") or msg.get("video")
+                    tipo_pt = {"image": "imagem", "video": "video", "audio": "audio", "document": "documento"}.get(tipo_msg, tipo_msg)
 
                     if tipo_msg == "text":
                         _registrar_mensagem(db, numero, "entrada", "texto", msg.get("text", {}).get("body", ""))
@@ -211,12 +212,12 @@ async def receber_webhook(request: Request, background_tasks: BackgroundTasks):
                             db,
                             numero,
                             "entrada",
-                            "imagem" if tipo_msg == "image" else "documento",
+                            tipo_pt,
                             anexo.get("caption", ""),
                             nome_arquivo=anexo.get("filename", ""),
                         )
                     else:
-                        _registrar_mensagem(db, numero, "entrada", tipo_msg or "desconhecido")
+                        _registrar_mensagem(db, numero, "entrada", tipo_pt or "desconhecido")
 
                     if anexo and anexo.get("id"):
                         background_tasks.add_task(
@@ -336,19 +337,14 @@ async def enviar_arquivo_manual(
     conteudo = await arquivo.read()
     mime_type = arquivo.content_type or "application/octet-stream"
     nome_arquivo = arquivo.filename or "arquivo"
+    tipo_registrado = {"image": "imagem", "video": "video", "audio": "audio", "document": "documento"}[
+        whatsapp.tipo_mensagem_para_mime(mime_type)
+    ]
 
     try:
         await run_in_threadpool(whatsapp.enviar_arquivo, numero, conteudo, mime_type, nome_arquivo, legenda)
-        _registrar_mensagem(
-            db, numero, "saida",
-            "imagem" if mime_type.startswith("image/") else "documento",
-            legenda, nome_arquivo=nome_arquivo, status="enviada",
-        )
+        _registrar_mensagem(db, numero, "saida", tipo_registrado, legenda, nome_arquivo=nome_arquivo, status="enviada")
     except Exception as exc:
-        _registrar_mensagem(
-            db, numero, "saida",
-            "imagem" if mime_type.startswith("image/") else "documento",
-            legenda, nome_arquivo=nome_arquivo, status="erro",
-        )
+        _registrar_mensagem(db, numero, "saida", tipo_registrado, legenda, nome_arquivo=nome_arquivo, status="erro")
         raise HTTPException(status_code=502, detail=f"Falha ao enviar arquivo: {exc}")
     return {"ok": True}
