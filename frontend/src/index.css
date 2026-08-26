@@ -217,5 +217,8 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .whatsapp-gravando-tempo{display:flex;align-items:center;gap:7px;font:700 12.5px Manrope,sans-serif;color:var(--danger);min-width:44px}
 .whatsapp-gravando-dot{width:9px;height:9px;border-radius:50%;background:var(--danger);animation:whatsapp-rec-pulse 1s ease-in-out infinite}
 @keyframes whatsapp-rec-pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.whatsapp-bubble-audio{display:block;max-width:260px;width:100%;height:36px}
+.whatsapp-bubble-imagem{display:block;max-width:260px;max-height:260px;border-radius:8px;object-fit:cover;cursor:pointer}
+.whatsapp-bubble-video{display:block;max-width:260px;max-height:260px;border-radius:8px}
 .whatsapp-compose-novo{padding:0 20px}
 @media(max-width:900px){.whatsapp-layout{grid-template-columns:1fr;min-height:auto}.whatsapp-list{max-height:320px}.whatsapp-thread-body{min-height:320px}}

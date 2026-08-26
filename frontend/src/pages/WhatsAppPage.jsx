@@ -45,6 +45,55 @@ function formatarNumero(numero) {
   return `+${ddi} ${ddd} ${meio}-${fim}`;
 }
 
+function BolhaMidia({ mensagem }) {
+  const [url, setUrl] = useState(null);
+  const [erro, setErro] = useState(false);
+
+  useEffect(() => {
+    if (!mensagem.tem_midia) return;
+    let objectUrl = null;
+    let cancelado = false;
+    api
+      .buscarMidiaWhatsapp(mensagem.id)
+      .then((blob) => {
+        if (cancelado) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch(() => { if (!cancelado) setErro(true); });
+    return () => {
+      cancelado = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [mensagem.id, mensagem.tem_midia]);
+
+  const rotulo = mensagem.nome_arquivo || mensagem.tipo;
+
+  if (!mensagem.tem_midia) {
+    return <div className="whatsapp-bubble-anexo"><Icon name="file" size={13} />{rotulo}</div>;
+  }
+  if (erro) {
+    return <div className="whatsapp-bubble-anexo"><Icon name="file" size={13} />{rotulo} · falha ao carregar</div>;
+  }
+  if (!url) {
+    return <div className="whatsapp-bubble-anexo"><span className="status-dot" />Carregando {mensagem.tipo}...</div>;
+  }
+  if (mensagem.tipo === "audio") {
+    return <audio className="whatsapp-bubble-audio" controls src={url} />;
+  }
+  if (mensagem.tipo === "imagem") {
+    return <img className="whatsapp-bubble-imagem" src={url} alt={rotulo} />;
+  }
+  if (mensagem.tipo === "video") {
+    return <video className="whatsapp-bubble-video" controls src={url} />;
+  }
+  return (
+    <a className="whatsapp-bubble-anexo" href={url} download={rotulo}>
+      <Icon name="file" size={13} />{rotulo}
+    </a>
+  );
+}
+
 export default function WhatsAppPage() {
   const [conversas, setConversas] = useState([]);
   const [carregandoLista, setCarregandoLista] = useState(true);
@@ -368,9 +417,7 @@ export default function WhatsAppPage() {
               <div className="whatsapp-thread-body" ref={threadRef}>
                 {mensagens.map((m) => (
                   <div key={m.id} className={`whatsapp-bubble ${m.direcao}`}>
-                    {m.tipo !== "texto" && (
-                      <div className="whatsapp-bubble-anexo"><Icon name="file" size={13} />{m.nome_arquivo || m.tipo}</div>
-                    )}
+                    {m.tipo !== "texto" && <BolhaMidia mensagem={m} />}
                     {m.conteudo && <div>{m.conteudo}</div>}
                     <div className="whatsapp-bubble-meta">
                       {formatarData(m.created_at)}

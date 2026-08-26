@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Float, ForeignKey, Integer, String, DateTime, Boolean
+from sqlalchemy import Float, ForeignKey, Integer, LargeBinary, String, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -129,6 +129,8 @@ class WhatsAppMensagem(Base):
     tipo: Mapped[str] = mapped_column(String(20), default="texto")  # "texto" | "documento" | "imagem"
     conteudo: Mapped[str] = mapped_column(String(4000), default="")
     nome_arquivo: Mapped[str] = mapped_column(String(255), default="")
+    mime_type: Mapped[str] = mapped_column(String(100), default="")
+    midia: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="")  # "" | "erro" | "enviada"
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

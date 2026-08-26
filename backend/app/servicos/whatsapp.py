@@ -112,10 +112,14 @@ def _normalizar_audio(conteudo: bytes, mime_type: str) -> tuple[bytes, str]:
             return f.read(), "audio/ogg"
 
 
-def enviar_arquivo(numero_destino: str, conteudo: bytes, mime_type: str, nome_arquivo: str, legenda: str = "") -> None:
+def enviar_arquivo(numero_destino: str, conteudo: bytes, mime_type: str, nome_arquivo: str, legenda: str = "") -> tuple[bytes, str, str]:
     """Sobe o arquivo pra Meta e manda como mensagem de imagem/video/audio ou
     documento, dependendo do mime_type. Documentos, imagens e videos aceitam
-    legenda; audio nao (a API da Meta rejeita caption em mensagens de audio)."""
+    legenda; audio nao (a API da Meta rejeita caption em mensagens de audio).
+
+    Retorna (conteudo, mime_type, nome_arquivo) reais que foram enviados -
+    podem diferir dos recebidos quando o audio precisa ser convertido -, pra
+    quem chamou conseguir guardar exatamente o que foi mandado."""
     token = _token_ou_erro()
     phone_number_id = _phone_number_id_ou_erro()
 
@@ -148,3 +152,4 @@ def enviar_arquivo(numero_destino: str, conteudo: bytes, mime_type: str, nome_ar
         timeout=30,
     )
     _levantar_com_corpo(resposta)
+    return conteudo, mime_type, nome_arquivo

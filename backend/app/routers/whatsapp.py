@@ -24,7 +24,7 @@ import logging
 import os
 import tempfile
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
@@ -63,18 +63,23 @@ def _registrar_mensagem(
     conteudo: str = "",
     nome_arquivo: str = "",
     status: str = "",
-) -> None:
-    db.add(
-        WhatsAppMensagem(
-            numero=numero,
-            direcao=direcao,
-            tipo=tipo,
-            conteudo=conteudo[:4000],
-            nome_arquivo=nome_arquivo,
-            status=status,
-        )
+    mime_type: str = "",
+    midia: bytes | None = None,
+) -> WhatsAppMensagem:
+    mensagem = WhatsAppMensagem(
+        numero=numero,
+        direcao=direcao,
+        tipo=tipo,
+        conteudo=conteudo[:4000],
+        nome_arquivo=nome_arquivo,
+        mime_type=mime_type,
+        midia=midia,
+        status=status,
     )
+    db.add(mensagem)
     db.commit()
+    db.refresh(mensagem)
+    return mensagem
 
 
 def _enviar_e_registrar(db: Session, numero: str, texto: str) -> None:
@@ -109,12 +114,25 @@ def _assinatura_valida(corpo: bytes, assinatura_recebida: str) -> bool:
     return hmac.compare_digest(esperado, assinatura_recebida or "")
 
 
-def _processar_arquivo_recebido(numero_remetente: str, media_id: str, mime_type: str) -> None:
-    """Roda em background (fora do request do webhook): baixa o arquivo,
-    extrai os produtos e cria os Pedidos. Sempre responde ao remetente,
-    mesmo em caso de erro, pra ele saber que algo deu errado."""
+def _processar_arquivo_recebido(numero_remetente: str, mensagem_id: int, media_id: str, mime_type: str) -> None:
+    """Roda em background (fora do request do webhook): baixa o arquivo (pra
+    guardar e permitir tocar/ver depois na tela de conversas) e, se for PDF,
+    extrai os produtos e cria os Pedidos. Sempre responde ao remetente quando
+    o formato nao da pra processar como pedido, mesmo em caso de erro."""
     db = SessionLocal()
     try:
+        conteudo = None
+        try:
+            url = whatsapp.obter_url_midia(media_id)
+            conteudo = whatsapp.baixar_midia(url)
+            mensagem = db.get(WhatsAppMensagem, mensagem_id)
+            if mensagem:
+                mensagem.mime_type = mime_type
+                mensagem.midia = conteudo
+                db.commit()
+        except Exception:
+            logger.exception("Falha ao baixar midia recebida do WhatsApp")
+
         if mime_type != "application/pdf":
             try:
                 _enviar_e_registrar(db, numero_remetente, MENSAGEM_FORMATO_INVALIDO)
@@ -122,11 +140,15 @@ def _processar_arquivo_recebido(numero_remetente: str, media_id: str, mime_type:
                 logger.exception("Falha ao responder remetente sobre formato invalido")
             return
 
+        if conteudo is None:
+            try:
+                _enviar_e_registrar(db, numero_remetente, MENSAGEM_ERRO)
+            except Exception:
+                logger.exception("Falha ao responder remetente sobre erro de processamento")
+            return
+
         path = None
         try:
-            url = whatsapp.obter_url_midia(media_id)
-            conteudo = whatsapp.baixar_midia(url)
-
             suffix = _EXT_POR_MIME.get(mime_type, ".pdf")
             fd, path = tempfile.mkstemp(suffix=suffix)
             with os.fdopen(fd, "wb") as f:
@@ -161,10 +183,10 @@ def _processar_arquivo_recebido(numero_remetente: str, media_id: str, mime_type:
 
             if criados:
                 total_pedidos = len(contratos_criados)
-                mensagem = f"Pedido recebido! {criados} produto(s) de {total_pedidos} pedido(s) cadastrado(s) no sistema."
+                texto_confirmacao = f"Pedido recebido! {criados} produto(s) de {total_pedidos} pedido(s) cadastrado(s) no sistema."
             else:
-                mensagem = MENSAGEM_SEM_PRODUTOS
-            _enviar_e_registrar(db, numero_remetente, mensagem)
+                texto_confirmacao = MENSAGEM_SEM_PRODUTOS
+            _enviar_e_registrar(db, numero_remetente, texto_confirmacao)
         except Exception:
             logger.exception("Falha ao processar pedido recebido via WhatsApp")
             try:
@@ -208,7 +230,7 @@ async def receber_webhook(request: Request, background_tasks: BackgroundTasks):
                     if tipo_msg == "text":
                         _registrar_mensagem(db, numero, "entrada", "texto", msg.get("text", {}).get("body", ""))
                     elif anexo:
-                        _registrar_mensagem(
+                        mensagem_registrada = _registrar_mensagem(
                             db,
                             numero,
                             "entrada",
@@ -216,16 +238,16 @@ async def receber_webhook(request: Request, background_tasks: BackgroundTasks):
                             anexo.get("caption", ""),
                             nome_arquivo=anexo.get("filename", ""),
                         )
+                        if anexo.get("id"):
+                            background_tasks.add_task(
+                                _processar_arquivo_recebido,
+                                numero,
+                                mensagem_registrada.id,
+                                anexo["id"],
+                                anexo.get("mime_type", "application/pdf"),
+                            )
                     else:
                         _registrar_mensagem(db, numero, "entrada", tipo_pt or "desconhecido")
-
-                    if anexo and anexo.get("id"):
-                        background_tasks.add_task(
-                            _processar_arquivo_recebido,
-                            numero,
-                            anexo["id"],
-                            anexo.get("mime_type", "application/pdf"),
-                        )
     finally:
         db.close()
 
@@ -304,11 +326,21 @@ def listar_mensagens_da_conversa(numero: str, db: Session = Depends(get_db)):
             "tipo": m.tipo,
             "conteudo": m.conteudo,
             "nome_arquivo": m.nome_arquivo,
+            "mime_type": m.mime_type,
+            "tem_midia": m.midia is not None,
             "status": m.status,
             "created_at": m.created_at,
         }
         for m in mensagens
     ]
+
+
+@router.get("/mensagens/{mensagem_id}/midia", dependencies=[Depends(get_current_user)])
+def obter_midia_mensagem(mensagem_id: int, db: Session = Depends(get_db)):
+    mensagem = db.get(WhatsAppMensagem, mensagem_id)
+    if mensagem is None or not mensagem.midia:
+        raise HTTPException(status_code=404, detail="Midia nao encontrada")
+    return Response(content=mensagem.midia, media_type=mensagem.mime_type or "application/octet-stream")
 
 
 @router.post("/enviar", dependencies=[Depends(get_current_user)])
@@ -342,9 +374,17 @@ async def enviar_arquivo_manual(
     ]
 
     try:
-        await run_in_threadpool(whatsapp.enviar_arquivo, numero, conteudo, mime_type, nome_arquivo, legenda)
-        _registrar_mensagem(db, numero, "saida", tipo_registrado, legenda, nome_arquivo=nome_arquivo, status="enviada")
+        conteudo_enviado, mime_enviado, nome_enviado = await run_in_threadpool(
+            whatsapp.enviar_arquivo, numero, conteudo, mime_type, nome_arquivo, legenda
+        )
+        _registrar_mensagem(
+            db, numero, "saida", tipo_registrado, legenda,
+            nome_arquivo=nome_enviado, status="enviada", mime_type=mime_enviado, midia=conteudo_enviado,
+        )
     except Exception as exc:
-        _registrar_mensagem(db, numero, "saida", tipo_registrado, legenda, nome_arquivo=nome_arquivo, status="erro")
+        _registrar_mensagem(
+            db, numero, "saida", tipo_registrado, legenda,
+            nome_arquivo=nome_arquivo, status="erro", mime_type=mime_type, midia=conteudo,
+        )
         raise HTTPException(status_code=502, detail=f"Falha ao enviar arquivo: {exc}")
     return {"ok": True}

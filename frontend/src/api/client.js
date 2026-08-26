@@ -107,6 +107,15 @@ export function listarMensagensWhatsapp(numero) {
   return request(`/whatsapp/conversas/${encodeURIComponent(numero)}/mensagens`);
 }
 
+export async function buscarMidiaWhatsapp(mensagemId) {
+  const token = getToken();
+  const res = await fetch(`${API_URL}/whatsapp/mensagens/${mensagemId}/midia`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("Falha ao carregar mídia");
+  return res.blob();
+}
+
 export function salvarContatoWhatsapp(numero, nome) {
   return request("/whatsapp/contatos", { method: "POST", body: { numero, nome } });
 }
