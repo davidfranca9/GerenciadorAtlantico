@@ -20,9 +20,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agendamentos", tags=["agendamentos"], dependencies=[Depends(get_current_user)])
 
 RECIPIENTES_AUTORIZACAO_FERTIMAXI = [
-    "atlanticofertlog.comercial@gmail.com",
-    "luan.santos@fertimaxi.com.br",
-    "paulo.moura@fertimaxi.com.br",
+    # TESTE TEMPORARIO - reverter pros 3 e-mails reais antes de usar em producao:
+    # "atlanticofertlog.comercial@gmail.com",
+    # "luan.santos@fertimaxi.com.br",
+    # "paulo.moura@fertimaxi.com.br",
+    "davidfranca9@gmail.com",
 ]
 ASSINATURA_EMAIL_PATH = Path(__file__).resolve().parents[2] / "dados" / "assinatura_email.png"
 
