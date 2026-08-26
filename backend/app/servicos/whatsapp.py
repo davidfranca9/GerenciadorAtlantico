@@ -46,14 +46,57 @@ def baixar_midia(url: str) -> bytes:
     return resposta.content
 
 
-def enviar_mensagem_texto(numero_destino: str, texto: str) -> None:
-    token = _token_ou_erro()
+def _phone_number_id_ou_erro() -> str:
     if not settings.whatsapp_phone_number_id:
         raise WhatsAppIndisponivel("WHATSAPP_PHONE_NUMBER_ID nao configurado")
+    return settings.whatsapp_phone_number_id
+
+
+def enviar_mensagem_texto(numero_destino: str, texto: str) -> None:
+    token = _token_ou_erro()
+    phone_number_id = _phone_number_id_ou_erro()
     resposta = requests.post(
-        f"{GRAPH_URL}/{settings.whatsapp_phone_number_id}/messages",
+        f"{GRAPH_URL}/{phone_number_id}/messages",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         json={"messaging_product": "whatsapp", "to": numero_destino, "type": "text", "text": {"body": texto}},
+        timeout=30,
+    )
+    _levantar_com_corpo(resposta)
+
+
+def enviar_arquivo(numero_destino: str, conteudo: bytes, mime_type: str, nome_arquivo: str, legenda: str = "") -> None:
+    """Sobe o arquivo pra Meta e manda como mensagem de documento ou imagem,
+    dependendo do mime_type. Documentos preservam o nome do arquivo original;
+    imagens sao exibidas inline no chat."""
+    token = _token_ou_erro()
+    phone_number_id = _phone_number_id_ou_erro()
+
+    upload = requests.post(
+        f"{GRAPH_URL}/{phone_number_id}/media",
+        headers={"Authorization": f"Bearer {token}"},
+        data={"messaging_product": "whatsapp", "type": mime_type},
+        files={"file": (nome_arquivo, conteudo, mime_type)},
+        timeout=60,
+    )
+    _levantar_com_corpo(upload)
+    media_id = upload.json()["id"]
+
+    eh_imagem = mime_type.startswith("image/")
+    corpo_midia = {"id": media_id}
+    if legenda:
+        corpo_midia["caption"] = legenda
+    if not eh_imagem:
+        corpo_midia["filename"] = nome_arquivo
+
+    resposta = requests.post(
+        f"{GRAPH_URL}/{phone_number_id}/messages",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={
+            "messaging_product": "whatsapp",
+            "to": numero_destino,
+            "type": "image" if eh_imagem else "document",
+            ("image" if eh_imagem else "document"): corpo_midia,
+        },
         timeout=30,
     )
     _levantar_com_corpo(resposta)

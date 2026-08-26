@@ -24,7 +24,8 @@ import logging
 import os
 import tempfile
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy import func
@@ -318,4 +319,36 @@ def enviar_mensagem_manual(payload: EnviarMensagemIn, db: Session = Depends(get_
         _enviar_e_registrar(db, numero, payload.texto)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha ao enviar mensagem: {exc}")
+    return {"ok": True}
+
+
+@router.post("/enviar-arquivo", dependencies=[Depends(get_current_user)])
+async def enviar_arquivo_manual(
+    numero: str = Form(...),
+    legenda: str = Form(""),
+    arquivo: UploadFile = None,
+    db: Session = Depends(get_db),
+):
+    numero = numero.strip()
+    if not numero or arquivo is None:
+        raise HTTPException(status_code=400, detail="Informe o numero e o arquivo")
+
+    conteudo = await arquivo.read()
+    mime_type = arquivo.content_type or "application/octet-stream"
+    nome_arquivo = arquivo.filename or "arquivo"
+
+    try:
+        await run_in_threadpool(whatsapp.enviar_arquivo, numero, conteudo, mime_type, nome_arquivo, legenda)
+        _registrar_mensagem(
+            db, numero, "saida",
+            "imagem" if mime_type.startswith("image/") else "documento",
+            legenda, nome_arquivo=nome_arquivo, status="enviada",
+        )
+    except Exception as exc:
+        _registrar_mensagem(
+            db, numero, "saida",
+            "imagem" if mime_type.startswith("image/") else "documento",
+            legenda, nome_arquivo=nome_arquivo, status="erro",
+        )
+        raise HTTPException(status_code=502, detail=f"Falha ao enviar arquivo: {exc}")
     return {"ok": True}

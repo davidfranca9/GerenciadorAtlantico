@@ -30,6 +30,7 @@ export default function WhatsAppPage() {
   const [carregandoMensagens, setCarregandoMensagens] = useState(false);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [enviandoArquivo, setEnviandoArquivo] = useState(false);
   const [numeroNovo, setNumeroNovo] = useState("");
   const [editandoNome, setEditandoNome] = useState(false);
   const [nomeEditado, setNomeEditado] = useState("");
@@ -101,6 +102,31 @@ export default function WhatsAppPage() {
       setErro(err.message);
     } finally {
       setSalvandoNome(false);
+    }
+  }
+
+  async function handleAnexar(e) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = "";
+    if (!arquivo) return;
+    const numero = (selecionado || numeroNovo.replace(/\D/g, "")).trim();
+    if (!numero) { setErro("Informe um número antes de anexar um arquivo."); return; }
+    setEnviandoArquivo(true);
+    setErro("");
+    try {
+      await api.enviarArquivoWhatsapp(numero, arquivo, texto.trim());
+      setTexto("");
+      if (!selecionado) {
+        setNumeroNovo("");
+        setSelecionado(numero);
+      }
+      const data = await api.listarMensagensWhatsapp(numero);
+      setMensagens(data);
+      carregarConversas();
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setEnviandoArquivo(false);
     }
   }
 
@@ -226,13 +252,22 @@ export default function WhatsAppPage() {
           </div>
 
           <form className="whatsapp-compose-bar" onSubmit={handleEnviar}>
+            <label className="whatsapp-anexo-btn" title="Anexar arquivo">
+              <Icon name="paperclip" size={18} />
+              <input
+                type="file"
+                onChange={handleAnexar}
+                disabled={enviandoArquivo || enviando || (!selecionado && !numeroNovo.trim())}
+                style={{ display: "none" }}
+              />
+            </label>
             <input
               value={texto}
               onChange={(e) => setTexto(e.target.value)}
-              placeholder="Escreva uma mensagem..."
-              disabled={enviando || (!selecionado && !numeroNovo.trim())}
+              placeholder={enviandoArquivo ? "Enviando arquivo..." : "Escreva uma mensagem..."}
+              disabled={enviando || enviandoArquivo || (!selecionado && !numeroNovo.trim())}
             />
-            <button className="btn-primary" type="submit" disabled={enviando || !texto.trim() || (!selecionado && !numeroNovo.trim())}>
+            <button className="btn-primary" type="submit" disabled={enviando || enviandoArquivo || !texto.trim() || (!selecionado && !numeroNovo.trim())}>
               <Icon name="mail" size={16} />{enviando ? "Enviando..." : "Enviar"}
             </button>
           </form>

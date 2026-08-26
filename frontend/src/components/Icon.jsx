@@ -20,6 +20,7 @@ const paths = {
   trash: <><path d="M3 6h18M8 6V3h8v3M19 6l-1 15H6L5 6M10 11v5M14 11v5"/></>,
   search: <><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></>,
   chat: <><path d="M21 11.5a8.4 8.4 0 0 1-8.9 8.4 8.5 8.5 0 0 1-4-1L3 20l1.1-4.5A8.4 8.4 0 1 1 21 11.5z"/></>,
+  paperclip: <path d="M21.4 11.1 12.2 20.3a5 5 0 0 1-7.1-7.1l9.2-9.2a3.5 3.5 0 0 1 5 5l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>,
 };
 
 export default function Icon({ name, size = 18, className = "" }) {

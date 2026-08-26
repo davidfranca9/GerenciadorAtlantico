@@ -115,6 +115,24 @@ export function enviarMensagemWhatsapp(numero, texto) {
   return request("/whatsapp/enviar", { method: "POST", body: { numero, texto } });
 }
 
+export async function enviarArquivoWhatsapp(numero, arquivo, legenda) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("numero", numero);
+  formData.append("legenda", legenda || "");
+  formData.append("arquivo", arquivo);
+  const res = await fetch(`${API_URL}/whatsapp/enviar-arquivo`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || "Falha ao enviar arquivo");
+  }
+  return res.json();
+}
+
 export function listarPedidos(mostrarEsgotados = false) {
   return request(`/pedidos?mostrar_esgotados=${mostrarEsgotados}`);
 }

@@ -197,7 +197,9 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .whatsapp-bubble-meta{margin-top:4px;font-size:10px;color:var(--muted-soft);text-align:right}
 .whatsapp-bubble-erro{color:var(--danger);font-weight:700}
 .whatsapp-janela-aviso{margin:0}
-.whatsapp-compose-bar{display:flex;gap:10px}
+.whatsapp-compose-bar{display:flex;gap:10px;align-items:center}
 .whatsapp-compose-bar input{flex:1}
+.whatsapp-anexo-btn{width:42px;height:42px;flex-shrink:0;display:grid;place-items:center;background:var(--panel-soft);border:1px solid var(--border);border-radius:9px;color:var(--muted);cursor:pointer;transition:.16s}
+.whatsapp-anexo-btn:hover{border-color:var(--accent);color:var(--accent)}
 .whatsapp-compose-novo{padding:0 20px}
 @media(max-width:900px){.whatsapp-layout{grid-template-columns:1fr;min-height:auto}.whatsapp-list{max-height:320px}.whatsapp-thread-body{min-height:320px}}
