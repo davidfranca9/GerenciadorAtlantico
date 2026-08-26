@@ -176,6 +176,9 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .whatsapp-layout{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:stretch;height:calc(100vh - 220px)}
 .whatsapp-list{padding:0;display:flex;flex-direction:column;overflow:hidden}
 .whatsapp-list-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 20px;border-bottom:1px solid var(--panel-border)}
+.whatsapp-busca-wrap{position:relative;display:flex;align-items:center;margin:12px 16px 4px}
+.whatsapp-busca-wrap svg{position:absolute;left:12px;color:var(--muted-soft);pointer-events:none}
+.whatsapp-busca-wrap input{padding-left:34px;height:36px;font-size:12.5px}
 .whatsapp-conversas{list-style:none;margin:0;padding:0;overflow-y:auto;flex:1}
 .whatsapp-conversa{width:100%;text-align:left;display:flex;flex-direction:column;gap:5px;padding:13px 20px;background:transparent;border:0;border-bottom:1px solid var(--panel-border);cursor:pointer;transition:.15s}
 .whatsapp-conversa:hover{background:var(--panel-soft)}

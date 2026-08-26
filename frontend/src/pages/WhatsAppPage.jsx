@@ -162,6 +162,7 @@ export default function WhatsAppPage() {
   const [niveisOnda, setNiveisOnda] = useState(() => Array(9).fill(0.15));
   const [cameraAberta, setCameraAberta] = useState(false);
   const [fotoCapturada, setFotoCapturada] = useState(null);
+  const [busca, setBusca] = useState("");
   const threadRef = useRef(null);
   const anexoBtnRef = useRef(null);
   const inputDocumentoRef = useRef(null);
@@ -246,6 +247,16 @@ export default function WhatsAppPage() {
   const ultimaEntrada = [...mensagens].reverse().find((m) => m.direcao === "entrada");
   const prazoRestanteMs = ultimaEntrada ? paraDataUTC(ultimaEntrada.created_at).getTime() + JANELA_24H_MS - agora : null;
   const restanteFormatado = prazoRestanteMs != null ? formatarRestante(prazoRestanteMs) : null;
+
+  const buscaNormalizada = busca.trim().toLowerCase();
+  const buscaDigitos = busca.replace(/\D/g, "");
+  const conversasFiltradas = buscaNormalizada
+    ? conversas.filter((c) => {
+        if (c.nome && c.nome.toLowerCase().includes(buscaNormalizada)) return true;
+        if (buscaDigitos && c.numero.includes(buscaDigitos)) return true;
+        return false;
+      })
+    : conversas;
 
   function nomeDoContato(numero) {
     return conversas.find((c) => c.numero === numero)?.nome || "";
@@ -516,13 +527,21 @@ export default function WhatsAppPage() {
               <Icon name="mail" size={14} />Nova
             </button>
           </div>
+          {conversas.length > 0 && (
+            <div className="whatsapp-busca-wrap">
+              <Icon name="search" size={14} />
+              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar contato ou número" />
+            </div>
+          )}
           {carregandoLista ? (
             <div className="inline-alert info"><span className="status-dot" />Carregando...</div>
           ) : conversas.length === 0 ? (
             <div className="inline-alert warning">Nenhuma conversa ainda.</div>
+          ) : conversasFiltradas.length === 0 ? (
+            <div className="inline-alert warning">Nenhum contato encontrado.</div>
           ) : (
             <ul className="whatsapp-conversas">
-              {conversas.map((c) => (
+              {conversasFiltradas.map((c) => (
                 <li key={c.numero}>
                   <button className={`whatsapp-conversa ${selecionado === c.numero ? "active" : ""}`} onClick={() => abrirConversa(c.numero)}>
                     <div className="whatsapp-conversa-top">
