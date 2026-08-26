@@ -22,6 +22,7 @@ class UsuarioUpdateIn(BaseModel):
     name: str | None = None
     role: str | None = None
     is_active: bool | None = None
+    paginas_bloqueadas: str | None = None
 
 
 def _to_dict(u: User) -> dict:
@@ -31,6 +32,7 @@ def _to_dict(u: User) -> dict:
         "name": u.name,
         "role": u.role,
         "is_active": u.is_active,
+        "paginas_bloqueadas": u.paginas_bloqueadas,
         "created_at": u.created_at,
     }
 

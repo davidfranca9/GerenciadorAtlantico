@@ -103,9 +103,10 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .dashboard-header p{color:var(--muted);font-size:12.5px;margin:5px 0 0}
 .dashboard-week-card{padding:0;overflow:hidden}
 .dashboard-week-list{display:flex;flex-direction:column;margin:0 20px 18px}
-.dashboard-week-row{display:grid;grid-template-columns:130px minmax(0,1fr) 110px;align-items:center;gap:18px;padding:12px 0;border-bottom:1px solid var(--border-soft)}
-.dashboard-week-row:last-child{border-bottom:0}
-.dashboard-week-day{display:flex;flex-direction:column;gap:2px}
+.dashboard-week-row{width:100%;background:transparent;border:none;font:inherit;color:inherit;cursor:pointer;display:grid;grid-template-columns:130px minmax(0,1fr) 110px;align-items:center;gap:18px;padding:12px 0;border-bottom:1px solid var(--border-soft);transition:background .12s}
+.dashboard-week-row:hover,.dashboard-week-row.aberto{background:var(--panel-soft)}
+.dashboard-week-list>div:last-child .dashboard-week-row{border-bottom:0}
+.dashboard-week-day{display:flex;flex-direction:column;gap:2px;text-align:left}
 .dashboard-week-day strong{font-size:12.5px}
 .dashboard-week-day span{color:var(--muted);font-size:10.5px}
 .dashboard-week-bar-wrap{height:9px;border-radius:999px;background:var(--panel-soft);overflow:hidden}
@@ -113,6 +114,11 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .dashboard-week-values{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .dashboard-week-values strong{font:700 12.5px Manrope,sans-serif;color:var(--accent-glow)}
 .dashboard-week-values span{color:var(--muted-soft);font-size:10px}
+.dashboard-week-detalhe{display:flex;flex-direction:column;gap:6px;padding:2px 0 14px;border-bottom:1px solid var(--border-soft)}
+.dashboard-week-list>div:last-child .dashboard-week-detalhe{border-bottom:0}
+.dashboard-week-detalhe p{color:var(--muted);font-size:12px;margin:4px 0}
+.dashboard-week-item{display:grid;grid-template-columns:110px minmax(0,1fr) 70px 120px;gap:14px;align-items:center;font-size:12px;padding:6px 10px;background:var(--panel-soft);border-radius:8px}
+.dashboard-week-item-supplier{font-weight:700;color:var(--accent-glow)}
 
 .agenda-card{display:flex;flex-direction:column;gap:12px}
 .agenda-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}

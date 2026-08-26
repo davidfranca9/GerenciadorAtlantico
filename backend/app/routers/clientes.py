@@ -21,6 +21,7 @@ class ClienteIn(BaseModel):
     contato: str = ""
     email: str = ""
     telefone: str = ""
+    roteiro: str = ""
     observacoes: str = ""
 
 
@@ -34,6 +35,7 @@ def _to_dict(c: Cliente) -> dict:
         "contato": c.contato,
         "email": c.email,
         "telefone": c.telefone,
+        "roteiro": c.roteiro,
         "observacoes": c.observacoes,
         "created_at": c.created_at,
         "updated_at": c.updated_at,

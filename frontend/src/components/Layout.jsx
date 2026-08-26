@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import Icon from "./Icon";
 
-const NAV_SECTIONS = [
+export const NAV_SECTIONS = [
   { title: "Operação", items: [
     { to: "/dashboard", label: "Dashboard", icon: "chart", description: "Visão geral dos carregamentos da semana" },
     { to: "/pedidos", label: "Pedidos", icon: "route", description: "Pedidos disponíveis e saldo de toneladas" },
@@ -23,7 +23,8 @@ const NAV_SECTIONS = [
   ]},
   { title: "Cadastros", items: [{ to: "/clientes", label: "Clientes", icon: "users", description: "Base de clientes e contatos" }] },
 ];
-const ALL_ITEMS = NAV_SECTIONS.flatMap((section) => section.items).concat([
+export const PAGINAS_BLOQUEAVEIS = NAV_SECTIONS.flatMap((section) => section.items);
+const ALL_ITEMS = PAGINAS_BLOQUEAVEIS.concat([
   { to: "/admin", label: "Administração", icon: "settings", description: "Usuários e permissões do sistema" },
   { to: "/trocar-senha", label: "Segurança", icon: "key", description: "Atualize sua senha de acesso" },
 ]);
@@ -38,10 +39,20 @@ export default function Layout() {
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
-  const sections = user?.role === "admin" ? [...NAV_SECTIONS, { title: "Sistema", items: [ALL_ITEMS.find((item) => item.to === "/admin")] }] : NAV_SECTIONS;
+  const bloqueadas = user?.role === "admin" ? [] : (user?.paginas_bloqueadas || "").split(",").filter(Boolean);
+  const sections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => !bloqueadas.includes(item.to)),
+  })).filter((section) => section.items.length > 0);
+  const sectionsExibidas = user?.role === "admin" ? [...sections, { title: "Sistema", items: [ALL_ITEMS.find((item) => item.to === "/admin")] }] : sections;
   const current = ALL_ITEMS.find((item) => item.to === location.pathname) || ALL_ITEMS[1];
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
+
+  if (bloqueadas.includes(location.pathname)) {
+    const primeiroPermitido = sections.flatMap((s) => s.items)[0]?.to || "/trocar-senha";
+    return <Navigate to={primeiroPermitido} replace />;
+  }
 
   return (
     <div className="app-shell">
@@ -53,7 +64,7 @@ export default function Layout() {
           <button className="icon-btn sidebar-close" onClick={() => setMenuOpen(false)} aria-label="Fechar menu"><Icon name="close" /></button>
         </div>
         <div className="sidebar-nav">
-          {sections.map((section) => (
+          {sectionsExibidas.map((section) => (
             <section className="nav-section" key={section.title}>
               <div className="sidebar-caption">{section.title}</div>
               <nav>

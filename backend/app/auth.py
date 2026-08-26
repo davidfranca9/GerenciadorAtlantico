@@ -43,6 +43,7 @@ class UserOut(BaseModel):
     email: str
     name: str
     role: str
+    paginas_bloqueadas: str = ""
 
     class Config:
         from_attributes = True

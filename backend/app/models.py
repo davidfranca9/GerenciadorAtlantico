@@ -26,6 +26,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255), default="")
     role: Mapped[str] = mapped_column(String(20), default="user")  # "user" | "admin"
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    paginas_bloqueadas: Mapped[str] = mapped_column(String(1000), default="")  # rotas (ex: "/pedidos,/whatsapp") escondidas pro usuario
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -40,6 +41,7 @@ class Cliente(Base):
     contato: Mapped[str] = mapped_column(String(255), default="")
     email: Mapped[str] = mapped_column(String(255), default="")
     telefone: Mapped[str] = mapped_column(String(64), default="")
+    roteiro: Mapped[str] = mapped_column(String(2000), default="")
     observacoes: Mapped[str] = mapped_column(String(1000), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -58,6 +58,8 @@ def on_startup():
             conn.execute(text("ALTER TABLE cotacoes_frete ADD COLUMN IF NOT EXISTS fabrica VARCHAR(255) DEFAULT ''"))
             conn.execute(text("ALTER TABLE whatsapp_mensagens ADD COLUMN IF NOT EXISTS mime_type VARCHAR(100) DEFAULT ''"))
             conn.execute(text("ALTER TABLE whatsapp_mensagens ADD COLUMN IF NOT EXISTS midia BYTEA"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS paginas_bloqueadas VARCHAR(1000) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS roteiro VARCHAR(2000) DEFAULT ''"))
     except Exception:
         pass
 

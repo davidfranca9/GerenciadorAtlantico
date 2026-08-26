@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import * as api from "../api/client";
 import { formatPhone } from "../utils/format";
 
-const VAZIO = { nome: "", cnpj_cpf: "", cidade: "", uf: "", contato: "", email: "", telefone: "", observacoes: "" };
+const VAZIO = { nome: "", cnpj_cpf: "", cidade: "", uf: "", contato: "", email: "", telefone: "", roteiro: "", observacoes: "" };
 
 const CAPITAIS_POR_UF = {
   AC: "Rio Branco", AL: "Maceió", AP: "Macapá", AM: "Manaus", BA: "Salvador", CE: "Fortaleza",
@@ -82,6 +82,7 @@ export default function ClientesPage() {
       contato: cliente.contato,
       email: cliente.email,
       telefone: formatPhone(cliente.telefone),
+      roteiro: cliente.roteiro || "",
       observacoes: cliente.observacoes,
     });
   }
@@ -137,6 +138,10 @@ export default function ClientesPage() {
             <label>Contato Contratante</label>
             <input value={form.telefone} onChange={(e) => updateField("telefone", formatPhone(e.target.value))} placeholder="(00) 9 0000-0000" />
           </div>
+        </div>
+        <div className="field">
+          <label>Roteiro (endereço)</label>
+          <input value={form.roteiro} onChange={(e) => updateField("roteiro", e.target.value)} placeholder="Endereço completo / roteiro de entrega" />
         </div>
         <div className="field">
           <label>Observações</label>

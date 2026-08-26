@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as api from "../api/client";
 import Icon from "../components/Icon";
 
@@ -10,13 +10,25 @@ export default function DashboardPage() {
   const [resumo, setResumo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [agendamentos, setAgendamentos] = useState([]);
+  const [diaSelecionado, setDiaSelecionado] = useState(null);
 
   useEffect(() => {
     api.obterResumoDashboard()
       .then(setResumo)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+    api.listarAgendamentos().then(setAgendamentos).catch(() => {});
   }, []);
+
+  const agendamentosPorDia = useMemo(() => {
+    const mapa = {};
+    for (const a of agendamentos) {
+      if (!a.loading_date) continue;
+      (mapa[a.loading_date] ||= []).push(a);
+    }
+    return mapa;
+  }, [agendamentos]);
 
   if (loading) {
     return <div className="ops-page"><div className="inline-alert info"><span className="status-dot" />Carregando dashboard...</div></div>;
@@ -59,21 +71,47 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="dashboard-week-list">
-          {resumo.semana.dias.map((d) => (
-            <div className="dashboard-week-row" key={d.data}>
-              <div className="dashboard-week-day">
-                <strong>{d.dia}</strong>
-                <span>{d.data}</span>
+          {resumo.semana.dias.map((d) => {
+            const itensDoDia = agendamentosPorDia[d.data] || [];
+            const aberto = diaSelecionado === d.data;
+            return (
+              <div key={d.data}>
+                <button
+                  type="button"
+                  className={`dashboard-week-row ${aberto ? "aberto" : ""}`}
+                  onClick={() => setDiaSelecionado(aberto ? null : d.data)}
+                >
+                  <div className="dashboard-week-day">
+                    <strong>{d.dia}</strong>
+                    <span>{d.data}</span>
+                  </div>
+                  <div className="dashboard-week-bar-wrap">
+                    <div className="dashboard-week-bar" style={{ width: `${(d.toneladas / maiorDia) * 100}%` }} />
+                  </div>
+                  <div className="dashboard-week-values">
+                    <strong>{formatTon(d.toneladas)} t</strong>
+                    <span>{d.agendamentos} agend.</span>
+                  </div>
+                </button>
+                {aberto && (
+                  <div className="dashboard-week-detalhe">
+                    {itensDoDia.length === 0 ? (
+                      <p>Nenhum agendamento nesse dia.</p>
+                    ) : (
+                      itensDoDia.map((a) => (
+                        <div className="dashboard-week-item" key={a.id}>
+                          <span className="dashboard-week-item-supplier">{a.supplier || "-"}</span>
+                          <span>{a.driver_name || "Motorista não definido"}</span>
+                          <span>{formatTon(a.total_tons)} t</span>
+                          <span>{a.status}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="dashboard-week-bar-wrap">
-                <div className="dashboard-week-bar" style={{ width: `${(d.toneladas / maiorDia) * 100}%` }} />
-              </div>
-              <div className="dashboard-week-values">
-                <strong>{formatTon(d.toneladas)} t</strong>
-                <span>{d.agendamentos} agend.</span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
     </div>
