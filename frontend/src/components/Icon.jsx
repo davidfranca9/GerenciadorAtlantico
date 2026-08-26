@@ -25,6 +25,7 @@ const paths = {
   mic: <><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M9 22h6"/></>,
   play: <path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/>,
   pause: <><rect x="7" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/></>,
+  refresh: <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/>,
 };
 
 export default function Icon({ name, size = 18, className = "" }) {

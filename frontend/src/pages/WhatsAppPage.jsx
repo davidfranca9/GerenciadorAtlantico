@@ -160,11 +160,12 @@ export default function WhatsAppPage() {
   const [gravando, setGravando] = useState(false);
   const [tempoGravacao, setTempoGravacao] = useState(0);
   const [niveisOnda, setNiveisOnda] = useState(() => Array(9).fill(0.15));
+  const [cameraAberta, setCameraAberta] = useState(false);
+  const [fotoCapturada, setFotoCapturada] = useState(null);
   const threadRef = useRef(null);
   const anexoBtnRef = useRef(null);
   const inputDocumentoRef = useRef(null);
   const inputMidiaRef = useRef(null);
-  const inputCameraRef = useRef(null);
   const inputAudioRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksGravacaoRef = useRef([]);
@@ -173,6 +174,8 @@ export default function WhatsAppPage() {
   const audioCtxRef = useRef(null);
   const analiserRef = useRef(null);
   const ondaRafRef = useRef(null);
+  const videoRef = useRef(null);
+  const cameraStreamRef = useRef(null);
 
   function pararVisualizadorOnda() {
     if (ondaRafRef.current) cancelAnimationFrame(ondaRafRef.current);
@@ -216,8 +219,15 @@ export default function WhatsAppPage() {
       clearInterval(timerGravacaoRef.current);
       pararVisualizadorOnda();
       streamGravacaoRef.current?.getTracks().forEach((t) => t.stop());
+      cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
+
+  useEffect(() => {
+    if (cameraAberta && videoRef.current && cameraStreamRef.current) {
+      videoRef.current.srcObject = cameraStreamRef.current;
+    }
+  }, [cameraAberta]);
 
   useEffect(() => {
     const intervalo = setInterval(() => setAgora(Date.now()), 30000);
@@ -333,6 +343,71 @@ export default function WhatsAppPage() {
   function acionarInput(ref) {
     setMenuAnexoAberto(false);
     ref.current?.click();
+  }
+
+  async function abrirCamera() {
+    const numero = (selecionado || numeroNovo.replace(/\D/g, "")).trim();
+    if (!numero) { setErro("Informe um número antes de usar a câmera."); return; }
+    setMenuAnexoAberto(false);
+    setErro("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      cameraStreamRef.current = stream;
+      setFotoCapturada(null);
+      setCameraAberta(true);
+    } catch (err) {
+      setErro(`Não foi possível acessar a câmera: ${err.message}`);
+    }
+  }
+
+  function fecharCamera() {
+    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+    cameraStreamRef.current = null;
+    if (fotoCapturada?.url) URL.revokeObjectURL(fotoCapturada.url);
+    setFotoCapturada(null);
+    setCameraAberta(false);
+  }
+
+  function tirarFoto() {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      setFotoCapturada({ blob, url: URL.createObjectURL(blob) });
+    }, "image/jpeg", 0.92);
+  }
+
+  function refazerFoto() {
+    if (fotoCapturada?.url) URL.revokeObjectURL(fotoCapturada.url);
+    setFotoCapturada(null);
+  }
+
+  async function enviarFoto() {
+    if (!fotoCapturada) return;
+    const numero = (selecionado || numeroNovo.replace(/\D/g, "")).trim();
+    if (!numero) return;
+    const arquivo = new File([fotoCapturada.blob], `foto-${Date.now()}.jpg`, { type: "image/jpeg" });
+    setEnviandoArquivo(true);
+    setErro("");
+    try {
+      await api.enviarArquivoWhatsapp(numero, arquivo, "");
+      if (!selecionado) {
+        setNumeroNovo("");
+        setSelecionado(numero);
+      }
+      const data = await api.listarMensagensWhatsapp(numero);
+      setMensagens(data);
+      carregarConversas();
+      fecharCamera();
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setEnviandoArquivo(false);
+    }
   }
 
   function melhorMimeAudio() {
@@ -554,7 +629,7 @@ export default function WhatsAppPage() {
                   <button type="button" onClick={() => acionarInput(inputMidiaRef)}>
                     <span className="whatsapp-anexo-icone midia"><Icon name="upload" size={16} /></span>Fotos e vídeos
                   </button>
-                  <button type="button" onClick={() => acionarInput(inputCameraRef)}>
+                  <button type="button" onClick={abrirCamera}>
                     <span className="whatsapp-anexo-icone cam"><Icon name="camera" size={16} /></span>Câmera
                   </button>
                   <button type="button" onClick={() => acionarInput(inputAudioRef)}>
@@ -564,7 +639,6 @@ export default function WhatsAppPage() {
               )}
               <input ref={inputDocumentoRef} type="file" onChange={handleAnexar} style={{ display: "none" }} />
               <input ref={inputMidiaRef} type="file" accept="image/*,video/*" onChange={handleAnexar} style={{ display: "none" }} />
-              <input ref={inputCameraRef} type="file" accept="image/*" capture="environment" onChange={handleAnexar} style={{ display: "none" }} />
               <input ref={inputAudioRef} type="file" accept="audio/*" onChange={handleAnexar} style={{ display: "none" }} />
             </div>
             <input
@@ -607,6 +681,35 @@ export default function WhatsAppPage() {
           </form>
         </section>
       </div>
+
+      {cameraAberta && (
+        <div className="whatsapp-camera-overlay">
+          <button type="button" className="whatsapp-camera-close" onClick={fecharCamera} title="Fechar">
+            <Icon name="close" size={20} />
+          </button>
+          <div className="whatsapp-camera-box">
+            {fotoCapturada ? (
+              <img src={fotoCapturada.url} alt="Foto capturada" />
+            ) : (
+              <video ref={videoRef} autoPlay playsInline muted />
+            )}
+          </div>
+          <div className="whatsapp-camera-controls">
+            {fotoCapturada ? (
+              <>
+                <button type="button" className="whatsapp-camera-btn" onClick={refazerFoto} disabled={enviandoArquivo}>
+                  <Icon name="refresh" size={16} />Tirar outra
+                </button>
+                <button type="button" className="whatsapp-camera-btn enviar" onClick={enviarFoto} disabled={enviandoArquivo}>
+                  <Icon name="mail" size={16} />{enviandoArquivo ? "Enviando..." : "Enviar"}
+                </button>
+              </>
+            ) : (
+              <button type="button" className="whatsapp-camera-shutter" onClick={tirarFoto} title="Tirar foto" />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
