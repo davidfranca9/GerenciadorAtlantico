@@ -24,17 +24,25 @@ def _token_ou_erro() -> str:
     return settings.whatsapp_access_token
 
 
+def _levantar_com_corpo(resposta: requests.Response) -> None:
+    """Igual resposta.raise_for_status(), mas inclui o corpo da resposta (onde
+    a Graph API da Meta manda a mensagem de erro detalhada) na excecao."""
+    if resposta.ok:
+        return
+    raise requests.HTTPError(f"{resposta.status_code} {resposta.reason} - corpo: {resposta.text[:500]}", response=resposta)
+
+
 def obter_url_midia(media_id: str) -> str:
     token = _token_ou_erro()
     resposta = requests.get(f"{GRAPH_URL}/{media_id}", headers={"Authorization": f"Bearer {token}"}, timeout=30)
-    resposta.raise_for_status()
+    _levantar_com_corpo(resposta)
     return resposta.json()["url"]
 
 
 def baixar_midia(url: str) -> bytes:
     token = _token_ou_erro()
     resposta = requests.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=60)
-    resposta.raise_for_status()
+    _levantar_com_corpo(resposta)
     return resposta.content
 
 
@@ -48,4 +56,4 @@ def enviar_mensagem_texto(numero_destino: str, texto: str) -> None:
         json={"messaging_product": "whatsapp", "to": numero_destino, "type": "text", "text": {"body": texto}},
         timeout=30,
     )
-    resposta.raise_for_status()
+    _levantar_com_corpo(resposta)
