@@ -7,11 +7,20 @@ Meta for Developers, dentro do app do WhatsApp Business).
 """
 from __future__ import annotations
 
+import os
+import subprocess
+import tempfile
+
 import requests
 
 from ..config import settings
 
 GRAPH_URL = "https://graph.facebook.com/v21.0"
+
+# Tipos de audio que a Graph API aceita no upload de midia (correspondencia
+# exata, sem parametros extra tipo ";codecs=opus"). Navegadores gravam em
+# webm/opus (MediaRecorder), que nao esta nessa lista.
+_TIPOS_AUDIO_ACEITOS = {"audio/aac", "audio/mp4", "audio/mpeg", "audio/amr", "audio/ogg", "audio/opus"}
 
 
 class WhatsAppIndisponivel(Exception):
@@ -76,12 +85,44 @@ def tipo_mensagem_para_mime(mime_type: str) -> str:
     return "document"
 
 
+def _mime_sem_parametros(mime_type: str) -> str:
+    return mime_type.split(";", 1)[0].strip().lower()
+
+
+def _normalizar_audio(conteudo: bytes, mime_type: str) -> tuple[bytes, str]:
+    """Converte o audio pra ogg/opus (formato oficial de nota de voz do
+    WhatsApp) quando o mime_type recebido nao esta na lista aceita pela Graph
+    API - caso do webm/opus que os navegadores gravam via MediaRecorder, ou
+    de arquivos soltos (wav, etc) escolhidos manualmente."""
+    base = _mime_sem_parametros(mime_type)
+    if base in _TIPOS_AUDIO_ACEITOS:
+        return conteudo, base
+    with tempfile.TemporaryDirectory() as tmp:
+        entrada = os.path.join(tmp, "entrada")
+        saida = os.path.join(tmp, "saida.ogg")
+        with open(entrada, "wb") as f:
+            f.write(conteudo)
+        resultado = subprocess.run(
+            ["ffmpeg", "-y", "-i", entrada, "-vn", "-c:a", "libopus", "-b:a", "32k", "-ar", "48000", "-ac", "1", saida],
+            capture_output=True,
+        )
+        if resultado.returncode != 0:
+            raise WhatsAppIndisponivel(f"Falha ao converter audio: {resultado.stderr.decode(errors='ignore')[:300]}")
+        with open(saida, "rb") as f:
+            return f.read(), "audio/ogg"
+
+
 def enviar_arquivo(numero_destino: str, conteudo: bytes, mime_type: str, nome_arquivo: str, legenda: str = "") -> None:
     """Sobe o arquivo pra Meta e manda como mensagem de imagem/video/audio ou
     documento, dependendo do mime_type. Documentos, imagens e videos aceitam
     legenda; audio nao (a API da Meta rejeita caption em mensagens de audio)."""
     token = _token_ou_erro()
     phone_number_id = _phone_number_id_ou_erro()
+
+    if tipo_mensagem_para_mime(mime_type) == "audio":
+        conteudo, mime_type = _normalizar_audio(conteudo, mime_type)
+        if mime_type == "audio/ogg" and not nome_arquivo.lower().endswith(".ogg"):
+            nome_arquivo = f"{os.path.splitext(nome_arquivo)[0]}.ogg"
 
     upload = requests.post(
         f"{GRAPH_URL}/{phone_number_id}/media",
