@@ -98,7 +98,16 @@ def _normalizar_audio(conteudo: bytes) -> bytes:
         with open(entrada, "wb") as f:
             f.write(conteudo)
         resultado = subprocess.run(
-            ["ffmpeg", "-y", "-i", entrada, "-vn", "-c:a", "libopus", "-b:a", "32k", "-ar", "48000", "-ac", "1", saida],
+            [
+                "ffmpeg", "-y", "-loglevel", "warning",
+                "-err_detect", "ignore_err", "-fflags", "+discardcorrupt",
+                "-i", entrada,
+                "-vn", "-ar", "16000", "-ac", "1",
+                "-c:a", "libopus", "-b:a", "32k", "-compression_level", "10",
+                "-frame_duration", "60", "-application", "voip", "-packet_loss", "0",
+                "-avoid_negative_ts", "make_zero", "-map_metadata", "-1",
+                "-f", "ogg", saida,
+            ],
             capture_output=True,
         )
         if resultado.returncode != 0:
