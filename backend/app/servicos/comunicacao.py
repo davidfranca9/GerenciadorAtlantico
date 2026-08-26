@@ -1,6 +1,7 @@
 """Envio de e-mail (Gmail SMTP). Portado de servicos/comunicacao.py sem tkinter."""
 from __future__ import annotations
 
+import html
 import mimetypes
 import os
 import smtplib
@@ -9,8 +10,35 @@ from email.mime.base import MIMEBase
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
 
 from ..config import settings
+
+ASSINATURA_EMAIL_PATH = Path(__file__).resolve().parents[2] / "dados" / "assinatura_email.png"
+
+
+def imagem_assinatura_inline() -> dict[str, str]:
+    """Referencie no HTML do corpo via <img src="cid:assinatura_fertlog">."""
+    return {"assinatura_fertlog": str(ASSINATURA_EMAIL_PATH)}
+
+
+def montar_autorizacao_agendamento(cliente: str, pedido: str, data_carregamento: str) -> tuple[str, str]:
+    """Monta (assunto, corpo_html) do pedido de autorizacao de agendamento
+    pra fornecedores tipo Fertimaxi - usado tanto no "Novo Agendamento"
+    rapido quanto no fluxo de Ordem de Coleta, pra manter o mesmo texto nos
+    dois lugares onde esse e-mail e disparado."""
+    partes_data = (data_carregamento or "").split("/")
+    data_formatada = f"{partes_data[0]}.{partes_data[1]}" if len(partes_data) == 3 else ""
+    prazo = f"para dia {data_formatada} ou para o próximo dia disponível" if data_formatada else "para o próximo dia disponível"
+
+    titulo = f"AUTORIZAÇÃO AGENDAMENTO: {cliente} - Nº {pedido}"
+    corpo = f"""
+        <p>Prezados,</p>
+        <p>Solicitamos, por gentileza, o agendamento do pedido {html.escape(prazo)}.</p>
+        <p>Ficamos no aguardo da confirmação do agendamento.</p>
+        <img src="cid:assinatura_fertlog" alt="Atlântico Fertlog" style="max-width:420px;margin-top:18px">
+    """
+    return titulo, corpo
 
 
 def send_email_message(

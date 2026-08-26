@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem, Pedido
-from ..servicos.comunicacao import send_email_message
+from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
 from ..servicos.documentos import fill_carta_frete_docx, gerar_autorizacao_xlsx
 from ..servicos.oc_html import gerar_oc_pdf_html
 from ..servicos.pdf_convert import docx_to_pdf
@@ -269,24 +269,42 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
     if arquivos["xlsx"]:
         anexos.append(arquivos["xlsx"])
 
-    subject = f"Autorizacao de {payload.nome.strip()} - Placa {payload.placa1.strip() or 'N/A'}"
-    detail_blocks = []
-    if payload.roteiro.strip():
-        detail_blocks.append(f"<p><b>Roteiro:</b><br>{html.escape(payload.roteiro).replace(chr(10), '<br>')}</p>")
-    if payload.contato_cliente.strip():
-        detail_blocks.append(f"<p><b>Contato do Cliente:</b> {html.escape(payload.contato_cliente)}</p>")
-    body = f"""
-    <html><body>
-    <p>Favor agendar motorista para {html.escape(payload.data_carregamento)}.</p>
-    {''.join(detail_blocks)}
-    <p>Atenciosamente,<br><b>Setor - Expedicao</b><br>ATLANTICO FERTLOG SERVICOS &amp; TRANSPORTES</p>
-    </body></html>
-    """
-
-    try:
-        send_email_message(recipients, subject, body, anexos)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
+    if supplier_label == "Fertimaxi":
+        # Mesmo modelo (cliente + pedido + assinatura) usado no "Novo
+        # Agendamento" rapido - um e-mail por pedido/cliente distinto,
+        # com a O.C. (e a autorizacao, se houver) anexadas.
+        vistos: set[tuple[str, str]] = set()
+        assuntos_enviados: list[str] = []
+        for produto in payload.produtos:
+            cliente, pedido = produto.cliente.strip(), produto.contrato.strip()
+            if not cliente or not pedido or (cliente, pedido) in vistos:
+                continue
+            vistos.add((cliente, pedido))
+            titulo, corpo = montar_autorizacao_agendamento(cliente, pedido, payload.data_carregamento)
+            try:
+                send_email_message(recipients, titulo, corpo, anexos, imagens_inline=imagem_assinatura_inline())
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
+            assuntos_enviados.append(titulo)
+        subject = "; ".join(assuntos_enviados) or f"Autorizacao de {payload.nome.strip()}"
+    else:
+        subject = f"Autorizacao de {payload.nome.strip()} - Placa {payload.placa1.strip() or 'N/A'}"
+        detail_blocks = []
+        if payload.roteiro.strip():
+            detail_blocks.append(f"<p><b>Roteiro:</b><br>{html.escape(payload.roteiro).replace(chr(10), '<br>')}</p>")
+        if payload.contato_cliente.strip():
+            detail_blocks.append(f"<p><b>Contato do Cliente:</b> {html.escape(payload.contato_cliente)}</p>")
+        body = f"""
+        <html><body>
+        <p>Favor agendar motorista para {html.escape(payload.data_carregamento)}.</p>
+        {''.join(detail_blocks)}
+        <p>Atenciosamente,<br><b>Setor - Expedicao</b><br>ATLANTICO FERTLOG SERVICOS &amp; TRANSPORTES</p>
+        </body></html>
+        """
+        try:
+            send_email_message(recipients, subject, body, anexos)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
 
     produtos_dict = [p.model_dump() for p in payload.produtos]
     agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, arquivos)
