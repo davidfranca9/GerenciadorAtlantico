@@ -26,6 +26,7 @@ const paths = {
   play: <path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/>,
   pause: <><rect x="7" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/></>,
   refresh: <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/>,
+  send: <path d="M3 20l18-8L3 4v6l12 2-12 2z" fill="currentColor" stroke="none"/>,
 };
 
 export default function Icon({ name, size = 18, className = "" }) {

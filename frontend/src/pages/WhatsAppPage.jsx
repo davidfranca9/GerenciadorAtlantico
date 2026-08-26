@@ -679,12 +679,12 @@ export default function WhatsAppPage() {
                 </span>
                 <span className="whatsapp-gravando-tempo">{formatarTempoGravacao(tempoGravacao)}</span>
                 <button type="button" className="btn-primary" onClick={pararEEnviarGravacao} title="Enviar áudio">
-                  <Icon name="mail" size={16} />
+                  <Icon name="send" size={16} />
                 </button>
               </div>
             ) : texto.trim() ? (
               <button className="btn-primary" type="submit" disabled={enviando || enviandoArquivo}>
-                <Icon name="mail" size={16} />{enviando ? "Enviando..." : "Enviar"}
+                <Icon name="send" size={16} />{enviando ? "Enviando..." : "Enviar"}
               </button>
             ) : (
               <button
@@ -720,7 +720,7 @@ export default function WhatsAppPage() {
                   <Icon name="refresh" size={16} />Tirar outra
                 </button>
                 <button type="button" className="whatsapp-camera-btn enviar" onClick={enviarFoto} disabled={enviandoArquivo}>
-                  <Icon name="mail" size={16} />{enviandoArquivo ? "Enviando..." : "Enviar"}
+                  <Icon name="send" size={16} />{enviandoArquivo ? "Enviando..." : "Enviar"}
                 </button>
               </>
             ) : (
