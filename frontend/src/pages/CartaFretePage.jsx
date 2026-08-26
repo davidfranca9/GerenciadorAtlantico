@@ -49,16 +49,6 @@ export default function CartaFretePage() {
     carregarEnviadas();
   }, []);
 
-  async function handleExcluir(c) {
-    if (!window.confirm(`Excluir o registro de "${c.condutor}" (${c.data})? Essa ação não pode ser desfeita.`)) return;
-    try {
-      await api.excluirCartaFrete(c.id);
-      setEnviadas((prev) => prev.filter((x) => x.id !== c.id));
-    } catch (err) {
-      setStatus(`Erro: ${err.message}`);
-    }
-  }
-
   async function handleEnviar() {
     setStatus("");
     setLoading(true);
@@ -129,7 +119,6 @@ export default function CartaFretePage() {
                 <th>Nº Autorização</th>
                 <th>Enviado em</th>
                 <th>Status</th>
-                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -142,7 +131,6 @@ export default function CartaFretePage() {
                   <td>{c.autorizacao_num}</td>
                   <td>{formatarEnvio(c.created_at)}</td>
                   <td>{c.status === "erro" ? <span style={{ color: "var(--danger)" }}>Falhou</span> : "Enviada"}</td>
-                  <td><button className="btn-ghost" onClick={() => handleExcluir(c)}>Excluir</button></td>
                 </tr>
               ))}
             </tbody>
