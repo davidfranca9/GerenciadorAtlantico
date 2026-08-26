@@ -45,6 +45,53 @@ function formatarNumero(numero) {
   return `+${ddi} ${ddd} ${meio}-${fim}`;
 }
 
+function PlayerAudio({ url }) {
+  const audioRef = useRef(null);
+  const [tocando, setTocando] = useState(false);
+  const [duracao, setDuracao] = useState(0);
+  const [atual, setAtual] = useState(0);
+
+  function alternar() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) audio.play();
+    else audio.pause();
+  }
+
+  function buscar(e) {
+    const audio = audioRef.current;
+    if (!audio || !duracao) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const proporcao = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    audio.currentTime = proporcao * duracao;
+  }
+
+  const progresso = duracao ? (atual / duracao) * 100 : 0;
+
+  return (
+    <div className="whatsapp-audio-player">
+      <audio
+        ref={audioRef}
+        src={url}
+        preload="metadata"
+        style={{ display: "none" }}
+        onPlay={() => setTocando(true)}
+        onPause={() => setTocando(false)}
+        onEnded={() => setTocando(false)}
+        onLoadedMetadata={(e) => setDuracao(e.currentTarget.duration || 0)}
+        onTimeUpdate={(e) => setAtual(e.currentTarget.currentTime || 0)}
+      />
+      <button type="button" className="whatsapp-audio-play" onClick={alternar}>
+        <Icon name={tocando ? "pause" : "play"} size={13} />
+      </button>
+      <div className="whatsapp-audio-barra" onClick={buscar}>
+        <div className="whatsapp-audio-progresso" style={{ width: `${progresso}%` }} />
+      </div>
+      <span className="whatsapp-audio-tempo">{formatarTempoGravacao(Math.round(atual > 0 ? atual : duracao))}</span>
+    </div>
+  );
+}
+
 function BolhaMidia({ mensagem }) {
   const [url, setUrl] = useState(null);
   const [erro, setErro] = useState(false);
@@ -79,7 +126,7 @@ function BolhaMidia({ mensagem }) {
     return <div className="whatsapp-bubble-anexo"><span className="status-dot" />Carregando {mensagem.tipo}...</div>;
   }
   if (mensagem.tipo === "audio") {
-    return <audio className="whatsapp-bubble-audio" controls src={url} />;
+    return <PlayerAudio url={url} />;
   }
   if (mensagem.tipo === "imagem") {
     return <img className="whatsapp-bubble-imagem" src={url} alt={rotulo} />;
@@ -112,6 +159,7 @@ export default function WhatsAppPage() {
   const [menuAnexoAberto, setMenuAnexoAberto] = useState(false);
   const [gravando, setGravando] = useState(false);
   const [tempoGravacao, setTempoGravacao] = useState(0);
+  const [niveisOnda, setNiveisOnda] = useState(() => Array(9).fill(0.15));
   const threadRef = useRef(null);
   const anexoBtnRef = useRef(null);
   const inputDocumentoRef = useRef(null);
@@ -122,10 +170,51 @@ export default function WhatsAppPage() {
   const chunksGravacaoRef = useRef([]);
   const streamGravacaoRef = useRef(null);
   const timerGravacaoRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const analiserRef = useRef(null);
+  const ondaRafRef = useRef(null);
+
+  function pararVisualizadorOnda() {
+    if (ondaRafRef.current) cancelAnimationFrame(ondaRafRef.current);
+    ondaRafRef.current = null;
+    analiserRef.current = null;
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+    setNiveisOnda(Array(9).fill(0.15));
+  }
+
+  function iniciarVisualizadorOnda(stream) {
+    const AudioContextCls = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCls) return;
+    const audioCtx = new AudioContextCls();
+    const origem = audioCtx.createMediaStreamSource(stream);
+    const analiser = audioCtx.createAnalyser();
+    analiser.fftSize = 256;
+    origem.connect(analiser);
+    audioCtxRef.current = audioCtx;
+    analiserRef.current = analiser;
+    const dados = new Uint8Array(analiser.frequencyBinCount);
+    function passo() {
+      analiser.getByteTimeDomainData(dados);
+      let soma = 0;
+      for (let i = 0; i < dados.length; i++) {
+        const v = (dados[i] - 128) / 128;
+        soma += v * v;
+      }
+      const rms = Math.sqrt(soma / dados.length);
+      const nivel = Math.max(0.15, Math.min(1, rms * 4.5));
+      setNiveisOnda((atual) => [...atual.slice(1), nivel]);
+      ondaRafRef.current = requestAnimationFrame(passo);
+    }
+    passo();
+  }
 
   useEffect(() => {
     return () => {
       clearInterval(timerGravacaoRef.current);
+      pararVisualizadorOnda();
       streamGravacaoRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
@@ -268,6 +357,7 @@ export default function WhatsAppPage() {
       setGravando(true);
       setTempoGravacao(0);
       timerGravacaoRef.current = setInterval(() => setTempoGravacao((t) => t + 1), 1000);
+      iniciarVisualizadorOnda(stream);
     } catch (err) {
       setErro(`Não foi possível acessar o microfone: ${err.message}`);
     }
@@ -277,6 +367,7 @@ export default function WhatsAppPage() {
     mediaRecorderRef.current?.stop();
     streamGravacaoRef.current?.getTracks().forEach((t) => t.stop());
     clearInterval(timerGravacaoRef.current);
+    pararVisualizadorOnda();
     setGravando(false);
   }
 
@@ -285,6 +376,7 @@ export default function WhatsAppPage() {
     mediaRecorderRef.current?.stop();
     streamGravacaoRef.current?.getTracks().forEach((t) => t.stop());
     clearInterval(timerGravacaoRef.current);
+    pararVisualizadorOnda();
     setGravando(false);
     setTempoGravacao(0);
     chunksGravacaoRef.current = [];
@@ -486,7 +578,13 @@ export default function WhatsAppPage() {
                 <button type="button" className="btn-ghost" onClick={cancelarGravacao} title="Cancelar gravação">
                   <Icon name="close" size={16} />
                 </button>
-                <span className="whatsapp-gravando-tempo"><span className="whatsapp-gravando-dot" />{formatarTempoGravacao(tempoGravacao)}</span>
+                <Icon name="mic" size={15} className="whatsapp-gravando-mic" />
+                <span className="whatsapp-gravando-onda" aria-hidden="true">
+                  {niveisOnda.map((nivel, i) => (
+                    <span key={i} style={{ transform: `scaleY(${nivel})` }} />
+                  ))}
+                </span>
+                <span className="whatsapp-gravando-tempo">{formatarTempoGravacao(tempoGravacao)}</span>
                 <button type="button" className="btn-primary" onClick={pararEEnviarGravacao} title="Enviar áudio">
                   <Icon name="mail" size={16} />
                 </button>
