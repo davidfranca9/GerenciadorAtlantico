@@ -17,10 +17,11 @@ from ..config import settings
 
 GRAPH_URL = "https://graph.facebook.com/v21.0"
 
-# Tipos de audio que a Graph API aceita no upload de midia (correspondencia
-# exata, sem parametros extra tipo ";codecs=opus"). Navegadores gravam em
-# webm/opus (MediaRecorder), que nao esta nessa lista.
-_TIPOS_AUDIO_ACEITOS = {"audio/aac", "audio/mp4", "audio/mpeg", "audio/amr", "audio/ogg", "audio/opus"}
+# Mime type exato que a Meta espera pra nota de voz: ogg com codec Opus,
+# unico canal (mono). Sem o ";codecs=opus" a mensagem chega a ser enviada
+# (a API aceita o upload), mas o audio fica indisponivel no celular do
+# destinatario ("este audio nao esta mais disponivel").
+_MIME_AUDIO_WHATSAPP = "audio/ogg; codecs=opus"
 
 
 class WhatsAppIndisponivel(Exception):
@@ -85,18 +86,12 @@ def tipo_mensagem_para_mime(mime_type: str) -> str:
     return "document"
 
 
-def _mime_sem_parametros(mime_type: str) -> str:
-    return mime_type.split(";", 1)[0].strip().lower()
-
-
-def _normalizar_audio(conteudo: bytes, mime_type: str) -> tuple[bytes, str]:
-    """Converte o audio pra ogg/opus (formato oficial de nota de voz do
-    WhatsApp) quando o mime_type recebido nao esta na lista aceita pela Graph
-    API - caso do webm/opus que os navegadores gravam via MediaRecorder, ou
-    de arquivos soltos (wav, etc) escolhidos manualmente."""
-    base = _mime_sem_parametros(mime_type)
-    if base in _TIPOS_AUDIO_ACEITOS:
-        return conteudo, base
+def _normalizar_audio(conteudo: bytes) -> bytes:
+    """Sempre reencoda o audio pra ogg/opus mono (formato exato que o
+    WhatsApp exige pra nota de voz) via ffmpeg, seja audio gravado no
+    navegador (webm/opus) ou arquivo solto escolhido manualmente (mp3, wav,
+    etc) - garante que bate certinho com o que a Meta espera, em vez de
+    confiar que o mime type recebido ja esta no formato certo."""
     with tempfile.TemporaryDirectory() as tmp:
         entrada = os.path.join(tmp, "entrada")
         saida = os.path.join(tmp, "saida.ogg")
@@ -109,7 +104,7 @@ def _normalizar_audio(conteudo: bytes, mime_type: str) -> tuple[bytes, str]:
         if resultado.returncode != 0:
             raise WhatsAppIndisponivel(f"Falha ao converter audio: {resultado.stderr.decode(errors='ignore')[:300]}")
         with open(saida, "rb") as f:
-            return f.read(), "audio/ogg"
+            return f.read()
 
 
 def enviar_arquivo(numero_destino: str, conteudo: bytes, mime_type: str, nome_arquivo: str, legenda: str = "") -> tuple[bytes, str, str]:
@@ -124,8 +119,9 @@ def enviar_arquivo(numero_destino: str, conteudo: bytes, mime_type: str, nome_ar
     phone_number_id = _phone_number_id_ou_erro()
 
     if tipo_mensagem_para_mime(mime_type) == "audio":
-        conteudo, mime_type = _normalizar_audio(conteudo, mime_type)
-        if mime_type == "audio/ogg" and not nome_arquivo.lower().endswith(".ogg"):
+        conteudo = _normalizar_audio(conteudo)
+        mime_type = _MIME_AUDIO_WHATSAPP
+        if not nome_arquivo.lower().endswith(".ogg"):
             nome_arquivo = f"{os.path.splitext(nome_arquivo)[0]}.ogg"
 
     upload = requests.post(
@@ -140,7 +136,9 @@ def enviar_arquivo(numero_destino: str, conteudo: bytes, mime_type: str, nome_ar
 
     tipo_msg = tipo_mensagem_para_mime(mime_type)
     corpo_midia = {"id": media_id}
-    if legenda and tipo_msg != "audio":
+    if tipo_msg == "audio":
+        corpo_midia["voice"] = True
+    elif legenda:
         corpo_midia["caption"] = legenda
     if tipo_msg == "document":
         corpo_midia["filename"] = nome_arquivo
