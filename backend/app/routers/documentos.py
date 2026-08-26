@@ -266,14 +266,12 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
 
     tmp_dir = tempfile.mkdtemp()
     arquivos = _gerar_oc_arquivos(payload, tmp_dir)
-    anexos = [arquivos["pdf"]]
-    if arquivos["xlsx"]:
-        anexos.append(arquivos["xlsx"])
 
     if supplier_label == "Fertimaxi":
         # Mesmo modelo (cliente + pedido + assinatura) usado no "Novo
-        # Agendamento" rapido - um e-mail por pedido/cliente distinto,
-        # com a O.C. (e a autorizacao, se houver) anexadas.
+        # Agendamento" rapido - um e-mail por pedido/cliente distinto, com
+        # a Autorizacao de Coleta (planilha) anexada, nao a O.C. em si.
+        anexos = [arquivos["xlsx"]] if arquivos["xlsx"] else []
         vistos: set[tuple[str, str]] = set()
         assuntos_enviados: list[str] = []
         for produto in payload.produtos:
@@ -289,6 +287,9 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
             assuntos_enviados.append(titulo)
         subject = "; ".join(assuntos_enviados) or f"Autorizacao de {payload.nome.strip()}"
     else:
+        anexos = [arquivos["pdf"]]
+        if arquivos["xlsx"]:
+            anexos.append(arquivos["xlsx"])
         subject = f"Autorizacao de {payload.nome.strip()} - Placa {payload.placa1.strip() or 'N/A'}"
         detail_blocks = []
         if payload.roteiro.strip():

@@ -31,9 +31,9 @@ def _eh_fertimaxi(supplier: str) -> bool:
 
 
 def _gerar_anexos_oc(agendamento: Agendamento) -> list[str]:
-    """Gera a O.C. em PDF (e a Autorizacao de Coleta em xlsx, quando nao for
-    Heringer) do agendamento, pra anexar no e-mail - mesmo documento que sai
-    quando a O.C. e emitida pela tela de Ordem de Coleta."""
+    """Gera a Autorizacao de Coleta (planilha) do agendamento, pra anexar no
+    e-mail - so a autorizacao, nao a O.C. em si (que tem seu proprio botao
+    de download na tela de Ordem de Coleta)."""
     template = "HERINGER" if agendamento.supplier.strip().lower() == "heringer" else "AFL"
     payload = OrdemColetaRequest(
         template=template,
@@ -60,21 +60,18 @@ def _gerar_anexos_oc(agendamento: Agendamento) -> list[str]:
         observacoes=agendamento.observacoes,
     )
     arquivos = _gerar_oc_arquivos(payload, tempfile.mkdtemp())
-    anexos = [arquivos["pdf"]]
-    if arquivos.get("xlsx"):
-        anexos.append(arquivos["xlsx"])
-    return anexos
+    return [arquivos["xlsx"]] if arquivos.get("xlsx") else []
 
 
 def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento) -> None:
     """Pra cada pedido/cliente distinto do agendamento, manda um e-mail pra
-    Fertimaxi solicitando a autorizacao de agendamento, com a O.C. anexada.
-    Falha no envio nao derruba a criacao do agendamento - so fica
-    registrada no log."""
+    Fertimaxi solicitando a autorizacao de agendamento, com a Autorizacao
+    de Coleta (planilha) anexada. Falha no envio nao derruba a criacao do
+    agendamento - so fica registrada no log."""
     try:
         anexos = _gerar_anexos_oc(agendamento)
     except Exception:
-        logger.exception("Falha ao gerar anexos da O.C. pro e-mail de autorizacao - enviando sem anexo")
+        logger.exception("Falha ao gerar a Autorizacao de Coleta pro e-mail de autorizacao - enviando sem anexo")
         anexos = []
 
     vistos: set[tuple[str, str]] = set()
