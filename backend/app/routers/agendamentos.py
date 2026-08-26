@@ -20,11 +20,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agendamentos", tags=["agendamentos"], dependencies=[Depends(get_current_user)])
 
 RECIPIENTES_AUTORIZACAO_FERTIMAXI = [
-    # TESTE TEMPORARIO - reverter pros 3 e-mails reais antes de usar em producao:
-    # "atlanticofertlog.comercial@gmail.com",
-    # "luan.santos@fertimaxi.com.br",
-    # "paulo.moura@fertimaxi.com.br",
-    "davidfranca9@gmail.com",
+    "atlanticofertlog.comercial@gmail.com",
+    "luan.santos@fertimaxi.com.br",
+    "paulo.moura@fertimaxi.com.br",
 ]
 ASSINATURA_EMAIL_PATH = Path(__file__).resolve().parents[2] / "dados" / "assinatura_email.png"
 
@@ -52,7 +50,6 @@ def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento) -> None
 
         titulo = f"AUTORIZAÇÃO AGENDAMENTO: {cliente} - Nº {pedido}"
         corpo = f"""
-            <p><b>{html.escape(titulo)}</b></p>
             <p>Prezados,</p>
             <p>Solicitamos, por gentileza, o agendamento do pedido {html.escape(prazo)}.</p>
             <p>Ficamos no aguardo da confirmação do agendamento.</p>
@@ -65,11 +62,8 @@ def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento) -> None
                 corpo,
                 imagens_inline={"assinatura_fertlog": str(ASSINATURA_EMAIL_PATH)},
             )
-        except Exception as exc:
+        except Exception:
             logger.exception("Falha ao enviar e-mail de autorizacao de agendamento pra Fertimaxi (pedido %s)", pedido)
-            # TESTE TEMPORARIO: propaga o erro real pra aparecer na tela, em vez
-            # de so logar. Reverter pra "continue" silencioso depois do teste.
-            raise HTTPException(status_code=502, detail=f"[TESTE] Falha ao enviar e-mail: {exc!r}") from exc
 
 
 class AgendamentoItemIn(BaseModel):
