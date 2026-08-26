@@ -65,8 +65,11 @@ def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento) -> None
                 corpo,
                 imagens_inline={"assinatura_fertlog": str(ASSINATURA_EMAIL_PATH)},
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("Falha ao enviar e-mail de autorizacao de agendamento pra Fertimaxi (pedido %s)", pedido)
+            # TESTE TEMPORARIO: propaga o erro real pra aparecer na tela, em vez
+            # de so logar. Reverter pra "continue" silencioso depois do teste.
+            raise HTTPException(status_code=502, detail=f"[TESTE] Falha ao enviar e-mail: {exc!r}") from exc
 
 
 class AgendamentoItemIn(BaseModel):
