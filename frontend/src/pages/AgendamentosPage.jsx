@@ -349,7 +349,12 @@ export default function AgendamentosPage() {
           <div className="field-grid">
             <div className="field">
               <label>Fornecedor</label>
-              <input value={supplier} onChange={(e) => setSupplier(e.target.value)} required />
+              <select value={supplier} onChange={(e) => setSupplier(e.target.value)} required>
+                <option value="">Selecione</option>
+                {Object.values(SUPPLIER_LABEL).map((label) => (
+                  <option key={label} value={label}>{label}</option>
+                ))}
+              </select>
             </div>
             <DateField label="Data de Carregamento" value={loadingDate} onChange={setLoadingDate} />
             <div className="field">
