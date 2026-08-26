@@ -18,7 +18,6 @@ import json
 import logging
 import os
 import tempfile
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
@@ -31,22 +30,6 @@ from ..servicos import ocr, whatsapp
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/whatsapp", tags=["whatsapp"])
-
-# Estado de diagnostico temporario - guarda o ultimo request recebido pra
-# facilitar debug sem precisar caçar isso na tela da Meta. Remover depois
-# que o fluxo estiver validado em producao.
-_debug_estado: dict = {"eventos": []}
-
-
-def _debug_registrar(evento: dict) -> None:
-    evento["em"] = datetime.now(timezone.utc).isoformat()
-    _debug_estado["eventos"].append(evento)
-    _debug_estado["eventos"] = _debug_estado["eventos"][-10:]
-
-
-@router.get("/debug")
-def debug_webhook():
-    return _debug_estado
 
 _EXT_POR_MIME = {
     "application/pdf": ".pdf",
@@ -135,15 +118,12 @@ def _processar_arquivo_recebido(numero_remetente: str, media_id: str, mime_type:
             else MENSAGEM_SEM_PRODUTOS
         )
         whatsapp.enviar_mensagem_texto(numero_remetente, mensagem)
-        _debug_registrar({"etapa": "processado", "produtos_encontrados": len(produtos), "pedidos_criados": criados})
-    except Exception as exc:
+    except Exception:
         logger.exception("Falha ao processar pedido recebido via WhatsApp")
-        _debug_registrar({"etapa": "erro_processamento", "erro": repr(exc)})
         try:
             whatsapp.enviar_mensagem_texto(numero_remetente, MENSAGEM_ERRO)
-        except Exception as exc2:
+        except Exception:
             logger.exception("Falha ao responder remetente sobre erro de processamento")
-            _debug_registrar({"etapa": "erro_ao_responder", "erro": repr(exc2)})
     finally:
         db.close()
         if path:
@@ -156,37 +136,20 @@ def _processar_arquivo_recebido(numero_remetente: str, media_id: str, mime_type:
 @router.post("/webhook")
 async def receber_webhook(request: Request, background_tasks: BackgroundTasks):
     corpo = await request.body()
-    assinatura_header = request.headers.get("X-Hub-Signature-256", "")
-    valida = _assinatura_valida(corpo, assinatura_header)
-    _debug_registrar({
-        "etapa": "post_recebido",
-        "tamanho_corpo": len(corpo),
-        "tem_header_assinatura": bool(assinatura_header),
-        "assinatura_valida": valida,
-        "app_secret_configurado": bool(settings.whatsapp_app_secret),
-    })
-    if not valida:
+    if not _assinatura_valida(corpo, request.headers.get("X-Hub-Signature-256", "")):
         raise HTTPException(status_code=403, detail="Assinatura invalida")
 
     try:
         payload = json.loads(corpo)
     except ValueError:
-        _debug_registrar({"etapa": "json_invalido"})
         return {"status": "ok"}
 
-    mensagens_vistas = []
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
             valor = change.get("value", {})
             for msg in valor.get("messages") or []:
                 numero = msg.get("from")
                 anexo = msg.get("document") or msg.get("image")
-                mensagens_vistas.append({
-                    "tipo": msg.get("type"),
-                    "tem_anexo": bool(anexo),
-                    "mime": (anexo or {}).get("mime_type"),
-                    "numero": numero,
-                })
                 if not (numero and anexo and anexo.get("id")):
                     continue
                 background_tasks.add_task(
@@ -195,8 +158,6 @@ async def receber_webhook(request: Request, background_tasks: BackgroundTasks):
                     anexo["id"],
                     anexo.get("mime_type", "application/pdf"),
                 )
-
-    _debug_registrar({"etapa": "mensagens_processadas", "mensagens": mensagens_vistas})
 
     # Responde 200 rapido - a Meta reenvia o webhook se demorar ou falhar.
     return {"status": "ok"}
