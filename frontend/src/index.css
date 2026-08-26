@@ -173,7 +173,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 @media(max-width:900px){.inbox-layout{grid-template-columns:1fr;min-height:auto}.inbox-list{max-height:340px}.inbox-detail-body{min-height:420px}}
 
 .whatsapp-page{height:100%}
-.whatsapp-layout{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:stretch;min-height:calc(100vh - 220px)}
+.whatsapp-layout{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:stretch;height:calc(100vh - 220px)}
 .whatsapp-list{padding:0;display:flex;flex-direction:column;overflow:hidden}
 .whatsapp-list-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 20px;border-bottom:1px solid var(--panel-border)}
 .whatsapp-conversas{list-style:none;margin:0;padding:0;overflow-y:auto;flex:1}
@@ -228,4 +228,4 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .whatsapp-audio-progresso{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:var(--accent)}
 .whatsapp-audio-tempo{font:600 10.5px Manrope,sans-serif;color:var(--muted);min-width:30px;text-align:right}
 .whatsapp-compose-novo{padding:0 20px}
-@media(max-width:900px){.whatsapp-layout{grid-template-columns:1fr;min-height:auto}.whatsapp-list{max-height:320px}.whatsapp-thread-body{min-height:320px}}
+@media(max-width:900px){.whatsapp-layout{grid-template-columns:1fr;height:auto}.whatsapp-list{max-height:320px}.whatsapp-thread-body{min-height:320px}}
