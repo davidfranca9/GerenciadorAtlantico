@@ -93,13 +93,15 @@ def _processar_arquivo_recebido(numero_remetente: str, media_id: str, mime_type:
         produtos = resultado.get("produtos") or []
 
         criados = 0
+        contratos_criados: set[str] = set()
         for item in produtos:
             toneladas = float(item.get("toneladas") or 0)
             if toneladas <= 0:
                 continue
+            contrato = str(item.get("contrato") or "")
             db.add(
                 Pedido(
-                    contrato=str(item.get("contrato") or ""),
+                    contrato=contrato,
                     produto=str(item.get("produto") or ""),
                     embalagem=str(item.get("embalagem") or ""),
                     cidade=str(item.get("cidade") or ""),
@@ -110,13 +112,16 @@ def _processar_arquivo_recebido(numero_remetente: str, media_id: str, mime_type:
                 )
             )
             criados += 1
+            contratos_criados.add(contrato or f"__sem-numero-{criados}")
         db.commit()
 
-        mensagem = (
-            f"Pedido recebido! {criados} produto(s) cadastrado(s) no sistema."
-            if criados
-            else MENSAGEM_SEM_PRODUTOS
-        )
+        if criados:
+            total_pedidos = len(contratos_criados)
+            mensagem = (
+                f"Pedido recebido! {criados} produto(s) de {total_pedidos} pedido(s) cadastrado(s) no sistema."
+            )
+        else:
+            mensagem = MENSAGEM_SEM_PRODUTOS
         whatsapp.enviar_mensagem_texto(numero_remetente, mensagem)
     except Exception:
         logger.exception("Falha ao processar pedido recebido via WhatsApp")
