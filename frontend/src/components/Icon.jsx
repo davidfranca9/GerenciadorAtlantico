@@ -19,6 +19,7 @@ const paths = {
   mail: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></>,
   trash: <><path d="M3 6h18M8 6V3h8v3M19 6l-1 15H6L5 6M10 11v5M14 11v5"/></>,
   search: <><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></>,
+  chat: <><path d="M21 11.5a8.4 8.4 0 0 1-8.9 8.4 8.5 8.5 0 0 1-4-1L3 20l1.1-4.5A8.4 8.4 0 1 1 21 11.5z"/></>,
 };
 
 export default function Icon({ name, size = 18, className = "" }) {

@@ -171,3 +171,33 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .inbox-detail-attachments{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
 .inbox-detail-body{flex:1;width:100%;border:0;border-radius:10px;background:#fff;min-height:300px}
 @media(max-width:900px){.inbox-layout{grid-template-columns:1fr;min-height:auto}.inbox-list{max-height:340px}.inbox-detail-body{min-height:420px}}
+
+.whatsapp-page{height:100%}
+.whatsapp-layout{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:stretch;min-height:calc(100vh - 220px)}
+.whatsapp-list{padding:0;display:flex;flex-direction:column;overflow:hidden}
+.whatsapp-list-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 20px;border-bottom:1px solid var(--panel-border)}
+.whatsapp-conversas{list-style:none;margin:0;padding:0;overflow-y:auto;flex:1}
+.whatsapp-conversa{width:100%;text-align:left;display:flex;flex-direction:column;gap:5px;padding:13px 20px;background:transparent;border:0;border-bottom:1px solid var(--panel-border);cursor:pointer;transition:.15s}
+.whatsapp-conversa:hover{background:var(--panel-soft)}
+.whatsapp-conversa.active{background:var(--row-selected)}
+.whatsapp-conversa-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;color:var(--muted)}
+.whatsapp-conversa-top strong{color:var(--text);font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.whatsapp-conversa-top span{font-size:11px;flex-shrink:0}
+.whatsapp-conversa-preview{display:flex;align-items:center;gap:4px;font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.whatsapp-thread{display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.whatsapp-thread-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--border-soft)}
+.whatsapp-thread-header strong{font:700 15px Manrope,sans-serif}
+.whatsapp-thread-numero{display:block;color:var(--muted-soft);font-size:11px;margin-top:2px}
+.whatsapp-nome-form{display:flex;gap:8px;flex:1}
+.whatsapp-nome-form input{height:36px}
+.whatsapp-thread-body{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 4px 0}
+.whatsapp-bubble{max-width:72%;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.4;background:var(--panel-soft);align-self:flex-start;border-bottom-left-radius:3px}
+.whatsapp-bubble.saida{align-self:flex-end;background:var(--row-selected);border-bottom-left-radius:12px;border-bottom-right-radius:3px}
+.whatsapp-bubble-anexo{display:flex;align-items:center;gap:6px;color:var(--accent);font-weight:600;margin-bottom:3px}
+.whatsapp-bubble-meta{margin-top:4px;font-size:10px;color:var(--muted-soft);text-align:right}
+.whatsapp-bubble-erro{color:var(--danger);font-weight:700}
+.whatsapp-janela-aviso{margin:0}
+.whatsapp-compose-bar{display:flex;gap:10px}
+.whatsapp-compose-bar input{flex:1}
+.whatsapp-compose-novo{padding:0 20px}
+@media(max-width:900px){.whatsapp-layout{grid-template-columns:1fr;min-height:auto}.whatsapp-list{max-height:320px}.whatsapp-thread-body{min-height:320px}}

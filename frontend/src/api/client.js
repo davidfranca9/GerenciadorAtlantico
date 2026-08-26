@@ -99,6 +99,22 @@ export function obterResumoDashboard() {
   return request("/dashboard/resumo");
 }
 
+export function listarConversasWhatsapp() {
+  return request("/whatsapp/conversas");
+}
+
+export function listarMensagensWhatsapp(numero) {
+  return request(`/whatsapp/conversas/${encodeURIComponent(numero)}/mensagens`);
+}
+
+export function salvarContatoWhatsapp(numero, nome) {
+  return request("/whatsapp/contatos", { method: "POST", body: { numero, nome } });
+}
+
+export function enviarMensagemWhatsapp(numero, texto) {
+  return request("/whatsapp/enviar", { method: "POST", body: { numero, texto } });
+}
+
 export function listarPedidos(mostrarEsgotados = false) {
   return request(`/pedidos?mostrar_esgotados=${mostrarEsgotados}`);
 }

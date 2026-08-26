@@ -14,7 +14,10 @@ const NAV_SECTIONS = [
     { to: "/analise-fretes", label: "Análise de fretes", icon: "chart", description: "Histórico e comparação de valores" },
   ]},
   { title: "Financeiro", items: [{ to: "/carta-frete", label: "Carta frete", icon: "wallet", description: "Geração de autorizações financeiras" }] },
-  { title: "Comunicação", items: [{ to: "/emails", label: "E-mails", icon: "mail", description: "Caixa de entrada do Gmail" }] },
+  { title: "Comunicação", items: [
+    { to: "/emails", label: "E-mails", icon: "mail", description: "Caixa de entrada do Gmail" },
+    { to: "/whatsapp", label: "WhatsApp", icon: "chat", description: "Conversas e pedidos recebidos pelo WhatsApp" },
+  ]},
   { title: "Integrações", items: [
     { to: "/bsoft", label: "Bsoft TMS", icon: "truck", description: "Cadastro de motoristas e veículos" },
   ]},

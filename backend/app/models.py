@@ -120,6 +120,29 @@ class Pedido(Base):
     toneladas_usadas: Mapped[float] = mapped_column(Float, default=0)
 
 
+class WhatsAppMensagem(Base):
+    __tablename__ = "whatsapp_mensagens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    numero: Mapped[str] = mapped_column(String(32), index=True)
+    direcao: Mapped[str] = mapped_column(String(10))  # "entrada" | "saida"
+    tipo: Mapped[str] = mapped_column(String(20), default="texto")  # "texto" | "documento" | "imagem"
+    conteudo: Mapped[str] = mapped_column(String(4000), default="")
+    nome_arquivo: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(20), default="")  # "" | "erro" | "enviada"
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class WhatsAppContato(Base):
+    __tablename__ = "whatsapp_contatos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    numero: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    nome: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class CotacaoFrete(Base):
     __tablename__ = "cotacoes_frete"
 

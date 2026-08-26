@@ -17,6 +17,7 @@ import LoginPage from "./pages/LoginPage";
 import OrdemColetaPage from "./pages/OrdemColetaPage";
 import PedidosPage from "./pages/PedidosPage";
 import TrocarSenhaPage from "./pages/TrocarSenhaPage";
+import WhatsAppPage from "./pages/WhatsAppPage";
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -54,6 +55,7 @@ function AppRoutes() {
         <Route path="/analise-fretes" element={<AnaliseFretesPage />} />
         <Route path="/clientes" element={<ClientesPage />} />
         <Route path="/emails" element={<EmailsPage />} />
+        <Route path="/whatsapp" element={<WhatsAppPage />} />
         <Route path="/buonny" element={<BuonnyPage />} />
         <Route path="/bsoft" element={<BsoftPage />} />
         <Route path="/trocar-senha" element={<TrocarSenhaPage />} />
