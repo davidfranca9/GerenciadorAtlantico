@@ -6,19 +6,42 @@ import os
 import smtplib
 from email import encoders
 from email.mime.base import MIMEBase
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from ..config import settings
 
 
-def send_email_message(destinatarios: list[str], assunto: str, corpo: str, anexos: list[str] | None = None) -> bool:
+def send_email_message(
+    destinatarios: list[str],
+    assunto: str,
+    corpo: str,
+    anexos: list[str] | None = None,
+    imagens_inline: dict[str, str] | None = None,
+) -> bool:
+    """imagens_inline mapeia um Content-ID (sem os "<>") pro caminho de uma
+    imagem no disco - referencie no HTML do corpo via <img src="cid:o_id">
+    pra ela aparecer embutida na mensagem, tipo uma assinatura."""
     anexos = anexos or []
-    msg = MIMEMultipart()
+    imagens_inline = imagens_inline or {}
+
+    corpo_msg = MIMEMultipart("related")
+    corpo_msg.attach(MIMEText(corpo, "html"))
+    for cid, caminho_imagem in imagens_inline.items():
+        if not os.path.exists(caminho_imagem):
+            continue
+        with open(caminho_imagem, "rb") as f:
+            imagem = MIMEImage(f.read())
+        imagem.add_header("Content-ID", f"<{cid}>")
+        imagem.add_header("Content-Disposition", "inline", filename=os.path.basename(caminho_imagem))
+        corpo_msg.attach(imagem)
+
+    msg = MIMEMultipart("mixed")
     msg["From"] = settings.gmail_sender_email
     msg["To"] = ", ".join(destinatarios)
     msg["Subject"] = assunto
-    msg.attach(MIMEText(corpo, "html"))
+    msg.attach(corpo_msg)
 
     for caminho_arquivo in anexos:
         if not os.path.exists(caminho_arquivo):

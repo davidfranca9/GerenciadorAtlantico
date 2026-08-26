@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import html
+import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,8 +13,58 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoItem, Pedido
+from ..servicos.comunicacao import send_email_message
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agendamentos", tags=["agendamentos"], dependencies=[Depends(get_current_user)])
+
+RECIPIENTES_AUTORIZACAO_FERTIMAXI = [
+    "atlanticofertlog.comercial@gmail.com",
+    "luan.santos@fertimaxi.com.br",
+    "paulo.moura@fertimaxi.com.br",
+]
+ASSINATURA_EMAIL_PATH = Path(__file__).resolve().parents[2] / "dados" / "assinatura_email.png"
+
+
+def _eh_fertimaxi(supplier: str) -> bool:
+    return (supplier or "").strip().lower() in {"afl", "fertimaxi", "fertimax"}
+
+
+def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento) -> None:
+    """Pra cada pedido/cliente distinto do agendamento, manda um e-mail pra
+    Fertimaxi solicitando a autorizacao de agendamento. Falha no envio nao
+    derruba a criacao do agendamento - so fica registrada no log."""
+    data_formatada = ""
+    partes_data = (agendamento.loading_date or "").split("/")
+    if len(partes_data) == 3:
+        data_formatada = f"{partes_data[0]}.{partes_data[1]}"
+    prazo = f"para dia {data_formatada} ou para o próximo dia disponível" if data_formatada else "para o próximo dia disponível"
+
+    vistos: set[tuple[str, str]] = set()
+    for item in agendamento.itens:
+        cliente, pedido = item.cliente.strip(), item.pedido.strip()
+        if not cliente or not pedido or (cliente, pedido) in vistos:
+            continue
+        vistos.add((cliente, pedido))
+
+        titulo = f"AUTORIZAÇÃO AGENDAMENTO: {cliente} - Nº {pedido}"
+        corpo = f"""
+            <p><b>{html.escape(titulo)}</b></p>
+            <p>Prezados,</p>
+            <p>Solicitamos, por gentileza, o agendamento do pedido {html.escape(prazo)}.</p>
+            <p>Ficamos no aguardo da confirmação do agendamento.</p>
+            <img src="cid:assinatura_fertlog" alt="Atlântico Fertlog" style="max-width:420px;margin-top:18px">
+        """
+        try:
+            send_email_message(
+                RECIPIENTES_AUTORIZACAO_FERTIMAXI,
+                titulo,
+                corpo,
+                imagens_inline={"assinatura_fertlog": str(ASSINATURA_EMAIL_PATH)},
+            )
+        except Exception:
+            logger.exception("Falha ao enviar e-mail de autorizacao de agendamento pra Fertimaxi (pedido %s)", pedido)
 
 
 class AgendamentoItemIn(BaseModel):
@@ -116,6 +169,10 @@ def criar_agendamento(payload: AgendamentoIn, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(agendamento)
+
+    if _eh_fertimaxi(agendamento.supplier):
+        _enviar_autorizacoes_agendamento_fertimaxi(agendamento)
+
     return _to_dict(agendamento)
 
 
