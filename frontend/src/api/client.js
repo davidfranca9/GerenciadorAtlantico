@@ -394,3 +394,11 @@ export function gerarCartaFrete(payload) {
   const ext = payload.formato === "pdf" ? "pdf" : "docx";
   return downloadDocumento("/cartas-frete/gerar", payload, `carta_frete.${ext}`);
 }
+
+export function enviarCartaFreteEmail(payload) {
+  return request("/cartas-frete/enviar-email", { method: "POST", body: payload });
+}
+
+export function listarCartasFrete() {
+  return request("/cartas-frete");
+}

@@ -157,3 +157,18 @@ class CotacaoFrete(Base):
     cliente_nome: Mapped[str] = mapped_column(String(255), default="")
     observacoes: Mapped[str] = mapped_column(String(1000), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CartaFreteEnviada(Base):
+    __tablename__ = "cartas_frete_enviadas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    data: Mapped[str] = mapped_column(String(32), default="")
+    condutor: Mapped[str] = mapped_column(String(255), default="")
+    cpf: Mapped[str] = mapped_column(String(32), default="")
+    placa_cavalo: Mapped[str] = mapped_column(String(16), default="")
+    valor_frete: Mapped[str] = mapped_column(String(32), default="")
+    autorizacao_num: Mapped[str] = mapped_column(String(64), default="")
+    destinatarios: Mapped[str] = mapped_column(String(500), default="")
+    status: Mapped[str] = mapped_column(String(20), default="")  # "enviada" | "erro"
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

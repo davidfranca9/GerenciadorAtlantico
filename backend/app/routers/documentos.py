@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import Agendamento, AgendamentoItem, Pedido
+from ..models import Agendamento, AgendamentoItem, CartaFreteEnviada, Pedido
 from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
 from ..servicos.documentos import fill_carta_frete_docx, gerar_autorizacao_xlsx
 from ..servicos.oc_html import gerar_oc_pdf_html
@@ -24,6 +24,11 @@ from ..servicos.pdf_convert import docx_to_pdf
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
+RECIPIENTS_CARTA_FRETE = [
+    "davilucassouzaribeiro@gmail.com",
+    "marvidacaixa503@gmail.com",
+    "crispinianocrys@gmail.com",
+]
 RECIPIENTS_HERINGER = [
     # TESTE TEMPORARIO - reverter pros e-mails reais antes de usar em producao:
     # "expedicao.candeias@heringer.com.br",
@@ -351,3 +356,74 @@ def gerar_carta_frete(payload: CartaFreteRequest):
         filename=f"Autorizacao Abastecimento_{safe_name}.docx",
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
+
+
+@router.post("/cartas-frete/enviar-email")
+def enviar_carta_frete_email(payload: CartaFreteRequest, db: Session = Depends(get_db)):
+    if not TEMPLATE_CF.exists():
+        raise HTTPException(status_code=400, detail="Template de Carta Frete nao encontrado")
+    if not payload.CONDUTOR.strip():
+        raise HTTPException(status_code=400, detail="Nome do condutor e obrigatorio")
+
+    doc = Document(str(TEMPLATE_CF))
+    dados = payload.model_dump(exclude={"formato"})
+    fill_carta_frete_docx(doc, dados)
+
+    tmp_dir = tempfile.mkdtemp()
+    docx_path = os.path.join(tmp_dir, "carta_frete.docx")
+    doc.save(docx_path)
+    pdf_path = docx_to_pdf(docx_path)
+
+    titulo = f"AUTORIZAÇÃO ABASTECIMENTO: {payload.CONDUTOR.strip()} - {payload.PLACA_CAVALO.strip()}"
+    corpo = """
+        <p>Prezados,</p>
+        <p>Segue em anexo a Autorização de Abastecimento emitida.</p>
+        <p>⚠️ <b>Lembrete importante:</b> Autorizar o abastecimento após recebimento da ordem encaminhada via e-mail.</p>
+        <p>Por favor, confirme o recebimento. Em caso de dúvidas, estamos à disposição.</p>
+    """
+
+    status = "enviada"
+    erro_envio: Exception | None = None
+    try:
+        send_email_message(RECIPIENTS_CARTA_FRETE, titulo, corpo, [pdf_path])
+    except Exception as exc:
+        status = "erro"
+        erro_envio = exc
+
+    db.add(
+        CartaFreteEnviada(
+            data=payload.DATA,
+            condutor=payload.CONDUTOR.strip(),
+            cpf=payload.CPF.strip(),
+            placa_cavalo=payload.PLACA_CAVALO.strip(),
+            valor_frete=payload.VALOR_FRETE.strip(),
+            autorizacao_num=payload.AUTORIZACAO_NUM.strip(),
+            destinatarios=", ".join(RECIPIENTS_CARTA_FRETE),
+            status=status,
+        )
+    )
+    db.commit()
+
+    if erro_envio:
+        raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {erro_envio}")
+    return {"ok": True, "email_enviado_para": RECIPIENTS_CARTA_FRETE}
+
+
+@router.get("/cartas-frete")
+def listar_cartas_frete(db: Session = Depends(get_db)):
+    registros = db.query(CartaFreteEnviada).order_by(CartaFreteEnviada.created_at.desc()).all()
+    return [
+        {
+            "id": r.id,
+            "data": r.data,
+            "condutor": r.condutor,
+            "cpf": r.cpf,
+            "placa_cavalo": r.placa_cavalo,
+            "valor_frete": r.valor_frete,
+            "autorizacao_num": r.autorizacao_num,
+            "destinatarios": r.destinatarios,
+            "status": r.status,
+            "created_at": r.created_at,
+        }
+        for r in registros
+    ]
