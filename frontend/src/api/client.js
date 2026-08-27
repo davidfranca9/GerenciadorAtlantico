@@ -390,6 +390,10 @@ export function enviarOrdemColetaEmail(payload) {
   return request("/ordens-coleta/enviar-email", { method: "POST", body: payload });
 }
 
+export function enviarAutorizacaoColetaEmail(payload) {
+  return request("/ordens-coleta/enviar-autorizacao-email", { method: "POST", body: payload });
+}
+
 export function gerarCartaFrete(payload) {
   const ext = payload.formato === "pdf" ? "pdf" : "docx";
   return downloadDocumento("/cartas-frete/gerar", payload, `carta_frete.${ext}`);

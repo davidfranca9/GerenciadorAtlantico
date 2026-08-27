@@ -32,6 +32,7 @@ export default function ContratoPage() {
   const [nomeCondutor, setNomeCondutor] = useState("");
   const [placaCavalo, setPlacaCavalo] = useState("");
   const [gerandoAutorizacao, setGerandoAutorizacao] = useState(false);
+  const [enviandoAutorizacao, setEnviandoAutorizacao] = useState(false);
 
   async function handleFiles(e) {
     const files = Array.from(e.target.files || []);
@@ -79,6 +80,23 @@ export default function ContratoPage() {
     updateRowField(idx, "toneladas", novoTexto);
   }
 
+  function buildAutorizacaoPayload() {
+    return {
+      template: supplier,
+      produtos: selectedRows.map((r) => ({
+        contrato: r.contrato,
+        produto: r.produto,
+        embalagem: r.embalagem,
+        toneladas: String(r.toneladas),
+        cidade: r.cidade,
+        cliente: r.cliente,
+      })),
+      nome: nomeCondutor,
+      placa1: placaCavalo,
+      data_carregamento: dataCarregamento,
+    };
+  }
+
   async function handleGerarAutorizacao() {
     setError("");
     if (selectedRows.length === 0) {
@@ -87,25 +105,29 @@ export default function ContratoPage() {
     }
     setGerandoAutorizacao(true);
     try {
-      await api.gerarAutorizacaoColeta({
-        template: supplier,
-        produtos: selectedRows.map((r) => ({
-          contrato: r.contrato,
-          produto: r.produto,
-          embalagem: r.embalagem,
-          toneladas: String(r.toneladas),
-          cidade: r.cidade,
-          cliente: r.cliente,
-        })),
-        nome: nomeCondutor,
-        placa1: placaCavalo,
-        data_carregamento: dataCarregamento,
-      });
+      await api.gerarAutorizacaoColeta(buildAutorizacaoPayload());
       setStatus("Autorização de carregamento gerada com sucesso.");
     } catch (err) {
       setError(err.message);
     } finally {
       setGerandoAutorizacao(false);
+    }
+  }
+
+  async function handleEnviarAutorizacaoEmail() {
+    setError("");
+    if (selectedRows.length === 0) {
+      setError("Selecione ao menos um contrato na tabela antes de enviar a autorização.");
+      return;
+    }
+    setEnviandoAutorizacao(true);
+    try {
+      await api.enviarAutorizacaoColetaEmail(buildAutorizacaoPayload());
+      setStatus("Autorização de carregamento enviada por e-mail com sucesso.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEnviandoAutorizacao(false);
     }
   }
 
@@ -228,9 +250,14 @@ export default function ContratoPage() {
               <input value={placaCavalo} onChange={(e) => setPlacaCavalo(formatPlaca(e.target.value))} placeholder="ABC-1D23" />
             </div>
           </div>
-          <button className="btn-primary" disabled={gerandoAutorizacao} onClick={handleGerarAutorizacao} style={{ alignSelf: "start" }}>
-            {gerandoAutorizacao ? "Gerando..." : "Gerar autorização de carregamento"}
-          </button>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn-primary" disabled={gerandoAutorizacao || enviandoAutorizacao} onClick={handleGerarAutorizacao}>
+              {gerandoAutorizacao ? "Gerando..." : "Gerar autorização de carregamento"}
+            </button>
+            <button className="btn-secondary" disabled={gerandoAutorizacao || enviandoAutorizacao} onClick={handleEnviarAutorizacaoEmail}>
+              {enviandoAutorizacao ? "Enviando..." : "Enviar por e-mail"}
+            </button>
+          </div>
         </div>
       )}
     </div>

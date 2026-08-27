@@ -248,6 +248,50 @@ def gerar_autorizacao_coleta(payload: OrdemColetaRequest, db: Session = Depends(
     )
 
 
+@router.post("/ordens-coleta/enviar-autorizacao-email")
+def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(get_db)):
+    """Manda a Autorizacao de Coleta (planilha) direto pra Fertimaxi, sem
+    passar pela Ordem de Coleta - usado na tela de Contratos, onde o
+    motorista/placa ainda podem nao estar definidos."""
+    if not payload.produtos:
+        raise HTTPException(status_code=400, detail="Selecione ao menos um produto/pedido")
+    if payload.template.upper() == "HERINGER":
+        raise HTTPException(status_code=400, detail="Autorizacao de Coleta nao se aplica ao fornecedor Heringer")
+    if not TEMPLATE_AUTORIZACAO.exists():
+        raise HTTPException(status_code=400, detail="Template de Autorizacao de Coleta nao encontrado")
+
+    tmp_dir = tempfile.mkdtemp()
+    produtos_dict = [p.model_dump() for p in payload.produtos]
+    cliente_name = _client_name_from_produtos(produtos_dict)
+    xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{cliente_name}.xlsx")
+    gerar_autorizacao_xlsx(
+        str(TEMPLATE_AUTORIZACAO),
+        xlsx_path,
+        produtos_dict,
+        payload.data_carregamento,
+        payload.nome,
+        payload.placa1,
+    )
+
+    vistos: set[tuple[str, str]] = set()
+    assuntos_enviados: list[str] = []
+    for produto in payload.produtos:
+        cliente, pedido = produto.cliente.strip(), produto.contrato.strip()
+        if not cliente or not pedido or (cliente, pedido) in vistos:
+            continue
+        vistos.add((cliente, pedido))
+        titulo, corpo = montar_autorizacao_agendamento(cliente, pedido, payload.data_carregamento)
+        try:
+            send_email_message(RECIPIENTS_FERTIMAX, titulo, corpo, [xlsx_path], imagens_inline=imagem_assinatura_inline())
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
+        assuntos_enviados.append(titulo)
+
+    if not assuntos_enviados:
+        raise HTTPException(status_code=400, detail="Nenhum produto com cliente e pedido preenchidos pra enviar")
+    return {"ok": True, "email_enviado_para": RECIPIENTS_FERTIMAX}
+
+
 class EnviarOrdemColetaRequest(OrdemColetaRequest):
     roteiro: str = ""
     localizador: str = ""
