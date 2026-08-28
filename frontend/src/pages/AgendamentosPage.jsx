@@ -487,7 +487,11 @@ export default function AgendamentosPage() {
           <tbody>
             {agendamentosExibidos.map((a) => (
               <Fragment key={a.id}>
-                <tr>
+                <tr
+                  className="clickable-row"
+                  onClick={() => setVerAbertoId(verAbertoId === a.id ? null : a.id)}
+                  title="Clique pra ver os itens agendados"
+                >
                   <td>{a.supplier}</td>
                   <td>{a.loading_date}</td>
                   <td>{a.driver_name}</td>
@@ -496,17 +500,14 @@ export default function AgendamentosPage() {
                   <td style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.observacoes}>
                     {a.observacoes || "-"}
                   </td>
-                  <td>
+                  <td onClick={(e) => e.stopPropagation()}>
                     <select value={a.status} onChange={(e) => handleStatus(a.id, e.target.value)}>
                       {STATUS_OPTIONS.map((s) => (
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
                   </td>
-                  <td style={{ display: "flex", gap: 8 }}>
-                    <button className="btn-secondary" onClick={() => setVerAbertoId(verAbertoId === a.id ? null : a.id)}>
-                      {verAbertoId === a.id ? "Fechar" : "Ver"}
-                    </button>
+                  <td style={{ display: "flex", gap: 8 }} onClick={(e) => e.stopPropagation()}>
                     <button className="btn-secondary" onClick={() => (editId === a.id ? fecharEdicao() : abrirEdicao(a))}>
                       {editId === a.id ? "Fechar" : "Editar"}
                     </button>
