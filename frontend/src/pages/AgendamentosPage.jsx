@@ -65,6 +65,7 @@ export default function AgendamentosPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const [docGerandoId, setDocGerandoId] = useState(null);
+  const [verAbertoId, setVerAbertoId] = useState(null);
 
   async function carregar() {
     setLoading(true);
@@ -503,6 +504,9 @@ export default function AgendamentosPage() {
                     </select>
                   </td>
                   <td style={{ display: "flex", gap: 8 }}>
+                    <button className="btn-secondary" onClick={() => setVerAbertoId(verAbertoId === a.id ? null : a.id)}>
+                      {verAbertoId === a.id ? "Fechar" : "Ver"}
+                    </button>
                     <button className="btn-secondary" onClick={() => (editId === a.id ? fecharEdicao() : abrirEdicao(a))}>
                       {editId === a.id ? "Fechar" : "Editar"}
                     </button>
@@ -512,6 +516,42 @@ export default function AgendamentosPage() {
                     <button className="btn-ghost" onClick={() => handleExcluir(a)}>Excluir</button>
                   </td>
                 </tr>
+                {verAbertoId === a.id && (
+                  <tr key={`${a.id}-ver`}>
+                    <td colSpan={8}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 4px" }}>
+                        <strong>Itens agendados</strong>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Pedido</th>
+                              <th>Cliente</th>
+                              <th>Produto</th>
+                              <th>Cidade</th>
+                              <th>Embalagem</th>
+                              <th>Toneladas</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {a.itens.map((it) => (
+                              <tr key={it.id}>
+                                <td>{it.pedido || "-"}</td>
+                                <td>{it.cliente || "-"}</td>
+                                <td>{it.produto || "-"}</td>
+                                <td>{it.cidade || "-"}</td>
+                                <td>{it.embalagem || "-"}</td>
+                                <td>{formatTon(it.toneladas)}</td>
+                              </tr>
+                            ))}
+                            {a.itens.length === 0 && (
+                              <tr><td colSpan={6} style={{ color: "var(--muted)" }}>Nenhum item nesse agendamento.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
+                )}
                 {editId === a.id && (
                   <tr key={`${a.id}-edit`}>
                     <td colSpan={8}>
