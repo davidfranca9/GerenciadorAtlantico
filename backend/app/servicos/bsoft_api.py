@@ -159,6 +159,49 @@ def buscar_pessoa_juridica_por_cnpj(cnpj: str) -> str | None:
     return None
 
 
+# Configuracoes do modulo de transporte que a emissao de CT-e precisa
+# referenciar por id (a complexidade fiscal fica nesses cadastros, ja
+# configurados dentro do Bsoft - a gente so precisa descobrir os ids).
+CONFIGS_CTE = {
+    "parametros_criacao_cte": "/transporte/v1/paramCriaCteViaNFe",
+    "parametros_criacao_manifesto": "/transporte/v1/parametroCriacaoManifesto",
+    "agencias": "/transporte/v1/agencias",
+    "tipos_taloes": "/transporte/v1/tiposTaloes",
+    "operadoras_credito": "/transporte/v1/contratosFrete/operadorasCredito",
+    "naturezas_carga": "/transporte/v1/naturezaCargas",
+    "naturezas_operacao": "/transporte/v1/naturezasOperacao",
+    "tipos_operacoes_tms": "/transporte/v1/tiposOperacoesTMS",
+    "especies": "/transporte/v1/especies",
+}
+
+
+def obter_configuracao_cte(nome: str) -> dict:
+    """Le um dos cadastros de configuracao do Bsoft. Nao cria nada - so GET."""
+    caminho = CONFIGS_CTE.get(nome)
+    if not caminho:
+        raise BsoftApiError(f"Configuracao '{nome}' desconhecida")
+    resp = requests.get(f"{BASE_URL}{caminho}", auth=_auth(), timeout=30)
+    if resp.status_code != 200:
+        raise BsoftApiError(f"{resp.status_code} ao consultar {caminho}: {resp.text[:300]}")
+    try:
+        return {"ok": True, "dados": resp.json()}
+    except json.JSONDecodeError:
+        raise BsoftApiError(f"Resposta nao-JSON em {caminho}: {resp.text[:300]}")
+
+
+def obter_todas_configuracoes_cte() -> dict:
+    """Roda todos os GETs de configuracao de uma vez. Cada um pode falhar
+    isolado (modulo nao contratado, permissao do usuario de integracao),
+    entao o erro fica junto do resultado em vez de derrubar tudo."""
+    resultado = {}
+    for nome in CONFIGS_CTE:
+        try:
+            resultado[nome] = obter_configuracao_cte(nome)
+        except Exception as exc:
+            resultado[nome] = {"ok": False, "erro": str(exc)[:300]}
+    return resultado
+
+
 def consultar_cep(cep: str) -> dict:
     resp = requests.get(f"https://brasilapi.com.br/api/cep/v1/{cep}", timeout=10)
     if resp.status_code == 404:

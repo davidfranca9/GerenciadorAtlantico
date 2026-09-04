@@ -294,6 +294,10 @@ export function bsoftCidades() {
   return request("/bsoft/cidades");
 }
 
+export function bsoftConfiguracoesCte() {
+  return request("/bsoft/configuracoes-cte");
+}
+
 export function bsoftConsultaCep(cep) {
   return request(`/bsoft/consulta-cep/${encodeURIComponent(cep)}`);
 }

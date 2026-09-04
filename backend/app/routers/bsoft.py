@@ -47,6 +47,14 @@ def obter_lookups():
     }
 
 
+@router.get("/configuracoes-cte")
+def obter_configuracoes_cte():
+    """Le (somente GET) os cadastros do Bsoft que a emissao de CT-e precisa
+    referenciar por id - parametros de criacao, agencias, talao, operadora de
+    credito (IPEF do CIOT), naturezas de carga/operacao."""
+    return bsoft_api.obter_todas_configuracoes_cte()
+
+
 @router.get("/cidades")
 def obter_cidades(db: Session = Depends(get_db)):
     cidades_por_uf: dict[str, list[list[str]]] = {}

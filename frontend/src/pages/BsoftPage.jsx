@@ -501,6 +501,89 @@ export default function BsoftPage() {
           </div>
         )}
       </div>
+
+      <ConfiguracoesCte />
+    </div>
+  );
+}
+
+const ROTULOS_CONFIG = {
+  parametros_criacao_cte: "Parâmetros de criação de CT-e (via NF-e)",
+  parametros_criacao_manifesto: "Parâmetros de criação de MDF-e",
+  agencias: "Agências",
+  tipos_taloes: "Tipos de talões",
+  operadoras_credito: "Operadoras de crédito (IPEF / CIOT)",
+  naturezas_carga: "Naturezas de carga",
+  naturezas_operacao: "Naturezas de operação",
+  tipos_operacoes_tms: "Tipos de operação TMS",
+  especies: "Espécies",
+};
+
+function resumirRegistro(item) {
+  if (item === null || typeof item !== "object") return String(item);
+  const id = item.id ?? item.codigo ?? item.Id ?? "";
+  const nome = item.nome ?? item.descricao ?? item.name ?? item.razaoSocial ?? item.sigla ?? "";
+  if (id === "" && nome === "") return JSON.stringify(item).slice(0, 160);
+  return `${id}${nome ? ` · ${nome}` : ""}`;
+}
+
+function ConfiguracoesCte() {
+  const [dados, setDados] = useState(null);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function carregar() {
+    setCarregando(true);
+    setErro("");
+    try {
+      setDados(await api.bsoftConfiguracoesCte());
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <strong style={{ fontSize: 15 }}>Configurações de CT-e no Bsoft</strong>
+          <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>
+            Somente leitura — mostra os cadastros que a emissão de CT-e precisa referenciar por id.
+          </div>
+        </div>
+        <button className="btn-secondary" disabled={carregando} onClick={carregar}>
+          {carregando ? "Consultando..." : "Consultar configurações"}
+        </button>
+      </div>
+
+      {erro && <div style={{ color: "var(--danger)", fontSize: 12.5 }}>{erro}</div>}
+
+      {dados && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {Object.entries(dados).map(([chave, valor]) => {
+            const lista = Array.isArray(valor?.dados) ? valor.dados : valor?.dados ? [valor.dados] : [];
+            return (
+              <div key={chave} style={{ borderTop: "1px solid var(--border-soft)", paddingTop: 10 }}>
+                <div style={{ fontWeight: 700, fontSize: 12.5 }}>{ROTULOS_CONFIG[chave] || chave}</div>
+                {!valor?.ok ? (
+                  <div style={{ color: "var(--danger)", fontSize: 12 }}>{valor?.erro || "falhou"}</div>
+                ) : lista.length === 0 ? (
+                  <div style={{ color: "var(--muted)", fontSize: 12 }}>Nenhum registro.</div>
+                ) : (
+                  <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12, color: "var(--muted)" }}>
+                    {lista.slice(0, 20).map((item, idx) => (
+                      <li key={idx}>{resumirRegistro(item)}</li>
+                    ))}
+                    {lista.length > 20 && <li>… +{lista.length - 20} registro(s)</li>}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
