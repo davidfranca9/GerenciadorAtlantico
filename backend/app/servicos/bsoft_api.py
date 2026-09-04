@@ -175,30 +175,60 @@ CONFIGS_CTE = {
 }
 
 
-def obter_configuracao_cte(nome: str) -> dict:
-    """Le um dos cadastros de configuracao do Bsoft. Nao cria nada - so GET."""
+def _listar_bsoft(caminho: str, params: dict | None = None) -> list:
+    """GET numa listagem do Bsoft. As listagens exigem o parametro 'fim'
+    (paginacao) e devolvem 204 sem corpo quando o cadastro esta vazio."""
+    consulta = {"inicio": 0, "fim": 500}
+    consulta.update(params or {})
+    resp = requests.get(f"{BASE_URL}{caminho}", params=consulta, auth=_auth(), timeout=30)
+    if resp.status_code == 204 or not resp.text.strip():
+        return []
+    if resp.status_code != 200:
+        raise BsoftApiError(f"{resp.status_code} em {caminho}: {resp.text[:300]}")
+    try:
+        dados = resp.json()
+    except json.JSONDecodeError:
+        raise BsoftApiError(f"Resposta nao-JSON em {caminho}: {resp.text[:300]}")
+    return dados if isinstance(dados, list) else [dados]
+
+
+def obter_configuracao_cte(nome: str, params: dict | None = None) -> dict:
     caminho = CONFIGS_CTE.get(nome)
     if not caminho:
         raise BsoftApiError(f"Configuracao '{nome}' desconhecida")
-    resp = requests.get(f"{BASE_URL}{caminho}", auth=_auth(), timeout=30)
-    if resp.status_code != 200:
-        raise BsoftApiError(f"{resp.status_code} ao consultar {caminho}: {resp.text[:300]}")
-    try:
-        return {"ok": True, "dados": resp.json()}
-    except json.JSONDecodeError:
-        raise BsoftApiError(f"Resposta nao-JSON em {caminho}: {resp.text[:300]}")
+    return {"ok": True, "dados": _listar_bsoft(caminho, params)}
 
 
 def obter_todas_configuracoes_cte() -> dict:
-    """Roda todos os GETs de configuracao de uma vez. Cada um pode falhar
-    isolado (modulo nao contratado, permissao do usuario de integracao),
-    entao o erro fica junto do resultado em vez de derrubar tudo."""
+    """Le os cadastros que a emissao de CT-e referencia por id. Cada um pode
+    falhar isolado (modulo nao contratado, permissao do usuario de
+    integracao), entao o erro fica junto do resultado em vez de derrubar
+    tudo. Os taloes dependem da agencia, entao sao buscados por agencia."""
     resultado = {}
     for nome in CONFIGS_CTE:
+        if nome == "tipos_taloes":
+            continue
         try:
             resultado[nome] = obter_configuracao_cte(nome)
         except Exception as exc:
             resultado[nome] = {"ok": False, "erro": str(exc)[:300]}
+
+    taloes = []
+    erros_taloes = []
+    for agencia in (resultado.get("agencias", {}).get("dados") or []):
+        agencia_id = agencia.get("id") if isinstance(agencia, dict) else None
+        if not agencia_id:
+            continue
+        try:
+            for talao in _listar_bsoft(CONFIGS_CTE["tipos_taloes"], {"agencia_id": agencia_id}):
+                talao["_agencia_id"] = agencia_id
+                taloes.append(talao)
+        except Exception as exc:
+            erros_taloes.append(f"agencia {agencia_id}: {str(exc)[:150]}")
+    resultado["tipos_taloes"] = (
+        {"ok": True, "dados": taloes} if not erros_taloes or taloes
+        else {"ok": False, "erro": "; ".join(erros_taloes)[:300]}
+    )
     return resultado
 
 

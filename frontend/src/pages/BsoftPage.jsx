@@ -519,12 +519,21 @@ const ROTULOS_CONFIG = {
   especies: "Espécies",
 };
 
+const TIPOS_TALAO = {
+  A: "Autorizações de crédito", C: "Conhecimento (CT-e)", O: "Ordem de carregamento",
+  R: "Adiantamento parcelado", F: "Contrato de frete", M: "Manifesto de carga",
+  L: "Operação logística", G: "Guia de entrega", T: "Cotações de frete", P: "Pedidos", AF: "Anúncios de frete",
+};
+
 function resumirRegistro(item) {
   if (item === null || typeof item !== "object") return String(item);
   const id = item.id ?? item.codigo ?? item.Id ?? "";
   const nome = item.nome ?? item.descricao ?? item.name ?? item.razaoSocial ?? item.sigla ?? "";
-  if (id === "" && nome === "") return JSON.stringify(item).slice(0, 160);
-  return `${id}${nome ? ` · ${nome}` : ""}`;
+  const extras = [];
+  if (item.tipo) extras.push(TIPOS_TALAO[item.tipo] || `tipo ${item.tipo}`);
+  if (item._agencia_id) extras.push(`agência ${item._agencia_id}`);
+  if (id === "" && nome === "" && extras.length === 0) return JSON.stringify(item).slice(0, 160);
+  return `${id}${nome ? ` · ${nome}` : ""}${extras.length ? ` — ${extras.join(", ")}` : ""}`;
 }
 
 function ConfiguracoesCte() {
