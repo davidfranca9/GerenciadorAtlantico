@@ -532,7 +532,17 @@ function resumirRegistro(item) {
   const extras = [];
   if (item.tipo) extras.push(TIPOS_TALAO[item.tipo] || `tipo ${item.tipo}`);
   if (item._agencia_id) extras.push(`agência ${item._agencia_id}`);
-  if (id === "" && nome === "" && extras.length === 0) return JSON.stringify(item).slice(0, 160);
+  if (nome === "") {
+    // Sem campo de nome conhecido - mostra os outros campos pra dar pra
+    // identificar o registro (ex: operadoras de credito/IPEF).
+    const resto = Object.entries(item)
+      .filter(([k, v]) => k !== "id" && v !== null && v !== "" && typeof v !== "object")
+      .map(([k, v]) => `${k}=${v}`)
+      .slice(0, 6)
+      .join(" ");
+    if (resto) extras.push(resto);
+  }
+  if (id === "" && nome === "" && extras.length === 0) return JSON.stringify(item).slice(0, 200);
   return `${id}${nome ? ` · ${nome}` : ""}${extras.length ? ` — ${extras.join(", ")}` : ""}`;
 }
 
