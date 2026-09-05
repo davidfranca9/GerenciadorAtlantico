@@ -298,6 +298,10 @@ export function bsoftConfiguracoesCte() {
   return request("/bsoft/configuracoes-cte");
 }
 
+export function bsoftExemplosDocumentos() {
+  return request("/bsoft/exemplos-documentos");
+}
+
 export function bsoftConsultaCep(cep) {
   return request(`/bsoft/consulta-cep/${encodeURIComponent(cep)}`);
 }

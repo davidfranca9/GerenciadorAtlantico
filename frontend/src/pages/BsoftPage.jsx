@@ -503,6 +503,60 @@ export default function BsoftPage() {
       </div>
 
       <ConfiguracoesCte />
+      <ExemplosDocumentos />
+    </div>
+  );
+}
+
+function ExemplosDocumentos() {
+  const [dados, setDados] = useState(null);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function carregar() {
+    setCarregando(true);
+    setErro("");
+    try {
+      setDados(await api.bsoftExemplosDocumentos());
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <strong style={{ fontSize: 15 }}>Modelos dos documentos já emitidos</strong>
+          <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>
+            Somente leitura — últimos contratos de frete e CT-e emitidos, pra usar como modelo do payload.
+          </div>
+        </div>
+        <button className="btn-secondary" disabled={carregando} onClick={carregar}>
+          {carregando ? "Consultando..." : "Consultar modelos"}
+        </button>
+      </div>
+
+      {erro && <div style={{ color: "var(--danger)", fontSize: 12.5 }}>{erro}</div>}
+
+      {dados && Object.entries(dados).map(([chave, valor]) => (
+        <div key={chave} style={{ borderTop: "1px solid var(--border-soft)", paddingTop: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 6 }}>
+            {chave === "contratos_frete" ? "Contratos de frete" : "CT-e (conhecimentos)"}
+          </div>
+          {!valor?.ok ? (
+            <div style={{ color: "var(--danger)", fontSize: 12 }}>{valor?.erro || "falhou"}</div>
+          ) : (valor.dados || []).length === 0 ? (
+            <div style={{ color: "var(--muted)", fontSize: 12 }}>Nenhum registro.</div>
+          ) : (
+            <pre className="card" style={{ fontSize: 11, maxHeight: 360, overflow: "auto", margin: 0 }}>
+              {JSON.stringify(valor.dados, null, 2)}
+            </pre>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

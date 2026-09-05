@@ -55,6 +55,13 @@ def obter_configuracoes_cte():
     return bsoft_api.obter_todas_configuracoes_cte()
 
 
+@router.get("/exemplos-documentos")
+def obter_exemplos_documentos():
+    """Somente leitura: ultimos contratos de frete e CT-es emitidos, pra
+    servir de modelo do payload de emissao."""
+    return bsoft_api.obter_exemplos_documentos()
+
+
 @router.get("/cidades")
 def obter_cidades(db: Session = Depends(get_db)):
     cidades_por_uf: dict[str, list[list[str]]] = {}

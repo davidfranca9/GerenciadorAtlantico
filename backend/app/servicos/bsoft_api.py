@@ -239,6 +239,24 @@ def obter_todas_configuracoes_cte() -> dict:
     return resultado
 
 
+def obter_exemplos_documentos(quantidade: int = 3) -> dict:
+    """Le (somente GET) os ultimos contratos de frete e CT-es ja emitidos.
+    Serve pra descobrir, na pratica, quais ids/campos a operacao usa de
+    verdade (regra de frete, forma de pagamento, natureza de operacao,
+    talao) em vez de adivinhar o payload de emissao."""
+    resultado = {}
+    for nome, caminho in (
+        ("contratos_frete", "/transporte/v1/contratosFrete"),
+        ("conhecimentos", "/transporte/v1/conhecimentos"),
+    ):
+        try:
+            registros = _listar_bsoft(caminho, {"fim": max(1, min(quantidade, 100))})
+            resultado[nome] = {"ok": True, "dados": registros[:quantidade]}
+        except Exception as exc:
+            resultado[nome] = {"ok": False, "erro": str(exc)[:300]}
+    return resultado
+
+
 def consultar_cep(cep: str) -> dict:
     resp = requests.get(f"https://brasilapi.com.br/api/cep/v1/{cep}", timeout=10)
     if resp.status_code == 404:
