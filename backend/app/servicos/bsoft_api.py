@@ -11,7 +11,10 @@ import requests
 
 from ..config import settings
 
-BASE_URL = "https://atlanticofertlog.bsoft.app/services/index.php"
+def _base_url() -> str:
+    """A URL vem de settings.bsoft_api_base_url (variavel de ambiente) - nao
+    fica fixa no codigo, pra dar pra apontar pra outro tenant/homologacao."""
+    return (settings.bsoft_api_base_url or "").rstrip("/")
 
 
 class BsoftApiError(Exception):
@@ -27,7 +30,7 @@ def _clean(payload: dict) -> dict:
 
 
 def cadastrar_veiculo_bsoft(dados_veiculo: dict) -> dict:
-    endpoint_url = f"{BASE_URL}/transporte/v1/veiculos"
+    endpoint_url = f"{_base_url()}/transporte/v1/veiculos"
     temp_payload = {
         "placa": dados_veiculo.get("placa"),
         "renavam": dados_veiculo.get("renavam"),
@@ -62,7 +65,7 @@ def cadastrar_veiculo_bsoft(dados_veiculo: dict) -> dict:
 def cadastrar_endereco_bsoft(cod_pessoa, dados_endereco: dict) -> dict | None:
     if not cod_pessoa or not dados_endereco.get("logradouro"):
         return None
-    endpoint_url = f"{BASE_URL}/pessoas/v1/pessoas/{cod_pessoa}/enderecos"
+    endpoint_url = f"{_base_url()}/pessoas/v1/pessoas/{cod_pessoa}/enderecos"
     payload = dict(dados_endereco)
     payload["codPessoa"] = str(cod_pessoa)
     resp = requests.post(endpoint_url, json=_clean(payload), auth=_auth(), timeout=20)
@@ -88,7 +91,7 @@ def _payload_pessoa_fisica(dados_motorista: dict, cpf_override=None) -> dict:
 
 
 def cadastrar_pessoa_fisica_bsoft(dados_motorista: dict) -> dict:
-    endpoint_url = f"{BASE_URL}/pessoas/v1/pessoas/fisicas"
+    endpoint_url = f"{_base_url()}/pessoas/v1/pessoas/fisicas"
     resp = requests.post(endpoint_url, json=_payload_pessoa_fisica(dados_motorista), auth=_auth(), timeout=20)
     if resp.status_code in (200, 201):
         return resp.json()
@@ -96,7 +99,7 @@ def cadastrar_pessoa_fisica_bsoft(dados_motorista: dict) -> dict:
 
 
 def atualizar_pessoa_fisica_bsoft(cpf: str, dados_motorista: dict) -> dict:
-    endpoint_url = f"{BASE_URL}/pessoas/v1/pessoas/fisicas/{cpf}"
+    endpoint_url = f"{_base_url()}/pessoas/v1/pessoas/fisicas/{cpf}"
     resp = requests.put(endpoint_url, json=_payload_pessoa_fisica(dados_motorista, cpf_override=cpf), auth=_auth(), timeout=20)
     if resp.status_code == 200:
         return resp.json()
@@ -118,7 +121,7 @@ def _payload_pessoa_juridica(cnpj, dados_empresa: dict) -> dict:
 
 
 def cadastrar_pessoa_juridica_bsoft(dados_empresa: dict) -> dict:
-    endpoint_url = f"{BASE_URL}/pessoas/v1/pessoas/juridicas"
+    endpoint_url = f"{_base_url()}/pessoas/v1/pessoas/juridicas"
     resp = requests.post(endpoint_url, json=_payload_pessoa_juridica(dados_empresa.get("cnpj"), dados_empresa), auth=_auth(), timeout=20)
     if resp.status_code in (200, 201):
         return resp.json()
@@ -126,7 +129,7 @@ def cadastrar_pessoa_juridica_bsoft(dados_empresa: dict) -> dict:
 
 
 def atualizar_pessoa_juridica_bsoft(cnpj: str, dados_empresa: dict) -> dict:
-    endpoint_url = f"{BASE_URL}/pessoas/v1/pessoas/juridicas/{cnpj}"
+    endpoint_url = f"{_base_url()}/pessoas/v1/pessoas/juridicas/{cnpj}"
     resp = requests.put(endpoint_url, json=_payload_pessoa_juridica(cnpj, dados_empresa), auth=_auth(), timeout=20)
     if resp.status_code == 200:
         return resp.json()
@@ -136,7 +139,7 @@ def atualizar_pessoa_juridica_bsoft(cnpj: str, dados_empresa: dict) -> dict:
 def buscar_pessoa_fisica_por_cpf(cpf: str) -> str | None:
     if not cpf:
         return None
-    url = f"{BASE_URL}/pessoas/v1/pessoas/fisicas/{cpf}"
+    url = f"{_base_url()}/pessoas/v1/pessoas/fisicas/{cpf}"
     try:
         resp = requests.get(url, auth=_auth(), timeout=20)
         if resp.status_code == 200 and resp.text and resp.json():
@@ -149,7 +152,7 @@ def buscar_pessoa_fisica_por_cpf(cpf: str) -> str | None:
 def buscar_pessoa_juridica_por_cnpj(cnpj: str) -> str | None:
     if not cnpj:
         return None
-    url = f"{BASE_URL}/pessoas/v1/pessoas/juridicas/{cnpj}"
+    url = f"{_base_url()}/pessoas/v1/pessoas/juridicas/{cnpj}"
     try:
         resp = requests.get(url, auth=_auth(), timeout=20)
         if resp.status_code == 200 and resp.text and resp.json():
@@ -184,7 +187,7 @@ def _listar_bsoft(caminho: str, params: dict | None = None) -> list:
     # retorno: 100").
     consulta = {"inicio": 0, "fim": 100}
     consulta.update(params or {})
-    resp = requests.get(f"{BASE_URL}{caminho}", params=consulta, auth=_auth(), timeout=30)
+    resp = requests.get(f"{_base_url()}{caminho}", params=consulta, auth=_auth(), timeout=30)
     if resp.status_code == 204 or not resp.text.strip():
         return []
     if resp.status_code != 200:
@@ -290,7 +293,7 @@ def sondar_cadastros_transporte() -> dict:
         caminho = f"/transporte/v1/{nome}"
         try:
             resp = requests.get(
-                f"{BASE_URL}{caminho}", params={"inicio": 0, "fim": 100}, auth=_auth(), timeout=20
+                f"{_base_url()}{caminho}", params={"inicio": 0, "fim": 100}, auth=_auth(), timeout=20
             )
         except Exception as exc:
             achados[nome] = {"status": "erro", "detalhe": str(exc)[:150]}

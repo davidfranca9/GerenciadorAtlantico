@@ -17,9 +17,14 @@ class Settings(BaseSettings):
     gmail_app_password_imap: str = ""
     gmail_factory_sender: str = ""
 
-    bsoft_api_base_url: str = ""
+    bsoft_api_base_url: str = "https://atlanticofertlog.bsoft.app/services/index.php"
     bsoft_api_user: str = ""
     bsoft_api_password: str = ""
+    bsoft_timeout_segundos: int = 30
+    # Trava geral: enquanto False, nenhuma operacao que cria/altera documento
+    # fiscal no Bsoft e executada (so leitura). Serve pra manter o codigo em
+    # producao sem risco ate o suporte confirmar o comportamento da API.
+    bsoft_emissao_habilitada: bool = False
 
     gemini_api_key: str = ""
 

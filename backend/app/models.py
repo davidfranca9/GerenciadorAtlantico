@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Float, ForeignKey, Integer, LargeBinary, String, DateTime, Boolean
+from sqlalchemy import Float, ForeignKey, Integer, LargeBinary, String, DateTime, Boolean, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -159,6 +159,75 @@ class CotacaoFrete(Base):
     cliente_nome: Mapped[str] = mapped_column(String(255), default="")
     observacoes: Mapped[str] = mapped_column(String(1000), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+STATUS_OPERACAO_FISCAL = (
+    "RASCUNHO",
+    "ENVIANDO_CTE",
+    "CTE_CRIADO",
+    "CTE_PROCESSANDO",
+    "CTE_AUTORIZADO",
+    "CTE_REJEITADO",
+    "CRIANDO_CONTRATO",
+    "CONTRATO_CRIADO",
+    "CIOT_PROCESSANDO",
+    "CIOT_AUTORIZADO",
+    "CIOT_REJEITADO",
+    "MDFE_PROCESSANDO",
+    "MDFE_AUTORIZADO",
+    "MDFE_REJEITADO",
+    "ENCERRADO",
+    "CANCELADO",
+)
+
+
+class OperacaoFiscal(Base):
+    """Uma operacao fiscal completa (NF-e -> CT-e -> contrato de frete ->
+    CIOT -> MDF-e) de um agendamento, com o estado e o rastro de auditoria.
+
+    A unicidade e por (agendamento + chave da NF-e): e o que impede emitir
+    dois CT-e para a mesma carga em caso de clique duplo ou retry."""
+
+    __tablename__ = "operacoes_fiscais"
+    __table_args__ = (UniqueConstraint("agendamento_id", "chave_nfe", name="uq_operacao_agendamento_nfe"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agendamento_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(30), default="RASCUNHO", index=True)
+
+    # Execucao: quem de fato transporta muda as regras de CIOT.
+    tipo_execucao: Mapped[str] = mapped_column(String(20), default="")  # "terceiro" | "frota_propria"
+    categoria_transportador: Mapped[str] = mapped_column(String(10), default="")  # TAC | ETC | CTC
+
+    # NF-e da carga
+    chave_nfe: Mapped[str] = mapped_column(String(44), default="")
+    cod_nfe_bsoft: Mapped[str] = mapped_column(String(32), default="")
+
+    # CT-e
+    cod_conhecimento_bsoft: Mapped[str] = mapped_column(String(32), default="")
+    cte_numero: Mapped[str] = mapped_column(String(32), default="")
+    cte_chave: Mapped[str] = mapped_column(String(44), default="")
+    cte_protocolo: Mapped[str] = mapped_column(String(64), default="")
+    cte_motivo_rejeicao: Mapped[str] = mapped_column(String(500), default="")
+
+    # Contrato de frete / CIOT
+    contrato_frete_id_bsoft: Mapped[str] = mapped_column(String(32), default="")
+    ciot: Mapped[str] = mapped_column(String(30), default="")
+    ciot_status_operadora: Mapped[str] = mapped_column(String(40), default="")
+    operadora_credito: Mapped[str] = mapped_column(String(80), default="")
+
+    # MDF-e
+    mdfe_id_bsoft: Mapped[str] = mapped_column(String(32), default="")
+    mdfe_chave: Mapped[str] = mapped_column(String(44), default="")
+
+    # Auditoria
+    ultimo_payload: Mapped[str] = mapped_column(String(4000), default="")
+    ultima_resposta: Mapped[str] = mapped_column(String(4000), default="")
+    tentativas: Mapped[int] = mapped_column(Integer, default=0)
+    erro: Mapped[str] = mapped_column(String(1000), default="")
+    solicitado_por: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class CartaFreteEnviada(Base):
