@@ -167,6 +167,8 @@ CONFIGS_CTE = {
     "parametros_criacao_manifesto": "/transporte/v1/parametroCriacaoManifesto",
     "agencias": "/transporte/v1/agencias",
     "tipos_taloes": "/transporte/v1/tiposTaloes",
+    "apolices_seguro": "/transporte/v1/apolicesSeguro",
+    "conjuntos_veiculos": "/transporte/v1/conjuntoVeiculos",
     "operadoras_credito": "/transporte/v1/contratosFrete/operadorasCredito",
     "naturezas_carga": "/transporte/v1/naturezaCargas",
     "naturezas_operacao": "/transporte/v1/naturezasOperacao",

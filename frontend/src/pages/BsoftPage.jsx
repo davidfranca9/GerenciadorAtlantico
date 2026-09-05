@@ -582,6 +582,8 @@ const ROTULOS_CONFIG = {
   parametros_criacao_cte: "Parâmetros de criação de CT-e (via NF-e)",
   parametros_criacao_manifesto: "Parâmetros de criação de MDF-e",
   agencias: "Agências",
+  apolices_seguro: "Apólices de seguro (seguradora_id / numeroApolice)",
+  conjuntos_veiculos: "Conjuntos de veículos",
   tipos_taloes: "Tipos de talões",
   operadoras_credito: "Operadoras de crédito (IPEF / CIOT)",
   naturezas_carga: "Naturezas de carga",
