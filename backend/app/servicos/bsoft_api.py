@@ -263,6 +263,26 @@ def obter_exemplos_documentos(quantidade: int = 3) -> dict:
     # O detalhamento de valores traz campos que a listagem resume - e onde
     # pode aparecer a regra de frete (regrasCarreto_id), que e obrigatoria
     # no POST e nao tem endpoint proprio de cadastro.
+    # O registro individual do CT-e pode trazer os ids internos que a
+    # listagem resume (regraFrete_id, seguradora_id, natureza da operacao).
+    # E a unica forma de descobrir esses ids, ja que os cadastros nao tem
+    # endpoint proprio.
+    conhecimentos = resultado.get("conhecimentos", {}).get("dados") or []
+    cte_id = conhecimentos[0].get("id") if conhecimentos and isinstance(conhecimentos[0], dict) else None
+    if cte_id:
+        try:
+            resp = requests.get(
+                f"{_base_url()}/transporte/v1/conhecimentos/{cte_id}", auth=_auth(), timeout=30
+            )
+            if resp.status_code == 200 and resp.text.strip():
+                resultado["conhecimento_detalhe"] = {"ok": True, "dados": resp.json()}
+            else:
+                resultado["conhecimento_detalhe"] = {
+                    "ok": False, "erro": f"{resp.status_code}: {resp.text[:200]}"
+                }
+        except Exception as exc:
+            resultado["conhecimento_detalhe"] = {"ok": False, "erro": str(exc)[:200]}
+
     contratos = resultado.get("contratos_frete", {}).get("dados") or []
     contrato_id = contratos[0].get("id") if contratos and isinstance(contratos[0], dict) else None
     if contrato_id:

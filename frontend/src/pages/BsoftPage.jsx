@@ -561,6 +561,7 @@ function ExemplosDocumentos() {
             {chave === "contratos_frete" ? "Contratos de frete"
               : chave === "conhecimentos" ? "CT-e (conhecimentos)"
               : chave === "cadastros_descobertos" ? "Cadastros encontrados (endpoints não documentados)"
+              : chave === "conhecimento_detalhe" ? "CT-e completo (onde devem aparecer os ids internos)"
               : "Detalhamento de valores do último contrato"}
           </div>
           {!valor?.ok ? (
