@@ -302,6 +302,39 @@ export function bsoftExemplosDocumentos() {
   return request("/bsoft/exemplos-documentos");
 }
 
+export function fiscalSimular(payload) {
+  return request("/fiscal/simular", { method: "POST", body: payload });
+}
+
+export function fiscalListarOperacoes() {
+  return request("/fiscal/operacoes");
+}
+
+export async function fiscalImportarNfe(agendamentoId, arquivo) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("agendamento_id", agendamentoId);
+  formData.append("arquivo", arquivo);
+  const res = await fetch(`${API_URL}/fiscal/operacoes/nfe`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || "Falha ao importar a NF-e");
+  }
+  return res.json();
+}
+
+export function fiscalEmitirCte(operacaoId, payload) {
+  return request(`/fiscal/operacoes/${operacaoId}/cte`, { method: "POST", body: payload });
+}
+
+export function fiscalConsultarStatus(operacaoId) {
+  return request(`/fiscal/operacoes/${operacaoId}/status`);
+}
+
 export function bsoftSondarCadastros() {
   return request("/bsoft/sondar-cadastros");
 }

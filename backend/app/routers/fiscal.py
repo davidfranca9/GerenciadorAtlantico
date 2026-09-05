@@ -1,0 +1,298 @@
+"""Emissao de CT-e a partir de um agendamento, via API do Bsoft.
+
+Fluxo: agendamento + XML da NF-e -> operacao fiscal (rascunho local) ->
+importa a NF-e no Bsoft -> cria o CT-e pelo viaNFe -> acompanha o status.
+
+Duas travas protegem a operacao:
+1. `settings.bsoft_emissao_habilitada` - com ela desligada, nenhuma chamada
+   de escrita sai do processo. E o padrao.
+2. Indice unico (agendamento_id, chave_nfe) - impede emitir dois CT-e pra
+   mesma carga, mesmo com clique duplo ou retry.
+
+O endpoint /simular monta e devolve o payload exato que seria enviado, sem
+chamar nada. E como se valida o mapeamento antes de existir risco fiscal.
+"""
+from __future__ import annotations
+
+import json
+import logging
+
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from ..auth import get_current_user
+from ..config import settings
+from ..database import get_db
+from ..models import Agendamento, OperacaoFiscal, User
+from ..servicos import bsoft_fiscal, nfe_xml
+from ..servicos.bsoft_client import BsoftEmissaoBloqueada, BsoftError, sanitizar
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/fiscal", tags=["fiscal"], dependencies=[Depends(get_current_user)])
+
+
+def _to_dict(op: OperacaoFiscal) -> dict:
+    return {
+        "id": op.id,
+        "agendamento_id": op.agendamento_id,
+        "status": op.status,
+        "chave_nfe": op.chave_nfe,
+        "cod_nfe_bsoft": op.cod_nfe_bsoft,
+        "cod_conhecimento_bsoft": op.cod_conhecimento_bsoft,
+        "cte_numero": op.cte_numero,
+        "cte_chave": op.cte_chave,
+        "cte_protocolo": op.cte_protocolo,
+        "cte_motivo_rejeicao": op.cte_motivo_rejeicao,
+        "ciot": op.ciot,
+        "erro": op.erro,
+        "tentativas": op.tentativas,
+        "solicitado_por": op.solicitado_por,
+        "created_at": op.created_at,
+        "updated_at": op.updated_at,
+    }
+
+
+def montar_payload_cte(
+    *, chave_nfe: str, parametro_criacao_cte: str, valor_frete: float, cod_nfe: str = ""
+) -> dict:
+    """Monta o corpo do POST /conhecimentos/viaNFe.
+
+    Funcao pura de proposito: nao chama nada, so traduz os dados da operacao
+    pro formato do Bsoft. E o que o /simular devolve.
+    """
+    valor = f"{float(valor_frete):.2f}"
+    corpo = {
+        "parametroCriacaoCTe": str(parametro_criacao_cte),
+        "tipoRateio": "P",
+        "composicaoFrete": "M",
+        "valorFrete": valor,
+        "baseCalculo": valor,
+        "totalServico": valor,
+        "totalPrestacao": valor,
+        "valorSeguroAduaneiro": "0.00",
+        "diaria": "0.00",
+        "valoresOutros": "0.00",
+        "valorPedagioConhecimento": "0.00",
+        "valorSeguro": "0.00",
+        "gris": "0.00",
+    }
+    # A chave tem prioridade: quando informada, o Bsoft ignora "ids".
+    if chave_nfe:
+        corpo["chavesNFe"] = [chave_nfe]
+    elif cod_nfe:
+        corpo["ids"] = [str(cod_nfe)]
+    return corpo
+
+
+class SimularIn(BaseModel):
+    agendamento_id: int
+    chave_nfe: str = ""
+    valor_frete: float = 0
+    parametro_criacao_cte: str = ""
+
+
+@router.post("/simular")
+def simular(payload: SimularIn, db: Session = Depends(get_db)):
+    """Nao chama o Bsoft. Devolve o payload exato que seria enviado, junto
+    com o que ainda falta pra emitir de verdade."""
+    agendamento = db.get(Agendamento, payload.agendamento_id)
+    if agendamento is None:
+        raise HTTPException(status_code=404, detail="Agendamento nao encontrado")
+
+    chave = "".join(filter(str.isdigit, payload.chave_nfe or ""))
+    pendencias = []
+    if not payload.parametro_criacao_cte:
+        pendencias.append(
+            "Parametro de Criacao de CT-e nao informado. O cadastro paramCriaCteViaNFe "
+            "esta vazio no Bsoft e precisa ser configurado la (pergunta 1.6 do suporte)."
+        )
+    if not chave:
+        pendencias.append("Chave da NF-e nao informada.")
+    elif not nfe_xml.chave_valida(chave):
+        pendencias.append("Chave da NF-e invalida (digito verificador nao confere).")
+    if payload.valor_frete <= 0:
+        pendencias.append("Valor do frete precisa ser maior que zero.")
+    if not settings.bsoft_emissao_habilitada:
+        pendencias.append(
+            "Emissao desligada por configuracao (BSOFT_EMISSAO_HABILITADA=false)."
+        )
+
+    return {
+        "endpoint": "POST /transporte/v1/conhecimentos/viaNFe",
+        "payload": montar_payload_cte(
+            chave_nfe=chave,
+            parametro_criacao_cte=payload.parametro_criacao_cte or "<FALTA CONFIGURAR>",
+            valor_frete=payload.valor_frete,
+        ),
+        "agendamento": {
+            "id": agendamento.id,
+            "fornecedor": agendamento.supplier,
+            "data": agendamento.loading_date,
+            "motorista": agendamento.driver_name,
+            "placa": agendamento.plate_cavalo,
+            "toneladas": agendamento.total_tons,
+        },
+        "pendencias": pendencias,
+        "pronto_para_emitir": not pendencias,
+    }
+
+
+@router.get("/operacoes")
+def listar_operacoes(db: Session = Depends(get_db)):
+    operacoes = db.query(OperacaoFiscal).order_by(OperacaoFiscal.created_at.desc()).limit(200).all()
+    return [_to_dict(op) for op in operacoes]
+
+
+@router.post("/operacoes/nfe")
+async def importar_nfe(
+    agendamento_id: int = Form(...),
+    arquivo: UploadFile = None,
+    db: Session = Depends(get_db),
+    usuario: User = Depends(get_current_user),
+):
+    """Le o XML da NF-e, valida localmente e cria/reaproveita a operacao.
+    So chama o Bsoft se a emissao estiver habilitada."""
+    if arquivo is None:
+        raise HTTPException(status_code=400, detail="Envie o XML da NF-e")
+    if db.get(Agendamento, agendamento_id) is None:
+        raise HTTPException(status_code=404, detail="Agendamento nao encontrado")
+
+    conteudo = await arquivo.read()
+    try:
+        dados_nfe = nfe_xml.extrair_dados(conteudo)
+    except nfe_xml.NFeInvalida as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    operacao = (
+        db.query(OperacaoFiscal)
+        .filter(
+            OperacaoFiscal.agendamento_id == agendamento_id,
+            OperacaoFiscal.chave_nfe == dados_nfe["chave"],
+        )
+        .first()
+    )
+    if operacao is None:
+        operacao = OperacaoFiscal(
+            agendamento_id=agendamento_id,
+            chave_nfe=dados_nfe["chave"],
+            status="RASCUNHO",
+            solicitado_por=usuario.email,
+        )
+        db.add(operacao)
+        db.commit()
+        db.refresh(operacao)
+    elif operacao.cod_conhecimento_bsoft:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ja existe CT-e emitido para essa NF-e nesse agendamento (operacao #{operacao.id})",
+        )
+
+    if not settings.bsoft_emissao_habilitada:
+        return {**_to_dict(operacao), "nfe": dados_nfe, "aviso": "Emissao desligada: NF-e nao foi enviada ao Bsoft."}
+
+    try:
+        resposta = await run_in_threadpool(bsoft_fiscal.importar_nfe_por_xml, conteudo)
+        operacao.cod_nfe_bsoft = str(resposta.get("codNFe", ""))
+        operacao.ultima_resposta = json.dumps(sanitizar(resposta))[:4000]
+        operacao.erro = ""
+    except (BsoftError, BsoftEmissaoBloqueada) as exc:
+        operacao.erro = str(exc)[:1000]
+        db.commit()
+        raise HTTPException(status_code=502, detail=str(exc))
+    db.commit()
+    db.refresh(operacao)
+    return {**_to_dict(operacao), "nfe": dados_nfe}
+
+
+class EmitirCteIn(BaseModel):
+    valor_frete: float
+    parametro_criacao_cte: str
+
+
+@router.post("/operacoes/{operacao_id}/cte")
+async def emitir_cte(
+    operacao_id: int,
+    payload: EmitirCteIn,
+    db: Session = Depends(get_db),
+    usuario: User = Depends(get_current_user),
+):
+    """Cria o CT-e no Bsoft a partir da NF-e ja vinculada."""
+    operacao = db.get(OperacaoFiscal, operacao_id)
+    if operacao is None:
+        raise HTTPException(status_code=404, detail="Operacao nao encontrada")
+    if operacao.cod_conhecimento_bsoft:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Essa operacao ja tem CT-e ({operacao.cod_conhecimento_bsoft}). Nao sera emitido de novo.",
+        )
+    if payload.valor_frete <= 0:
+        raise HTTPException(status_code=400, detail="Valor do frete precisa ser maior que zero")
+
+    corpo = montar_payload_cte(
+        chave_nfe=operacao.chave_nfe,
+        cod_nfe=operacao.cod_nfe_bsoft,
+        parametro_criacao_cte=payload.parametro_criacao_cte,
+        valor_frete=payload.valor_frete,
+    )
+    operacao.ultimo_payload = json.dumps(sanitizar(corpo))[:4000]
+    operacao.tentativas += 1
+    operacao.solicitado_por = usuario.email
+    operacao.status = "ENVIANDO_CTE"
+    db.commit()
+
+    try:
+        resposta = await run_in_threadpool(
+            bsoft_fiscal.criar_cte_via_nfe,
+            parametro_criacao_cte=payload.parametro_criacao_cte,
+            chaves_nfe=[operacao.chave_nfe] if operacao.chave_nfe else None,
+            ids_nfe=[operacao.cod_nfe_bsoft] if operacao.cod_nfe_bsoft else None,
+            valores={k: v for k, v in corpo.items() if k not in ("chavesNFe", "ids", "parametroCriacaoCTe")},
+        )
+    except BsoftEmissaoBloqueada as exc:
+        operacao.status = "RASCUNHO"
+        operacao.erro = str(exc)[:1000]
+        db.commit()
+        raise HTTPException(status_code=409, detail=str(exc))
+    except BsoftError as exc:
+        # Sem retry automatico: pode ter criado do outro lado. O status
+        # fica explicito pra alguem consultar antes de tentar de novo.
+        operacao.status = "CTE_REJEITADO"
+        operacao.erro = str(exc)[:1000]
+        db.commit()
+        logger.warning("Falha ao emitir CT-e da operacao %s: %s", operacao.id, exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    operacao.cod_conhecimento_bsoft = str(resposta.get("codConhecimentos", ""))
+    operacao.ultima_resposta = json.dumps(sanitizar(resposta))[:4000]
+    operacao.status = "CTE_CRIADO"
+    operacao.erro = ""
+    db.commit()
+    db.refresh(operacao)
+    return _to_dict(operacao)
+
+
+@router.get("/operacoes/{operacao_id}/status")
+async def consultar_status(operacao_id: int, db: Session = Depends(get_db)):
+    """Consulta o CT-e no Bsoft e atualiza chave, protocolo e rejeicao."""
+    operacao = db.get(OperacaoFiscal, operacao_id)
+    if operacao is None:
+        raise HTTPException(status_code=404, detail="Operacao nao encontrada")
+    if not operacao.cod_conhecimento_bsoft:
+        return {**_to_dict(operacao), "aviso": "Operacao ainda nao tem CT-e criado."}
+
+    try:
+        dados = await run_in_threadpool(bsoft_fiscal.obter_conhecimento, operacao.cod_conhecimento_bsoft)
+    except BsoftError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    operacao.cte_numero = str(dados.get("nro") or operacao.cte_numero)
+    operacao.cte_chave = str(dados.get("chaveAcesso") or operacao.cte_chave)
+    operacao.cte_protocolo = str(dados.get("protocoloAverbacao") or operacao.cte_protocolo)
+    if operacao.cte_chave:
+        operacao.status = "CTE_AUTORIZADO"
+    db.commit()
+    db.refresh(operacao)
+    return {**_to_dict(operacao), "bsoft": dados}
