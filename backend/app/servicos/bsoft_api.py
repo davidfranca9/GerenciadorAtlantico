@@ -254,6 +254,18 @@ def obter_exemplos_documentos(quantidade: int = 3) -> dict:
             resultado[nome] = {"ok": True, "dados": registros[:quantidade]}
         except Exception as exc:
             resultado[nome] = {"ok": False, "erro": str(exc)[:300]}
+
+    # O detalhamento de valores traz campos que a listagem resume - e onde
+    # pode aparecer a regra de frete (regrasCarreto_id), que e obrigatoria
+    # no POST e nao tem endpoint proprio de cadastro.
+    contratos = resultado.get("contratos_frete", {}).get("dados") or []
+    contrato_id = contratos[0].get("id") if contratos and isinstance(contratos[0], dict) else None
+    if contrato_id:
+        try:
+            valores = _listar_bsoft("/transporte/v1/contratosFrete/valores", {"id": contrato_id})
+            resultado["contrato_frete_valores"] = {"ok": True, "dados": valores}
+        except Exception as exc:
+            resultado["contrato_frete_valores"] = {"ok": False, "erro": str(exc)[:300]}
     return resultado
 
 

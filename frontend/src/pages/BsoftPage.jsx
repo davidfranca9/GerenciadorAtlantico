@@ -544,7 +544,9 @@ function ExemplosDocumentos() {
       {dados && Object.entries(dados).map(([chave, valor]) => (
         <div key={chave} style={{ borderTop: "1px solid var(--border-soft)", paddingTop: 10 }}>
           <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 6 }}>
-            {chave === "contratos_frete" ? "Contratos de frete" : "CT-e (conhecimentos)"}
+            {chave === "contratos_frete" ? "Contratos de frete"
+              : chave === "conhecimentos" ? "CT-e (conhecimentos)"
+              : "Detalhamento de valores do último contrato"}
           </div>
           {!valor?.ok ? (
             <div style={{ color: "var(--danger)", fontSize: 12 }}>{valor?.erro || "falhou"}</div>
