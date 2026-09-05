@@ -21,6 +21,21 @@ class Settings(BaseSettings):
     bsoft_api_user: str = ""
     bsoft_api_password: str = ""
     bsoft_timeout_segundos: int = 30
+
+    # Ids do tenant, descobertos pela API e pela tela do Bsoft. Ficam aqui
+    # (e nao no codigo) pra poder corrigir por variavel de ambiente, sem
+    # deploy, se algum cadastro mudar do lado deles.
+    bsoft_agencia_id: int = 2                 # ATLANTICO FERTLOG
+    bsoft_talao_cte_id: int = 3               # talao tipo Conhecimento
+    bsoft_talao_mdfe_id: int = 7              # talao tipo Manifesto de carga
+    bsoft_talao_contrato_frete_id: int = 5    # talao RECIBO DE FRETE
+    bsoft_regra_frete_id: int = 35            # regra "Calculo FERTIMAXI"
+    bsoft_numero_apolice: str = "202511"      # apolice CHUBB SEGUROS BRASIL S.A.
+    bsoft_natureza_carga_id: int = 4          # FERTILIZANTES
+    # Ainda desconhecido: o cadastro paramCriaCteViaNFe esta vazio no tenant
+    # e precisa ser criado no Bsoft (pergunta 1.6 do suporte). Sem ele, o
+    # POST /conhecimentos/viaNFe nao tem como funcionar.
+    bsoft_parametro_criacao_cte: str = ""
     # Trava geral: enquanto False, nenhuma operacao que cria/altera documento
     # fiscal no Bsoft e executada (so leitura). Serve pra manter o codigo em
     # producao sem risco ate o suporte confirmar o comportamento da API.

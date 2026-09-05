@@ -103,8 +103,9 @@ def simular(payload: SimularIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Agendamento nao encontrado")
 
     chave = "".join(filter(str.isdigit, payload.chave_nfe or ""))
+    parametro = payload.parametro_criacao_cte or settings.bsoft_parametro_criacao_cte
     pendencias = []
-    if not payload.parametro_criacao_cte:
+    if not parametro:
         pendencias.append(
             "Parametro de Criacao de CT-e nao informado. O cadastro paramCriaCteViaNFe "
             "esta vazio no Bsoft e precisa ser configurado la (pergunta 1.6 do suporte)."
@@ -124,9 +125,16 @@ def simular(payload: SimularIn, db: Session = Depends(get_db)):
         "endpoint": "POST /transporte/v1/conhecimentos/viaNFe",
         "payload": montar_payload_cte(
             chave_nfe=chave,
-            parametro_criacao_cte=payload.parametro_criacao_cte or "<FALTA CONFIGURAR>",
+            parametro_criacao_cte=parametro or "<FALTA CONFIGURAR>",
             valor_frete=payload.valor_frete,
         ),
+        "ids_do_tenant": {
+            "agencia": settings.bsoft_agencia_id,
+            "talao_cte": settings.bsoft_talao_cte_id,
+            "regra_frete": settings.bsoft_regra_frete_id,
+            "apolice": settings.bsoft_numero_apolice,
+            "natureza_carga": settings.bsoft_natureza_carga_id,
+        },
         "agendamento": {
             "id": agendamento.id,
             "fornecedor": agendamento.supplier,
@@ -209,7 +217,8 @@ async def importar_nfe(
 
 class EmitirCteIn(BaseModel):
     valor_frete: float
-    parametro_criacao_cte: str
+    # Cai pro configurado em settings quando nao vier no corpo.
+    parametro_criacao_cte: str = ""
 
 
 @router.post("/operacoes/{operacao_id}/cte")
@@ -231,10 +240,17 @@ async def emitir_cte(
     if payload.valor_frete <= 0:
         raise HTTPException(status_code=400, detail="Valor do frete precisa ser maior que zero")
 
+    parametro = payload.parametro_criacao_cte or settings.bsoft_parametro_criacao_cte
+    if not parametro:
+        raise HTTPException(
+            status_code=400,
+            detail="Parametro de Criacao de CT-e nao configurado (BSOFT_PARAMETRO_CRIACAO_CTE). "
+                   "Ele precisa existir no Bsoft antes de emitir.",
+        )
     corpo = montar_payload_cte(
         chave_nfe=operacao.chave_nfe,
         cod_nfe=operacao.cod_nfe_bsoft,
-        parametro_criacao_cte=payload.parametro_criacao_cte,
+        parametro_criacao_cte=parametro,
         valor_frete=payload.valor_frete,
     )
     operacao.ultimo_payload = json.dumps(sanitizar(corpo))[:4000]
@@ -246,7 +262,7 @@ async def emitir_cte(
     try:
         resposta = await run_in_threadpool(
             bsoft_fiscal.criar_cte_via_nfe,
-            parametro_criacao_cte=payload.parametro_criacao_cte,
+            parametro_criacao_cte=parametro,
             chaves_nfe=[operacao.chave_nfe] if operacao.chave_nfe else None,
             ids_nfe=[operacao.cod_nfe_bsoft] if operacao.cod_nfe_bsoft else None,
             valores={k: v for k, v in corpo.items() if k not in ("chavesNFe", "ids", "parametroCriacaoCTe")},
