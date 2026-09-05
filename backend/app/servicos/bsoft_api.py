@@ -178,7 +178,9 @@ CONFIGS_CTE = {
 def _listar_bsoft(caminho: str, params: dict | None = None) -> list:
     """GET numa listagem do Bsoft. As listagens exigem o parametro 'fim'
     (paginacao) e devolvem 204 sem corpo quando o cadastro esta vazio."""
-    consulta = {"inicio": 0, "fim": 500}
+    # O Bsoft rejeita fim > 100 ("Limite invalido, valor maximo aceitavel de
+    # retorno: 100").
+    consulta = {"inicio": 0, "fim": 100}
     consulta.update(params or {})
     resp = requests.get(f"{BASE_URL}{caminho}", params=consulta, auth=_auth(), timeout=30)
     if resp.status_code == 204 or not resp.text.strip():
@@ -213,9 +215,14 @@ def obter_todas_configuracoes_cte() -> dict:
         except Exception as exc:
             resultado[nome] = {"ok": False, "erro": str(exc)[:300]}
 
+    agencias = resultado.get("agencias", {})
+    if not agencias.get("ok"):
+        resultado["tipos_taloes"] = {"ok": False, "erro": "depende das agencias, que falharam acima"}
+        return resultado
+
     taloes = []
     erros_taloes = []
-    for agencia in (resultado.get("agencias", {}).get("dados") or []):
+    for agencia in (agencias.get("dados") or []):
         agencia_id = agencia.get("id") if isinstance(agencia, dict) else None
         if not agencia_id:
             continue
