@@ -55,6 +55,19 @@ def obter_configuracoes_cte():
     return bsoft_api.obter_todas_configuracoes_cte()
 
 
+@router.get("/documentos-fiscais")
+def listar_documentos_fiscais(dias: int = 30):
+    """Somente leitura: CT-es emitidos e contratos de frete (com CIOT) dos
+    ultimos N dias, ja cruzados entre si."""
+    from datetime import date, timedelta
+
+    hoje = date.today()
+    return bsoft_api.listar_documentos_fiscais(
+        (hoje - timedelta(days=max(1, min(dias, 180)))).strftime("%Y-%m-%d"),
+        hoje.strftime("%Y-%m-%d"),
+    )
+
+
 @router.get("/exemplos-documentos")
 def obter_exemplos_documentos():
     """Somente leitura: ultimos contratos de frete e CT-es emitidos, pra

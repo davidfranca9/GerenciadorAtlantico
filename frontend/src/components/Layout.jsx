@@ -12,6 +12,7 @@ export const NAV_SECTIONS = [
     { to: "/ordem-coleta", label: "Ordem de coleta", icon: "clipboard", description: "Emissão de documentos operacionais" },
     { to: "/agendamentos", label: "Agendamentos", icon: "calendar", description: "Controle de coletas programadas" },
     { to: "/analise-fretes", label: "Análise de fretes", icon: "chart", description: "Histórico e comparação de valores" },
+    { to: "/documentos-fiscais", label: "Documentos fiscais", icon: "file", description: "CT-e e CIOT emitidos, vindos do Bsoft" },
   ]},
   { title: "Financeiro", items: [{ to: "/carta-frete", label: "Carta frete", icon: "wallet", description: "Geração de autorizações financeiras" }] },
   { title: "Comunicação", items: [

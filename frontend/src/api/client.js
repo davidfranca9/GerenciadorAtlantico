@@ -302,6 +302,10 @@ export function bsoftExemplosDocumentos() {
   return request("/bsoft/exemplos-documentos");
 }
 
+export function bsoftDocumentosFiscais(dias = 30) {
+  return request(`/bsoft/documentos-fiscais?dias=${dias}`);
+}
+
 export function bsoftConsultaCep(cep) {
   return request(`/bsoft/consulta-cep/${encodeURIComponent(cep)}`);
 }

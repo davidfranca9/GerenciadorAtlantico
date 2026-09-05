@@ -269,6 +269,56 @@ def obter_exemplos_documentos(quantidade: int = 3) -> dict:
     return resultado
 
 
+def listar_documentos_fiscais(data_inicio: str, data_fim: str) -> dict:
+    """Somente leitura: CT-es emitidos e contratos de frete (com o CIOT) do
+    periodo, pra exibir os documentos dentro do proprio sistema. Cada CT-e
+    recebe o contrato de frete correspondente quando existe vinculo."""
+    conhecimentos, contratos = [], []
+    erros = {}
+    try:
+        conhecimentos = _listar_bsoft(
+            "/transporte/v1/conhecimentos", {"dataInicio": data_inicio, "dataFim": data_fim}
+        )
+    except Exception as exc:
+        erros["conhecimentos"] = str(exc)[:300]
+    try:
+        contratos = _listar_bsoft(
+            "/transporte/v1/contratosFrete", {"dataInicio": data_inicio, "dataFim": data_fim}
+        )
+    except Exception as exc:
+        erros["contratos_frete"] = str(exc)[:300]
+
+    # O contrato de frete lista os numeros de CT-e que cobre (nrosCTe).
+    contrato_por_cte = {}
+    for contrato in contratos:
+        for nro in contrato.get("nrosCTe") or []:
+            contrato_por_cte[str(nro)] = contrato
+
+    documentos = []
+    for cte in conhecimentos:
+        contrato = contrato_por_cte.get(str(cte.get("nro")))
+        motorista = (cte.get("dados_motorista") or {})
+        documentos.append({
+            "cte_id": cte.get("id"),
+            "cte_numero": cte.get("nro"),
+            "emitido_em": cte.get("dtEmissao"),
+            "chave_acesso": cte.get("chaveAcesso"),
+            "remetente": cte.get("remetente"),
+            "destinatario": cte.get("destinatario"),
+            "cliente": cte.get("cliente"),
+            "motorista": (motorista.get("motorista") or "").strip(),
+            "veiculo": motorista.get("veiculo"),
+            "carreta": motorista.get("carreta"),
+            "favorecido": motorista.get("favorecido"),
+            "status_averbacao": cte.get("statusAverbacao"),
+            "contrato_numero": contrato.get("numeroCF") if contrato else None,
+            "ciot": contrato.get("CIOT") if contrato else None,
+            "operadora": contrato.get("operadoraCredito") if contrato else None,
+            "valor": contrato.get("valorTotalOrigem") if contrato else None,
+        })
+    return {"documentos": documentos, "total_contratos": len(contratos), "erros": erros}
+
+
 def consultar_cep(cep: str) -> dict:
     resp = requests.get(f"https://brasilapi.com.br/api/cep/v1/{cep}", timeout=10)
     if resp.status_code == 404:

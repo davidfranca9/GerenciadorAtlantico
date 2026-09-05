@@ -12,6 +12,7 @@ import CartaFretePage from "./pages/CartaFretePage";
 import ClientesPage from "./pages/ClientesPage";
 import ContratoPage from "./pages/ContratoPage";
 import DashboardPage from "./pages/DashboardPage";
+import DocumentosFiscaisPage from "./pages/DocumentosFiscaisPage";
 import EmailsPage from "./pages/EmailsPage";
 import LoginPage from "./pages/LoginPage";
 import OrdemColetaPage from "./pages/OrdemColetaPage";
@@ -53,6 +54,7 @@ function AppRoutes() {
         <Route path="/carta-frete" element={<CartaFretePage />} />
         <Route path="/agendamentos" element={<AgendamentosPage />} />
         <Route path="/analise-fretes" element={<AnaliseFretesPage />} />
+        <Route path="/documentos-fiscais" element={<DocumentosFiscaisPage />} />
         <Route path="/clientes" element={<ClientesPage />} />
         <Route path="/emails" element={<EmailsPage />} />
         <Route path="/whatsapp" element={<WhatsAppPage />} />
