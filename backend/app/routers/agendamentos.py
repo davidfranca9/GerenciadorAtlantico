@@ -108,6 +108,7 @@ class AgendamentoIn(BaseModel):
     status: str = STATUS_AGENDAMENTO[0]
     supplier: str = ""
     loading_date: str = ""
+    data_agendada: str = ""
     driver_name: str = ""
     driver_cpf: str = ""
     driver_phone: str = ""
@@ -134,6 +135,9 @@ def _to_dict(a: Agendamento) -> dict:
         "status": a.status,
         "supplier": a.supplier,
         "loading_date": a.loading_date,
+        "data_agendada": a.data_agendada,
+        "agendamento_confirmado_em": a.agendamento_confirmado_em,
+        "agendamento_confirmado_por": a.agendamento_confirmado_por,
         "driver_name": a.driver_name,
         "driver_cpf": a.driver_cpf,
         "driver_phone": a.driver_phone,
@@ -230,6 +234,32 @@ def excluir_agendamento(agendamento_id: int, db: Session = Depends(get_db)):
     db.delete(agendamento)
     db.commit()
     return {"ok": True}
+
+
+class ConfirmarAgendamentoIn(BaseModel):
+    data_agendada: str
+    confirmado_por: str = ""
+
+
+@router.patch("/{agendamento_id}/data-agendada")
+def confirmar_data_agendada(
+    agendamento_id: int,
+    payload: ConfirmarAgendamentoIn,
+    db: Session = Depends(get_db),
+    usuario=Depends(get_current_user),
+):
+    """Registra a data que o fornecedor confirmou (que costuma chegar depois
+    da solicitacao, e nem sempre e a data pedida)."""
+    agendamento = db.get(Agendamento, agendamento_id)
+    if agendamento is None:
+        raise HTTPException(status_code=404, detail="Agendamento nao encontrado")
+    agendamento.data_agendada = payload.data_agendada.strip()
+    agendamento.agendamento_confirmado_em = datetime.utcnow()
+    agendamento.agendamento_confirmado_por = payload.confirmado_por or getattr(usuario, "email", "")
+    agendamento.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(agendamento)
+    return _to_dict(agendamento)
 
 
 @router.patch("/{agendamento_id}/status")

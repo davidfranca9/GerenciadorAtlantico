@@ -72,6 +72,8 @@ export default function EmailsPage() {
   const [anexos, setAnexos] = useState([]);
   const [enviando, setEnviando] = useState(false);
   const [erroEnvio, setErroEnvio] = useState("");
+  const [busca, setBusca] = useState("");
+  const buscaAtivaRef = useRef("");
   const corpoRef = useRef(null);
 
   useEffect(() => {
@@ -80,14 +82,16 @@ export default function EmailsPage() {
     carregarPagina(1, false, !cache.carregou);
   }, []);
 
-  async function carregarPagina(numeroPagina, acumular, mostrarCarregando = true) {
+  async function carregarPagina(numeroPagina, acumular, mostrarCarregando = true, termo = null) {
+    const buscaAtiva = termo === null ? buscaAtivaRef.current : termo;
+    buscaAtivaRef.current = buscaAtiva;
     if (mostrarCarregando) {
       if (numeroPagina === 1) setCarregandoLista(true);
       else setCarregandoMais(true);
     }
     setErro("");
     try {
-      const data = await api.listarEmails(numeroPagina, TAMANHO_PAGINA);
+      const data = await api.listarEmails(numeroPagina, TAMANHO_PAGINA, buscaAtiva);
       setMensagens((prev) => {
         const novo = acumular ? [...prev, ...data.mensagens] : data.mensagens;
         cache.mensagens = novo;
@@ -200,10 +204,34 @@ export default function EmailsPage() {
               <Icon name="mail" size={16} />Escrever
             </button>
           </div>
+          <form
+            className="inbox-busca"
+            onSubmit={(e) => { e.preventDefault(); carregarPagina(1, false, true, busca.trim()); }}
+          >
+            <div className="pedidos-busca-wrap">
+              <Icon name="search" size={14} />
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar (ex: from:fertimaxi agendamento)"
+              />
+            </div>
+            {buscaAtivaRef.current && (
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => { setBusca(""); carregarPagina(1, false, true, ""); }}
+              >
+                Limpar
+              </button>
+            )}
+          </form>
           {carregandoLista ? (
             <div className="inline-alert info"><span className="status-dot" />Carregando mensagens...</div>
           ) : mensagens.length === 0 ? (
-            <div className="inline-alert warning">Nenhuma mensagem encontrada.</div>
+            <div className="inline-alert warning">
+              {buscaAtivaRef.current ? "Nenhuma mensagem para essa busca." : "Nenhuma mensagem encontrada."}
+            </div>
           ) : (
             <ul className="inbox-messages">
               {mensagens.map((msg) => (

@@ -99,14 +99,25 @@ def _extrair_data(msg: email.message.Message) -> str:
         return bruto
 
 
-def listar_mensagens(pagina: int = 1, tamanho_pagina: int = 25) -> dict:
+def _consulta_gmail(busca: str) -> str:
+    """Monta a expressao de busca do Gmail. Sem termo, mantem o filtro
+    padrao (fora de promocoes). Com termo, o usuario pode usar a sintaxe do
+    proprio Gmail (from:, subject:, has:attachment, newer_than:7d...)."""
+    termo = (busca or "").strip()
+    if not termo:
+        return '"-category:promotions"'
+    # Aspas duplas quebrariam a string da consulta IMAP.
+    return '"{}"'.format(termo.replace('"', " "))
+
+
+def listar_mensagens(pagina: int = 1, tamanho_pagina: int = 25, busca: str = "") -> dict:
     with _lock:
         conexao = _obter_conexao()
         status, _ = conexao.select("INBOX", readonly=True)
         if status != "OK":
             raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
 
-        status, dados = conexao.search(None, "X-GM-RAW", '"-category:promotions"')
+        status, dados = conexao.search(None, "X-GM-RAW", _consulta_gmail(busca))
         if status != "OK":
             raise InboxIndisponivel("Nao foi possivel listar as mensagens")
 

@@ -91,6 +91,10 @@ export function obterAgendamento(id) {
   return request(`/agendamentos/${id}`);
 }
 
+export function confirmarDataAgendada(id, dataAgendada) {
+  return request(`/agendamentos/${id}/data-agendada`, { method: "PATCH", body: { data_agendada: dataAgendada } });
+}
+
 export function excluirAgendamento(id) {
   return request(`/agendamentos/${id}`, { method: "DELETE" });
 }
@@ -263,8 +267,8 @@ export function bsoftLookups() {
   return request("/bsoft/lookups");
 }
 
-export function listarEmails(pagina = 1, tamanhoPagina = 25) {
-  return request(`/email/mensagens?pagina=${pagina}&tamanho_pagina=${tamanhoPagina}`);
+export function listarEmails(pagina = 1, tamanhoPagina = 25, busca = "") {
+  return request(`/email/mensagens?pagina=${pagina}&tamanho_pagina=${tamanhoPagina}&busca=${encodeURIComponent(busca)}`);
 }
 
 export function obterEmail(id) {

@@ -62,6 +62,9 @@ def on_startup():
             conn.execute(text("ALTER TABLE whatsapp_mensagens ADD COLUMN IF NOT EXISTS midia BYTEA"))
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS paginas_bloqueadas VARCHAR(1000) DEFAULT ''"))
             conn.execute(text("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS roteiro VARCHAR(2000) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS data_agendada VARCHAR(32) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS agendamento_confirmado_em TIMESTAMP"))
+            conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS agendamento_confirmado_por VARCHAR(255) DEFAULT ''"))
             # operacoes_fiscais e tabela nova (criada pelo create_all); o indice
             # unico abaixo e a protecao contra emitir dois CT-e pra mesma carga.
             conn.execute(text(

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import * as api from "../api/client";
 import DateField from "../components/DateField";
-import { formatCPF, formatNome, formatPhone, formatPlaca } from "../utils/format";
+import { formatCPF, formatDateInput, formatNome, formatPhone, formatPlaca } from "../utils/format";
 
 const STATUS_OPTIONS = ["Aguardando Agendamento", "Agendado", "Cancelado", "Carregou"];
 const ITEM_VAZIO = { pedidoId: null, pedido: "", cliente: "", produto: "", cidade: "", embalagem: "", toneladas: "", toneladasMax: 0 };
@@ -41,6 +41,56 @@ function gerarGradeDoMes(referencia) {
     d.setDate(inicioGrade.getDate() + i);
     return d;
   });
+}
+
+function DataAgendadaCell({ agendamento, onSalvo }) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(agendamento.data_agendada || "");
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      await api.confirmarDataAgendada(agendamento.id, valor);
+      setEditando(false);
+      onSalvo();
+    } catch {
+      // erro fica visivel na lista ao recarregar
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  if (editando) {
+    return (
+      <div style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 190 }}>
+        <input
+          value={valor}
+          onChange={(e) => setValor(formatDateInput(e.target.value))}
+          placeholder="dd/mm/aaaa"
+          style={{ height: 32, width: 110 }}
+          autoFocus
+        />
+        <button className="btn-primary" style={{ minHeight: 32, padding: "0 10px" }} disabled={salvando} onClick={salvar}>
+          {salvando ? "..." : "OK"}
+        </button>
+        <button className="btn-ghost" style={{ minHeight: 32, padding: "0 8px" }} onClick={() => setEditando(false)}>
+          ✕
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      className="btn-ghost"
+      style={{ minHeight: 30, padding: "0 8px", color: agendamento.data_agendada ? "var(--accent-glow)" : "var(--muted-soft)" }}
+      onClick={() => { setValor(agendamento.data_agendada || ""); setEditando(true); }}
+      title={agendamento.agendamento_confirmado_por ? `Confirmado por ${agendamento.agendamento_confirmado_por}` : "Clique para informar a data confirmada"}
+    >
+      {agendamento.data_agendada || "aguardando"}
+    </button>
+  );
 }
 
 export default function AgendamentosPage() {
@@ -84,11 +134,18 @@ export default function AgendamentosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtroStatus]);
 
+  // Na agenda vale a data confirmada pelo fornecedor; enquanto ela nao vem,
+  // o agendamento aparece na data que foi solicitada.
+  function dataEfetiva(a) {
+    return a.data_agendada || a.loading_date;
+  }
+
   const agendamentosPorDia = useMemo(() => {
     const mapa = {};
     for (const a of agendamentos) {
-      if (!a.loading_date) continue;
-      (mapa[a.loading_date] ||= []).push(a);
+      const dia = a.data_agendada || a.loading_date;
+      if (!dia) continue;
+      (mapa[dia] ||= []).push(a);
     }
     return mapa;
   }, [agendamentos]);
@@ -113,7 +170,7 @@ export default function AgendamentosPage() {
   }
 
   const agendamentosExibidos = viewMode === "agenda" && diaSelecionado
-    ? agendamentos.filter((a) => a.loading_date === diaSelecionado)
+    ? agendamentos.filter((a) => dataEfetiva(a) === diaSelecionado)
     : agendamentos;
 
   useEffect(() => {
@@ -395,7 +452,7 @@ export default function AgendamentosPage() {
                 ))}
               </select>
             </div>
-            <DateField label="Data de Carregamento" value={loadingDate} onChange={setLoadingDate} />
+            <DateField label="Data solicitada" value={loadingDate} onChange={setLoadingDate} />
             <div className="field">
               <label>Motorista</label>
               <input value={driverName} onChange={(e) => setDriverName(formatNome(e.target.value))} />
@@ -475,7 +532,8 @@ export default function AgendamentosPage() {
           <thead>
             <tr>
               <th>Fornecedor</th>
-              <th>Data</th>
+              <th>Solicitada</th>
+              <th>Agendada</th>
               <th>Motorista</th>
               <th>Itens</th>
               <th>Toneladas</th>
@@ -494,6 +552,9 @@ export default function AgendamentosPage() {
                 >
                   <td>{a.supplier}</td>
                   <td>{a.loading_date}</td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <DataAgendadaCell agendamento={a} onSalvo={carregar} />
+                  </td>
                   <td>{a.driver_name}</td>
                   <td>{a.total_items}</td>
                   <td>{a.total_tons}</td>
@@ -519,7 +580,7 @@ export default function AgendamentosPage() {
                 </tr>
                 {verAbertoId === a.id && (
                   <tr key={`${a.id}-ver`}>
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 4px" }}>
                         <strong>Itens agendados</strong>
                         <table>
@@ -555,7 +616,7 @@ export default function AgendamentosPage() {
                 )}
                 {editId === a.id && (
                   <tr key={`${a.id}-edit`}>
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       {editLoading && <div style={{ padding: 12, color: "var(--muted)" }}>Carregando...</div>}
                       {!editLoading && editForm && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "12px 4px" }}>
@@ -668,7 +729,7 @@ export default function AgendamentosPage() {
             ))}
             {!loading && agendamentosExibidos.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ color: "var(--muted)" }}>
+                <td colSpan={9} style={{ color: "var(--muted)" }}>
                   {diaSelecionado ? `Nenhum agendamento em ${diaSelecionado}.` : "Nenhum agendamento encontrado."}
                 </td>
               </tr>

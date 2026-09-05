@@ -64,7 +64,13 @@ class Agendamento(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     status: Mapped[str] = mapped_column(String(40), default=STATUS_AGENDAMENTO[0])
     supplier: Mapped[str] = mapped_column(String(255), default="")
+    # loading_date = data solicitada (o que pedimos ao fornecedor).
+    # data_agendada = data confirmada por ele, que nem sempre e a mesma e
+    # costuma chegar depois, por e-mail.
     loading_date: Mapped[str] = mapped_column(String(32), default="")
+    data_agendada: Mapped[str] = mapped_column(String(32), default="")
+    agendamento_confirmado_em: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    agendamento_confirmado_por: Mapped[str] = mapped_column(String(255), default="")
     driver_name: Mapped[str] = mapped_column(String(255), default="")
     driver_cpf: Mapped[str] = mapped_column(String(32), default="")
     driver_phone: Mapped[str] = mapped_column(String(64), default="")
