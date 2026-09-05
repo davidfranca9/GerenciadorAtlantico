@@ -55,6 +55,13 @@ def obter_configuracoes_cte():
     return bsoft_api.obter_todas_configuracoes_cte()
 
 
+@router.get("/sondar-cadastros")
+def sondar_cadastros():
+    """Somente leitura: tenta descobrir cadastros do modulo transporte que
+    nao estao na documentacao (ex: regras de carreto)."""
+    return bsoft_api.sondar_cadastros_transporte()
+
+
 @router.get("/documentos-fiscais")
 def listar_documentos_fiscais(dias: int = 30):
     """Somente leitura: CT-es emitidos e contratos de frete (com CIOT) dos

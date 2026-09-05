@@ -269,6 +269,49 @@ def obter_exemplos_documentos(quantidade: int = 3) -> dict:
     return resultado
 
 
+# Cadastros citados por id no payload de emissao (regrasCarreto_id, cfops_id,
+# etc) que nao tem GET documentado. A API segue o padrao /transporte/v1/<nome>,
+# entao vale sondar os nomes provaveis - tudo GET, nao altera nada.
+CANDIDATOS_CADASTROS = [
+    "regrasCarreto", "regrasCarretos", "regraCarreto", "regrasFrete", "regraFrete",
+    "carretos", "tabelasFrete", "precosConhecimento", "precos", "perfisApropriacao",
+    "rotasDistribuicao", "rotaDistribuicao", "percursos", "percurso", "cfops", "cfop",
+    "seguradoras", "operacoes", "operacoesMercadorias", "mercadorias", "modalidades",
+]
+
+
+def sondar_cadastros_transporte() -> dict:
+    """Tenta GET em nomes provaveis de cadastro do modulo transporte, pra
+    descobrir endpoints existentes que nao estao na documentacao publica."""
+    achados = {}
+    for nome in CANDIDATOS_CADASTROS:
+        caminho = f"/transporte/v1/{nome}"
+        try:
+            resp = requests.get(
+                f"{BASE_URL}{caminho}", params={"inicio": 0, "fim": 100}, auth=_auth(), timeout=20
+            )
+        except Exception as exc:
+            achados[nome] = {"status": "erro", "detalhe": str(exc)[:150]}
+            continue
+        if resp.status_code == 404:
+            continue  # nao existe - nao polui o resultado
+        registro = {"status": resp.status_code}
+        if resp.status_code == 204:
+            registro["detalhe"] = "existe, mas cadastro vazio"
+        elif resp.status_code == 200:
+            try:
+                dados = resp.json()
+                dados = dados if isinstance(dados, list) else [dados]
+                registro["detalhe"] = f"{len(dados)} registro(s)"
+                registro["amostra"] = dados[:10]
+            except json.JSONDecodeError:
+                registro["detalhe"] = resp.text[:200]
+        else:
+            registro["detalhe"] = resp.text[:200]
+        achados[nome] = registro
+    return achados
+
+
 def listar_documentos_fiscais(data_inicio: str, data_fim: str) -> dict:
     """Somente leitura: CT-es emitidos e contratos de frete (com o CIOT) do
     periodo, pra exibir os documentos dentro do proprio sistema. Cada CT-e

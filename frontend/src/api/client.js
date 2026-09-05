@@ -302,6 +302,10 @@ export function bsoftExemplosDocumentos() {
   return request("/bsoft/exemplos-documentos");
 }
 
+export function bsoftSondarCadastros() {
+  return request("/bsoft/sondar-cadastros");
+}
+
 export function bsoftDocumentosFiscais(dias = 30) {
   return request(`/bsoft/documentos-fiscais?dias=${dias}`);
 }

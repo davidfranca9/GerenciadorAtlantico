@@ -534,9 +534,23 @@ function ExemplosDocumentos() {
             Somente leitura — últimos contratos de frete e CT-e emitidos, pra usar como modelo do payload.
           </div>
         </div>
-        <button className="btn-secondary" disabled={carregando} onClick={carregar}>
-          {carregando ? "Consultando..." : "Consultar modelos"}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn-secondary" disabled={carregando} onClick={carregar}>
+            {carregando ? "Consultando..." : "Consultar modelos"}
+          </button>
+          <button
+            className="btn-secondary"
+            disabled={carregando}
+            onClick={async () => {
+              setCarregando(true); setErro("");
+              try { setDados({ cadastros_descobertos: { ok: true, dados: await api.bsoftSondarCadastros() } }); }
+              catch (err) { setErro(err.message); }
+              finally { setCarregando(false); }
+            }}
+          >
+            Sondar cadastros
+          </button>
+        </div>
       </div>
 
       {erro && <div style={{ color: "var(--danger)", fontSize: 12.5 }}>{erro}</div>}
@@ -546,6 +560,7 @@ function ExemplosDocumentos() {
           <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 6 }}>
             {chave === "contratos_frete" ? "Contratos de frete"
               : chave === "conhecimentos" ? "CT-e (conhecimentos)"
+              : chave === "cadastros_descobertos" ? "Cadastros encontrados (endpoints não documentados)"
               : "Detalhamento de valores do último contrato"}
           </div>
           {!valor?.ok ? (
