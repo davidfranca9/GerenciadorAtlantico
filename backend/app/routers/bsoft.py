@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import Cidade
+from ..models import Agendamento, Cidade
 from ..servicos import bsoft_api, bsoft_orquestracao, ocr, ocr_gemini
 from ..servicos.bsoft_lookup import (
     BSOFT_CATEGORY_ID_TO_RODADO_ID_MAP,
@@ -62,17 +62,42 @@ def sondar_cadastros():
     return bsoft_api.sondar_cadastros_transporte()
 
 
+def _so_digitos_letras(texto: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", (texto or "").upper())
+
+
 @router.get("/documentos-fiscais")
-def listar_documentos_fiscais(dias: int = 30):
+def listar_documentos_fiscais(dias: int = 30, db: Session = Depends(get_db)):
     """Somente leitura: CT-es emitidos e contratos de frete (com CIOT) dos
-    ultimos N dias, ja cruzados entre si."""
+    ultimos N dias, cruzados entre si e com os agendamentos do sistema."""
     from datetime import date, timedelta
 
     hoje = date.today()
-    return bsoft_api.listar_documentos_fiscais(
+    resultado = bsoft_api.listar_documentos_fiscais(
         (hoje - timedelta(days=max(1, min(dias, 180)))).strftime("%Y-%m-%d"),
         hoje.strftime("%Y-%m-%d"),
     )
+
+    # Liga o documento ao agendamento pela placa do cavalo - a placa e o
+    # identificador mais confiavel que os dois lados tem em comum.
+    agendamentos_por_placa: dict[str, list] = {}
+    for agendamento in db.query(Agendamento).all():
+        placa = _so_digitos_letras(agendamento.plate_cavalo)
+        if placa:
+            agendamentos_por_placa.setdefault(placa, []).append(agendamento)
+
+    for documento in resultado.get("documentos", []):
+        candidatos = agendamentos_por_placa.get(_so_digitos_letras(documento.get("veiculo")), [])
+        data_documento = (documento.get("emitido_em") or "")[:10]  # YYYY-MM-DD
+        escolhido = None
+        for agendamento in candidatos:
+            partes = (agendamento.loading_date or "").split("/")
+            if len(partes) == 3 and f"{partes[2]}-{partes[1]}-{partes[0]}" == data_documento:
+                escolhido = agendamento
+                break
+        documento["agendamento_id"] = escolhido.id if escolhido else None
+        documento["agendamento_status"] = escolhido.status if escolhido else None
+    return resultado
 
 
 @router.get("/exemplos-documentos")

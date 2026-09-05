@@ -119,6 +119,7 @@ export default function DocumentosFiscaisPage() {
                   <th>Placa</th>
                   <th>Valor</th>
                   <th>CIOT</th>
+                  <th>Agendamento</th>
                   <th>Chave de acesso</th>
                 </tr>
               </thead>
@@ -139,6 +140,11 @@ export default function DocumentosFiscaisPage() {
                       {d.ciot
                         ? <span title={`Operadora: ${d.operadora || "-"} · Contrato ${d.contrato_numero || "-"}`}>{d.ciot}</span>
                         : <span style={{ color: "var(--warning)" }}>sem CIOT</span>}
+                    </td>
+                    <td>
+                      {d.agendamento_id
+                        ? <span title={d.agendamento_status || ""}>#{d.agendamento_id}</span>
+                        : <span style={{ color: "var(--muted-soft)" }}>—</span>}
                     </td>
                     <td style={{ fontSize: 10.5, fontFamily: "monospace" }}>{d.chave_acesso || "-"}</td>
                   </tr>
