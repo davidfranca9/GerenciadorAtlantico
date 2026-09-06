@@ -42,50 +42,73 @@ ESPECIES_BSOFT = {
     14: "SACOS 50 KG",
 }
 
+# Quanto pesa uma unidade de cada especie. Serve pra conferir se a
+# quantidade de volumes fecha com o peso da carga - ver _conferir_volumes.
+PESO_UNITARIO_KG = {5: 1000, 8: 50, 10: 1000, 13: 1000, 14: 50}
+
+# O OCR normaliza toda embalagem de pedido pra este vocabulario (ver
+# servicos/ocr.py). E so isso que chega aqui, entao o de-para e direto e
+# fica num lugar so, em vez de espalhado em heuristica de texto.
+EMBALAGEM_PARA_ESPECIE = {
+    "GRANEL": 1,
+    "BIG BAG": 10,
+    "SACARIA": 8,
+}
+
 
 class DadosInsuficientes(Exception):
     pass
 
 
 def sugerir_especie(embalagem: str) -> dict:
-    """Sugere a especie do Bsoft a partir da embalagem do pedido.
-
-    Devolve sugestao, nunca decisao fechada. Onde o cadastro tem opcoes
-    quase iguais (SACOS, SACO DE 50 KG e SACOS 50 KG), a funcao lista as
-    candidatas em vez de escolher no chute - quem opera confirma.
-    """
+    """Traduz a embalagem do pedido pra especie do cadastro do Bsoft."""
     texto = (embalagem or "").strip().upper()
     if not texto:
         return {"especie_id": None, "nome": "", "alternativas": [], "confianca": "nenhuma"}
 
-    # Nome identico ao cadastro resolve na hora.
-    for especie_id, nome in ESPECIES_BSOFT.items():
+    especie_id = EMBALAGEM_PARA_ESPECIE.get(texto)
+    if especie_id:
+        return {
+            "especie_id": especie_id,
+            "nome": ESPECIES_BSOFT[especie_id],
+            "alternativas": [],
+            "confianca": "alta",
+        }
+
+    # Embalagem digitada na mao, fora do vocabulario do OCR: aceita quando
+    # for o nome exato de uma especie do cadastro.
+    for candidato, nome in ESPECIES_BSOFT.items():
         if texto == nome.upper():
-            return {"especie_id": especie_id, "nome": nome, "alternativas": [], "confianca": "alta"}
-
-    if "GRANEL" in texto:
-        return {"especie_id": 1, "nome": ESPECIES_BSOFT[1], "alternativas": [], "confianca": "alta"}
-
-    if "BAG" in texto:
-        if "1000" in texto:
-            return {"especie_id": 10, "nome": ESPECIES_BSOFT[10], "alternativas": [], "confianca": "alta"}
-        return {
-            "especie_id": 5,
-            "nome": ESPECIES_BSOFT[5],
-            "alternativas": [{"especie_id": 10, "nome": ESPECIES_BSOFT[10]}],
-            "confianca": "ambigua",
-        }
-
-    if "SACO" in texto or "SACARIA" in texto:
-        candidatas = [8, 14] if "50" in texto else [3, 8, 14]
-        return {
-            "especie_id": candidatas[0],
-            "nome": ESPECIES_BSOFT[candidatas[0]],
-            "alternativas": [{"especie_id": i, "nome": ESPECIES_BSOFT[i]} for i in candidatas[1:]],
-            "confianca": "ambigua",
-        }
+            return {"especie_id": candidato, "nome": nome, "alternativas": [], "confianca": "alta"}
 
     return {"especie_id": None, "nome": "", "alternativas": [], "confianca": "nenhuma"}
+
+
+def _conferir_volumes(especie_id: int | None, quantidade: str, peso_kg: Decimal) -> str:
+    """Confere se quantidade de volumes x peso da especie fecha com a carga.
+
+    Foi essa conta que apareceu torta no CT-e 5053: 540 volumes registrados
+    como BIG BAG 1000 KG dariam 540 toneladas, mas a carga tem 27. Com
+    SACO DE 50 KG a conta fecha exata. Ou a especie do documento esta
+    errada, ou o cadastro chamado de big bag e de 50 kg.
+    """
+    unitario = PESO_UNITARIO_KG.get(especie_id or 0)
+    if not unitario or not quantidade:
+        return ""
+    try:
+        volumes = Decimal(quantidade)
+    except Exception:
+        return ""
+    if volumes <= 0 or peso_kg <= 0:
+        return ""
+    esperado = volumes * unitario
+    # Tolera 1% de diferenca por arredondamento de peso.
+    if abs(esperado - peso_kg) <= peso_kg / 100:
+        return ""
+    return (
+        f"Volumes nao fecham com o peso: {volumes} x {ESPECIES_BSOFT.get(especie_id, '?')} "
+        f"({unitario} kg) daria {esperado} kg, mas a carga tem {peso_kg} kg."
+    )
 
 
 def _duas_casas(valor: Decimal) -> str:
@@ -198,10 +221,9 @@ def _pendencias(espelho: dict, mercadoria: dict, tarifa: str | None) -> list[str
             f"Especie da carga indefinida: a embalagem do pedido "
             f"({embalagem or 'nao informada'}) nao casou com nenhuma especie do Bsoft."
         )
-    elif especie["confianca"] == "ambigua":
-        opcoes = ", ".join(a["nome"] for a in especie["alternativas"])
-        faltando.append(
-            f"Especie sugerida {especie['nome']}, mas o cadastro tem opcao parecida "
-            f"({opcoes}). Confirmar qual usar."
-        )
+    divergencia = _conferir_volumes(
+        especie["especie_id"], espelho["quantidade"], Decimal(espelho["peso_kg"] or "0")
+    )
+    if divergencia:
+        faltando.append(divergencia)
     return faltando
