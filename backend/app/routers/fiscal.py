@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+from xml.etree import ElementTree
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -26,7 +27,7 @@ from ..auth import get_current_user
 from ..config import settings
 from ..database import get_db
 from ..models import Agendamento, OperacaoFiscal, User
-from ..servicos import bsoft_fiscal, nfe_xml
+from ..servicos import bsoft_fiscal, cte_montagem, nfe_xml
 from ..servicos.bsoft_client import BsoftEmissaoBloqueada, BsoftError, sanitizar
 
 logger = logging.getLogger(__name__)
@@ -159,6 +160,37 @@ def simular(payload: SimularIn, db: Session = Depends(get_db)):
         "pendencias": pendencias,
         "pronto_para_emitir": not pendencias,
     }
+
+
+@router.post("/espelho")
+async def espelho_do_cte(
+    arquivo: UploadFile,
+    tarifa_por_tonelada: str = Form(""),
+    embalagem: str = Form(""),
+):
+    """Nao chama o Bsoft. Le o XML da NF-e e mostra como o CT-e sairia.
+
+    Serve pra conferir contra um DACTE real antes de emitir qualquer coisa:
+    e o mesmo caminho validado no teste dourado do CT-e 5053.
+    """
+    conteudo = await arquivo.read()
+    try:
+        resultado = cte_montagem.derivar(
+            conteudo,
+            tarifa_por_tonelada=tarifa_por_tonelada or None,
+            embalagem=embalagem,
+        )
+    except nfe_xml.NFeInvalida as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ElementTree.ParseError as exc:
+        raise HTTPException(status_code=400, detail=f"XML ilegivel: {exc}")
+
+    cfops_id = escolher_cfops_id(resultado["uf_origem"], resultado["uf_destino"])
+    resultado["cfops_id"] = cfops_id
+    resultado["cfop"] = "5352" if cfops_id == settings.bsoft_cfops_id_estadual else "6352"
+    resultado["regra_frete_id"] = settings.bsoft_regra_frete_id
+    resultado["apolice"] = settings.bsoft_numero_apolice
+    return resultado
 
 
 class ConferirIn(BaseModel):

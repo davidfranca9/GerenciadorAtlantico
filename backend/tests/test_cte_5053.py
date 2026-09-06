@@ -120,3 +120,14 @@ def test_sem_tarifa_nao_inventa_frete():
     resultado = cte_montagem.derivar(NFE_158852)
     assert "valor_frete" not in resultado
     assert any("Tarifa" in p for p in resultado["pendencias"])
+
+
+def test_embalagem_do_pedido_vira_a_especie_do_dacte():
+    # O 5053 saiu com BIG BAG 1000 KG, que e a especie 10 do cadastro.
+    resultado = cte_montagem.derivar(
+        NFE_158852, tarifa_por_tonelada=TARIFA_5053, embalagem="BIG BAG 1000 KG"
+    )
+    assert resultado["especie"]["especie_id"] == 10
+    assert resultado["especie"]["confianca"] == "alta"
+    # Resolvida a especie, nao sobra pendencia sobre ela.
+    assert not any("Especie" in p for p in resultado["pendencias"])

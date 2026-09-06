@@ -29,8 +29,63 @@ TOMADOR_POR_MODALIDADE = {
 }
 
 
+# Especies cadastradas no tenant (lidas via GET /bsoft/configuracoes-cte).
+# A especie nao vem da NF-e: ela sai da embalagem do pedido, e varia -
+# big bag, saco, granel.
+ESPECIES_BSOFT = {
+    1: "GRANEL",
+    3: "SACOS",
+    5: "BIG BAG",
+    8: "SACO DE 50 KG",
+    10: "BIG BAG 1000 KG",
+    13: "Tonelada",
+    14: "SACOS 50 KG",
+}
+
+
 class DadosInsuficientes(Exception):
     pass
+
+
+def sugerir_especie(embalagem: str) -> dict:
+    """Sugere a especie do Bsoft a partir da embalagem do pedido.
+
+    Devolve sugestao, nunca decisao fechada. Onde o cadastro tem opcoes
+    quase iguais (SACOS, SACO DE 50 KG e SACOS 50 KG), a funcao lista as
+    candidatas em vez de escolher no chute - quem opera confirma.
+    """
+    texto = (embalagem or "").strip().upper()
+    if not texto:
+        return {"especie_id": None, "nome": "", "alternativas": [], "confianca": "nenhuma"}
+
+    # Nome identico ao cadastro resolve na hora.
+    for especie_id, nome in ESPECIES_BSOFT.items():
+        if texto == nome.upper():
+            return {"especie_id": especie_id, "nome": nome, "alternativas": [], "confianca": "alta"}
+
+    if "GRANEL" in texto:
+        return {"especie_id": 1, "nome": ESPECIES_BSOFT[1], "alternativas": [], "confianca": "alta"}
+
+    if "BAG" in texto:
+        if "1000" in texto:
+            return {"especie_id": 10, "nome": ESPECIES_BSOFT[10], "alternativas": [], "confianca": "alta"}
+        return {
+            "especie_id": 5,
+            "nome": ESPECIES_BSOFT[5],
+            "alternativas": [{"especie_id": 10, "nome": ESPECIES_BSOFT[10]}],
+            "confianca": "ambigua",
+        }
+
+    if "SACO" in texto or "SACARIA" in texto:
+        candidatas = [8, 14] if "50" in texto else [3, 8, 14]
+        return {
+            "especie_id": candidatas[0],
+            "nome": ESPECIES_BSOFT[candidatas[0]],
+            "alternativas": [{"especie_id": i, "nome": ESPECIES_BSOFT[i]} for i in candidatas[1:]],
+            "confianca": "ambigua",
+        }
+
+    return {"especie_id": None, "nome": "", "alternativas": [], "confianca": "nenhuma"}
 
 
 def _duas_casas(valor: Decimal) -> str:
@@ -55,13 +110,21 @@ def peso_em_toneladas(mercadoria: dict) -> Decimal:
     return peso_em_kg(mercadoria) / 1000
 
 
-def derivar(xml_bytes: bytes, *, tarifa_por_tonelada: str | None = None) -> dict:
+def derivar(
+    xml_bytes: bytes,
+    *,
+    tarifa_por_tonelada: str | None = None,
+    embalagem: str = "",
+) -> dict:
     """Monta o espelho do CT-e a partir do XML da NF-e.
 
-    O frete so e calculado quando a tarifa e informada: no 5053 foram
-    R$ 300,00 por tonelada x 27 t = R$ 8.100,00, que e a regra "Calculo
-    FERTIMAXI" (regraFrete_id 35). A tarifa muda por cliente e por rota,
-    entao ela entra como parametro, nunca chutada.
+    A tarifa e digitada por quem emite (a regra 35 so multiplica tarifa x
+    tonelada), entao entra como parametro e nunca e chutada: sem ela o
+    espelho simplesmente nao calcula frete. No 5053 foram R$ 300,00 x 27 t
+    = R$ 8.100,00.
+
+    A embalagem vem do pedido e define a especie da carga - tambem nao sai
+    da nota.
     """
     dados = nfe_xml.extrair_dados(xml_bytes)
     mercadoria = nfe_xml.extrair_mercadoria(xml_bytes)
@@ -94,6 +157,8 @@ def derivar(xml_bytes: bytes, *, tarifa_por_tonelada: str | None = None) -> dict
         "peso_kg": str(kg),
         "quantidade": mercadoria["quant"],
         "peso_convertido_de_tonelada": bool(mercadoria.get("peso_provavelmente_em_tonelada")),
+        "especie": sugerir_especie(embalagem),
+        "embalagem_do_pedido": embalagem,
     }
 
     if tarifa_por_tonelada:
@@ -111,8 +176,8 @@ def _pendencias(espelho: dict, mercadoria: dict, tarifa: str | None) -> list[str
     faltando = []
     if not tarifa:
         faltando.append(
-            "Tarifa por tonelada nao informada: sem ela nao da pra calcular o frete "
-            "(no CT-e 5053 foram R$ 300,00/t x 27 t = R$ 8.100,00)."
+            "Tarifa por tonelada nao informada: e ela que multiplica o peso pra dar o "
+            "frete (no CT-e 5053 foram R$ 300,00/t x 27 t = R$ 8.100,00)."
         )
     if not espelho["tomador"]:
         faltando.append(
@@ -125,9 +190,18 @@ def _pendencias(espelho: dict, mercadoria: dict, tarifa: str | None) -> list[str
             "Confira antes de emitir."
         )
     # A especie da carga nao vem da nota: o 5053 usou BIG BAG 1000 KG
-    # enquanto a NF-e trazia BAGS. E escolha de quem cadastra.
-    faltando.append(
-        f"Especie da carga: a nota diz {mercadoria.get('especie') or 'nao informada'!r}, "
-        "mas o CT-e usa o cadastro do Bsoft (no 5053 foi BIG BAG 1000 KG). Confirmar."
-    )
+    # enquanto a NF-e trazia BAGS. Ela sai da embalagem do pedido.
+    especie = espelho["especie"]
+    if especie["confianca"] == "nenhuma":
+        embalagem = espelho["embalagem_do_pedido"]
+        faltando.append(
+            f"Especie da carga indefinida: a embalagem do pedido "
+            f"({embalagem or 'nao informada'}) nao casou com nenhuma especie do Bsoft."
+        )
+    elif especie["confianca"] == "ambigua":
+        opcoes = ", ".join(a["nome"] for a in especie["alternativas"])
+        faltando.append(
+            f"Especie sugerida {especie['nome']}, mas o cadastro tem opcao parecida "
+            f"({opcoes}). Confirmar qual usar."
+        )
     return faltando
