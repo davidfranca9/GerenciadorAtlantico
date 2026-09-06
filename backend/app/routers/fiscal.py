@@ -168,15 +168,21 @@ async def espelho_do_cte(
     tarifa_por_tonelada: str = Form(""),
     embalagem: str = Form(""),
     buscar_partes: bool = Form(False),
+    aliquota_icms: str = Form(""),
+    agendamento_id: int | None = Form(None),
+    db: Session = Depends(get_db),
 ):
     """Le o XML da NF-e e mostra como o CT-e sairia.
 
     Serve pra conferir contra um DACTE real antes de emitir qualquer coisa:
     e o mesmo caminho validado no teste dourado do CT-e 5053.
 
-    Com buscar_partes, consulta tambem os ids de pessoa e endereco no
-    cadastro do Bsoft. Continua sendo so leitura - nada e criado la.
+    Com buscar_partes, consulta os ids de pessoa, endereco, motorista e
+    veiculo no cadastro do Bsoft e monta o payload completo do
+    POST /conhecimentos. Continua sendo so leitura - nada e criado la, e o
+    payload sai como rascunho.
     """
+    agendamento = db.get(Agendamento, agendamento_id) if agendamento_id else None
     conteudo = await arquivo.read()
     try:
         resultado = cte_montagem.derivar(
@@ -195,23 +201,57 @@ async def espelho_do_cte(
     resultado["regra_frete_id"] = settings.bsoft_regra_frete_id
     resultado["apolice"] = settings.bsoft_numero_apolice
 
-    if buscar_partes:
-        # Leitura no Bsoft. Falha aqui nao derruba o espelho: o resto do
-        # documento continua util pra conferencia.
-        try:
-            resultado["partes"] = await run_in_threadpool(
-                cte_montagem.resolver_partes,
-                resultado,
-                buscar_pessoa=bsoft_fiscal.buscar_pessoa,
-                listar_enderecos=bsoft_fiscal.listar_enderecos,
-            )
-            resultado["pendencias"] = resultado["pendencias"] + resultado["partes"]["pendencias"]
-        except BsoftError as exc:
-            resultado["partes"] = {"erro": str(exc)}
-            resultado["pendencias"] = resultado["pendencias"] + [
-                f"Nao foi possivel consultar os cadastros no Bsoft: {exc}"
-            ]
+    if not buscar_partes:
+        return resultado
+
+    # Daqui pra baixo consulta o Bsoft, sempre em leitura. Falha aqui nao
+    # derruba o espelho: o resto do documento continua util pra conferencia.
+    try:
+        partes = await run_in_threadpool(
+            cte_montagem.resolver_partes,
+            resultado,
+            buscar_pessoa=bsoft_fiscal.buscar_pessoa,
+            listar_enderecos=bsoft_fiscal.listar_enderecos,
+        )
+        veiculos = await run_in_threadpool(_resolver_veiculos, agendamento)
+    except BsoftError as exc:
+        resultado["partes"] = {"erro": str(exc)}
+        resultado["pendencias"] = resultado["pendencias"] + [
+            f"Nao foi possivel consultar os cadastros no Bsoft: {exc}"
+        ]
+        return resultado
+
+    resultado["partes"] = partes
+    resultado["veiculos"] = veiculos
+    corpo = cte_montagem.montar_payload_conhecimento(
+        resultado,
+        partes=partes,
+        veiculos=veiculos,
+        aliquota_icms=aliquota_icms or None,
+        cfops_id=cfops_id,
+    )
+    resultado["endpoint"] = "POST /transporte/v1/conhecimentos"
+    resultado["payload"] = corpo
+    resultado["pendencias"] = (
+        resultado["pendencias"] + partes["pendencias"] + cte_montagem.conferir_payload(corpo)
+    )
     return resultado
+
+
+def _resolver_veiculos(agendamento) -> dict:
+    """Traduz motorista e placas do agendamento em ids do Bsoft."""
+    if agendamento is None:
+        return {}
+    motorista = bsoft_fiscal.buscar_pessoa(agendamento.driver_cpf) if agendamento.driver_cpf else None
+    encontrados = {"motorista_id": motorista.get("id") if motorista else None}
+    for campo, placa in (
+        ("veiculo_id", agendamento.plate_cavalo),
+        ("carreta_id", agendamento.plate_carreta1),
+        ("semireboque_id", agendamento.plate_carreta2),
+    ):
+        veiculo = bsoft_fiscal.buscar_veiculo_por_placa(placa) if placa else None
+        encontrados[campo] = veiculo.get("id") if veiculo else None
+    return encontrados
 
 
 class ConferirIn(BaseModel):

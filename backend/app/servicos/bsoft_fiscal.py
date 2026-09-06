@@ -191,3 +191,41 @@ def buscar_pessoa(documento: str) -> dict | None:
 def listar_enderecos(pessoa_id: str | int) -> list:
     """LEITURA. Enderecos cadastrados de uma pessoa."""
     return listar(f"/pessoas/v1/pessoas/{pessoa_id}/enderecos")
+
+
+# Quantas paginas de veiculos percorrer antes de desistir. A listagem nao
+# aceita filtro por placa (nao ha parametro documentado), entao a busca e
+# local - com teto pra nao varrer o cadastro inteiro sem querer.
+MAX_PAGINAS_VEICULOS = 20
+TAMANHO_PAGINA = 100
+
+
+def _so_alfanumerico(texto: str) -> str:
+    return "".join(c for c in (texto or "").upper() if c.isalnum())
+
+
+def buscar_veiculo_por_placa(placa: str) -> dict | None:
+    """LEITURA. Procura o veiculo pela placa.
+
+    O GET /transporte/v1/veiculos nao tem parametro de busca documentado,
+    entao pagina a listagem e compara a placa ja normalizada (o cadastro
+    pode ter hifen, o agendamento nao).
+    """
+    alvo = _so_alfanumerico(placa)
+    if not alvo:
+        return None
+
+    for pagina in range(MAX_PAGINAS_VEICULOS):
+        inicio = pagina * TAMANHO_PAGINA
+        lote = listar(
+            "/transporte/v1/veiculos",
+            {"inicio": inicio, "fim": inicio + TAMANHO_PAGINA},
+        )
+        if not lote:
+            return None
+        for veiculo in lote:
+            if _so_alfanumerico(str(veiculo.get("placa", ""))) == alvo:
+                return veiculo
+        if len(lote) < TAMANHO_PAGINA:
+            return None
+    return None

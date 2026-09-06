@@ -10,8 +10,10 @@ base 8.100,00 com aliquota 12% deu ICMS 972,00.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
+from ..config import settings
 from . import nfe_xml
 
 # Limite do campo "produto predominante" do CT-e. O DACTE 5053 mostra a
@@ -167,6 +169,9 @@ def derivar(
         "peso_convertido_de_tonelada": bool(mercadoria.get("peso_provavelmente_em_tonelada")),
         "especie": sugerir_especie(embalagem),
         "embalagem_do_pedido": embalagem,
+        # Guardado inteiro porque e daqui que sai a linha de mercadorias[]
+        # do payload, com os valores fiscais transcritos da nota.
+        "mercadoria": mercadoria,
     }
 
     if tarifa_por_tonelada:
@@ -305,3 +310,154 @@ def resolver_partes(espelho: dict, *, buscar_pessoa, listar_enderecos) -> dict:
             and destinatario["pessoa_id"] and destinatario["endereco_id"]
         ),
     }
+
+
+# --------------------------------------------------------------------------
+# Payload do POST /transporte/v1/conhecimentos
+#
+# Os nomes de campo abaixo saem da colecao oficial (docs.bsoft.app), request
+# "Transporte / Conhecimentos / Inserir". Nenhum foi inventado. Os que a
+# operacao nao usa ficam de fora do payload em vez de irem preenchidos no
+# chute - o exemplo da documentacao traz valor pra tudo, mas a maior parte e
+# so ilustrativa.
+# --------------------------------------------------------------------------
+
+# Constantes lidas da tela de emissao e conferidas no DACTE 5053.
+MODAL_RODOVIARIO = "R"
+TIPO_DOCUMENTO_NFE = "N"        # radio "NF-e" na tela
+RESP_SEGURO_EMITENTE = "4"      # "Emi - Emitente"
+CST_TRIBUTACAO_NORMAL = "000"   # DACTE 5053: "00 - Tributacao normal"
+
+
+def montar_payload_conhecimento(
+    espelho: dict,
+    *,
+    partes: dict,
+    veiculos: dict | None = None,
+    aliquota_icms: str | None = None,
+    rascunho: bool = True,
+    agencia_id=None,
+    talao_id=None,
+    regra_frete_id=None,
+    cfops_id=None,
+    numero_apolice=None,
+    natureza_carga_id=None,
+    dt_emissao: str = "",
+) -> dict:
+    """Monta o corpo do POST /conhecimentos.
+
+    Sai como rascunho por padrao. A aliquota de ICMS e informada por quem
+    emite, igual a tarifa: a funcao so multiplica pela base (no 5053,
+    8.100,00 a 12% deu os 972,00 do DACTE), nunca escolhe a aliquota.
+    """
+    veiculos = veiculos or {}
+    mercadoria = espelho.get("mercadoria") or {}
+    valor = espelho.get("valor_frete", "")
+
+    base = Decimal(valor) if valor else Decimal("0")
+    if aliquota_icms:
+        valor_icms = _duas_casas(base * Decimal(str(aliquota_icms)) / 100)
+    else:
+        valor_icms = ""
+
+    corpo = {
+        "agencias_id": str(agencia_id if agencia_id is not None else settings.bsoft_agencia_id),
+        "tiposTaloes_id": str(talao_id if talao_id is not None else settings.bsoft_talao_cte_id),
+        "regraFrete_id": str(regra_frete_id if regra_frete_id is not None else settings.bsoft_regra_frete_id),
+        "cfops_id": str(cfops_id if cfops_id is not None else settings.bsoft_cfops_id_interestadual),
+        "numeroApolice": str(numero_apolice if numero_apolice is not None else settings.bsoft_numero_apolice),
+        "dtEmissao": dt_emissao or datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "rascunho": "S" if rascunho else "N",
+        "modalidade": MODAL_RODOVIARIO,
+        "tipoDocumentos": TIPO_DOCUMENTO_NFE,
+        "respSeg": RESP_SEGURO_EMITENTE,
+        "cteOS": "N",
+        "globalizado": "N",
+        # O CST do CT-e e proprio: incide sobre o frete, nao sobre a
+        # mercadoria. O da NF-e (20 no 5053) nao entra aqui.
+        "CST": CST_TRIBUTACAO_NORMAL,
+        "definirCSTManualmente": "S",
+        # Partes, resolvidas no cadastro do Bsoft pelo IBGE do municipio.
+        "remetente_id": str(partes.get("remetente", {}).get("pessoa_id") or ""),
+        "enderecoRemetente_id": str(partes.get("remetente", {}).get("endereco_id") or ""),
+        "destinatario_id": str(partes.get("destinatario", {}).get("pessoa_id") or ""),
+        "enderecoDestinatario_id": str(partes.get("destinatario", {}).get("endereco_id") or ""),
+        # Percurso, direto da NF-e.
+        "UFIni": espelho.get("uf_origem", ""),
+        "UFFim": espelho.get("uf_destino", ""),
+        "cMunIni": espelho.get("ibge_origem", ""),
+        "cMunFim": espelho.get("ibge_destino", ""),
+        # Valores. A tarifa e digitada e a regra de frete multiplica pelo
+        # peso - por isso tarifaDigitada e o valor por tonelada, nao o total.
+        "tarifaDigitada": espelho.get("tarifa_por_tonelada", ""),
+        "valorFrete": valor,
+        "baseCalculo": espelho.get("base_calculo", ""),
+        "totalPrestacao": valor,
+        "totalServico": valor,
+        "aliquota": str(aliquota_icms or ""),
+        "valorICMS": valor_icms,
+        "mercadorias": [_linha_mercadoria(espelho, mercadoria, natureza_carga_id)],
+    }
+
+    for campo, valor_id in (
+        ("motorista_id", veiculos.get("motorista_id")),
+        ("veiculos_id", veiculos.get("veiculo_id")),
+        ("carreta_id", veiculos.get("carreta_id")),
+        ("semireboque_id", veiculos.get("semireboque_id")),
+    ):
+        if valor_id:
+            corpo[campo] = str(valor_id)
+
+    return corpo
+
+
+def _linha_mercadoria(espelho: dict, mercadoria: dict, natureza_carga_id) -> dict:
+    """Uma linha de mercadorias[]: a NF-e transportada.
+
+    Os valores fiscais sao copiados da nota. quantKg e em quilos - por isso
+    a conversao de tonelada acontece antes de chegar aqui.
+    """
+    natureza = natureza_carga_id if natureza_carga_id is not None else settings.bsoft_natureza_carga_id
+    return {
+        "chaveNFe": mercadoria.get("chaveNFe", ""),
+        "notaFiscal": mercadoria.get("notaFiscal", ""),
+        "serieNotaFiscal": mercadoria.get("serieNotaFiscal", ""),
+        "dtFiscal": mercadoria.get("dtFiscal", ""),
+        "tipoNF": mercadoria.get("tipoNF", ""),
+        "especie": str(espelho.get("especie", {}).get("especie_id") or ""),
+        "naturezaCarga": str(natureza),
+        "quant": mercadoria.get("quant", ""),
+        "quantKg": espelho.get("peso_kg", ""),
+        "valor": mercadoria.get("valor", ""),
+        "vProd": mercadoria.get("vProd", ""),
+        "vBC": mercadoria.get("vBC", ""),
+        "vICMS": mercadoria.get("vICMS", ""),
+        "vBCST": mercadoria.get("vBCST", ""),
+        "vST": mercadoria.get("vST", ""),
+        "nCFOP": mercadoria.get("nCFOP", ""),
+    }
+
+
+def conferir_payload(corpo: dict) -> list[str]:
+    """Diz o que impede este payload de virar um CT-e igual ao manual."""
+    faltando = []
+    obrigatorios = {
+        "remetente_id": "Remetente nao encontrado no cadastro do Bsoft.",
+        "enderecoRemetente_id": "Endereco do remetente nao resolvido.",
+        "destinatario_id": "Destinatario nao encontrado no cadastro do Bsoft.",
+        "enderecoDestinatario_id": "Endereco do destinatario nao resolvido.",
+        "valorFrete": "Valor do frete ausente (falta a tarifa).",
+        "aliquota": "Aliquota de ICMS nao informada.",
+    }
+    for campo, mensagem in obrigatorios.items():
+        if not corpo.get(campo):
+            faltando.append(mensagem)
+
+    linha = (corpo.get("mercadorias") or [{}])[0]
+    if not linha.get("chaveNFe"):
+        faltando.append("Chave da NF-e ausente na linha de mercadorias.")
+    if not linha.get("especie"):
+        faltando.append("Especie da carga nao definida (falta a embalagem do pedido).")
+    if not linha.get("quantKg"):
+        faltando.append("Peso da carga ausente.")
+    return faltando
