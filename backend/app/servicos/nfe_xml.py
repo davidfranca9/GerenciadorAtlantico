@@ -1,15 +1,20 @@
 """Leitura local do XML da NF-e.
 
-Extrai o minimo necessario (chave, numero, serie, emitente, destinatario,
-valor e peso) sem depender do Bsoft. Serve pra validar o arquivo e barrar
-emissao duplicada ANTES de qualquer chamada externa.
+Extrai os dados que alimentam o CT-e sem depender do Bsoft. Serve pra
+validar o arquivo e barrar emissao duplicada ANTES de qualquer chamada
+externa.
 """
 from __future__ import annotations
 
 import re
+from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree
 
 NS = {"nfe": "http://www.portalfiscal.inf.br/nfe"}
+
+# Unidades comerciais que indicam que o emitente declarou o peso em
+# toneladas em vez de kg. Ver _analisar_peso.
+UNIDADES_EM_TONELADA = {"TON", "TONELADA", "T", "TN"}
 
 
 class NFeInvalida(Exception):
@@ -21,6 +26,13 @@ def _texto(no, caminho: str) -> str:
         return ""
     achado = no.find(caminho, NS)
     return (achado.text or "").strip() if achado is not None else ""
+
+
+def _decimal(valor: str):
+    try:
+        return Decimal(valor)
+    except (InvalidOperation, TypeError):
+        return None
 
 
 def chave_valida(chave: str) -> bool:
@@ -38,13 +50,39 @@ def chave_valida(chave: str) -> bool:
     return dv == int(chave[43])
 
 
+def _analisar_peso(peso_bruto: str, unidade: str, quantidade: str) -> dict:
+    """Descobre se o peso da nota esta em kg ou em tonelada.
+
+    O layout da NF-e manda pesoB em kg, mas nem todo ERP respeita: quando o
+    produto e vendido em TON, alguns emitem pesoB igual a quantidade (27.000
+    para 27 toneladas). Mandar esse 27 pra um campo em kg viraria uma carga
+    de 27 kg no CT-e.
+
+    Aqui a gente so DETECTA e avisa. A conversao nao acontece sozinha porque
+    o CT-e tem que sair igual ao que e digitado hoje, e isso quem confirma e
+    quem opera.
+    """
+    bruto = _decimal(peso_bruto)
+    quant = _decimal(quantidade)
+    unidade_em_tonelada = (unidade or "").strip().upper() in UNIDADES_EM_TONELADA
+    # O sinal forte: unidade em tonelada E peso igual a quantidade vendida.
+    em_tonelada = bool(unidade_em_tonelada and bruto is not None and bruto == quant)
+    return {
+        "peso_declarado": peso_bruto,
+        "unidade_produto": unidade,
+        "peso_provavelmente_em_tonelada": em_tonelada,
+        "peso_kg_equivalente": str(bruto * 1000) if em_tonelada and bruto is not None else "",
+    }
+
+
 def extrair_mercadoria(xml_bytes: bytes) -> dict:
     """Monta a linha de mercadoria do CT-e a partir da NF-e.
 
-    Todos os valores sao TRANSCRITOS da nota, nunca calculados: sao os
+    Os valores fiscais sao TRANSCRITOS da nota, nunca calculados: sao os
     mesmos campos que aparecem na secao Documentos da tela do Bsoft (BC de
     ICMS, Valor do ICMS, BC de ICMS-ST, Valor ICMS-ST, CFOP, NCM, peso).
-    Calcular por conta propria e o que nao pode acontecer aqui.
+    Recalcular por conta propria e exatamente o que faria o documento sair
+    diferente do que sai hoje.
     """
     raiz = ElementTree.fromstring(xml_bytes)
     inf = raiz.find(".//nfe:infNFe", NS)
@@ -57,7 +95,14 @@ def extrair_mercadoria(xml_bytes: bytes) -> dict:
     primeiro_item = inf.find("nfe:det", NS)
     prod = primeiro_item.find("nfe:prod", NS) if primeiro_item is not None else None
 
-    return {
+    # O CST fica dentro do grupo de tributacao (ICMS00, ICMS20, ICMS60...),
+    # que muda de nota pra nota. Pega o primeiro CST que existir sob o ICMS.
+    cst = ""
+    if primeiro_item is not None:
+        achado = primeiro_item.find(".//nfe:ICMS//nfe:CST", NS)
+        cst = (achado.text or "").strip() if achado is not None else ""
+
+    dados = {
         "chaveNFe": re.sub(r"\D", "", inf.attrib.get("Id", "")),
         "notaFiscal": _texto(ide, "nfe:nNF"),
         "serieNotaFiscal": _texto(ide, "nfe:serie"),
@@ -65,8 +110,10 @@ def extrair_mercadoria(xml_bytes: bytes) -> dict:
         "tipoNF": "S" if _texto(ide, "nfe:tpNF") == "1" else "E",
         "nCFOP": _texto(prod, "nfe:CFOP"),
         "NCM": _texto(prod, "nfe:NCM"),
+        "CST": cst,
         "quant": _texto(vol, "nfe:qVol") or _texto(prod, "nfe:qCom"),
-        "quantKg": _texto(vol, "nfe:pesoB"),
+        "especie": _texto(vol, "nfe:esp"),
+        "marca": _texto(vol, "nfe:marca"),
         "vProd": _texto(total, "nfe:vProd"),
         "vBC": _texto(total, "nfe:vBC"),
         "vICMS": _texto(total, "nfe:vICMS"),
@@ -75,6 +122,14 @@ def extrair_mercadoria(xml_bytes: bytes) -> dict:
         "valor": _texto(total, "nfe:vNF"),
         "descricao_produto": _texto(prod, "nfe:xProd"),
     }
+    dados.update(
+        _analisar_peso(
+            _texto(vol, "nfe:pesoB"),
+            _texto(prod, "nfe:uCom"),
+            _texto(prod, "nfe:qCom"),
+        )
+    )
+    return dados
 
 
 def extrair_dados(xml_bytes: bytes) -> dict:
@@ -98,6 +153,13 @@ def extrair_dados(xml_bytes: bytes) -> dict:
     dest = inf.find("nfe:dest", NS)
     total = inf.find(".//nfe:ICMSTot", NS)
     transp = inf.find(".//nfe:vol", NS)
+    ender_emit = emit.find("nfe:enderEmit", NS) if emit is not None else None
+    ender_dest = dest.find("nfe:enderDest", NS) if dest is not None else None
+
+    # O destinatario pode ser pessoa juridica ou fisica (produtor rural). O
+    # cadastro no Bsoft e consultado por endpoint diferente em cada caso.
+    cnpj_dest = _texto(dest, "nfe:CNPJ")
+    cpf_dest = _texto(dest, "nfe:CPF")
 
     return {
         "chave": chave,
@@ -106,10 +168,19 @@ def extrair_dados(xml_bytes: bytes) -> dict:
         "emissao": _texto(ide, "nfe:dhEmi")[:10],
         "emitente_cnpj": _texto(emit, "nfe:CNPJ"),
         "emitente_nome": _texto(emit, "nfe:xNome"),
-        "destinatario_doc": _texto(dest, "nfe:CNPJ") or _texto(dest, "nfe:CPF"),
+        "municipio_origem": _texto(ender_emit, "nfe:xMun"),
+        "ibge_origem": _texto(ender_emit, "nfe:cMun"),
+        "uf_origem": _texto(ender_emit, "nfe:UF"),
+        "destinatario_doc": cnpj_dest or cpf_dest,
+        "destinatario_tipo": "juridica" if cnpj_dest else ("fisica" if cpf_dest else ""),
         "destinatario_nome": _texto(dest, "nfe:xNome"),
-        "municipio_destino": _texto(dest.find("nfe:enderDest", NS) if dest is not None else None, "nfe:xMun"),
-        "uf_destino": _texto(dest.find("nfe:enderDest", NS) if dest is not None else None, "nfe:UF"),
+        "municipio_destino": _texto(ender_dest, "nfe:xMun"),
+        "ibge_destino": _texto(ender_dest, "nfe:cMun"),
+        "uf_destino": _texto(ender_dest, "nfe:UF"),
+        # modFrete 1 = por conta do destinatario (FOB). Define quem e o
+        # tomador do CT-e, entao segue junto.
+        "modalidade_frete": _texto(inf.find(".//nfe:transp", NS), "nfe:modFrete"),
+        "transportadora_cnpj": _texto(inf.find(".//nfe:transporta", NS), "nfe:CNPJ"),
         "valor_produtos": _texto(total, "nfe:vProd"),
         "valor_nota": _texto(total, "nfe:vNF"),
         "peso_bruto": _texto(transp, "nfe:pesoB"),
