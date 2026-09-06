@@ -207,3 +207,101 @@ def _pendencias(espelho: dict, mercadoria: dict, tarifa: str | None) -> list[str
             f"({embalagem or 'nao informada'}) nao casou com nenhuma especie do Bsoft."
         )
     return faltando
+
+
+# --------------------------------------------------------------------------
+# Resolucao das partes (remetente e destinatario) no cadastro do Bsoft
+# --------------------------------------------------------------------------
+
+
+def _escolher_endereco(enderecos: list, ibge: str) -> tuple[dict | None, str]:
+    """Escolhe o endereco que corresponde ao municipio da NF-e.
+
+    Uma pessoa pode ter varios enderecos cadastrados, e o CT-e precisa do
+    que bate com a operacao. O criterio e o codigo IBGE, que e exato - CEP
+    e nome de cidade sao ambiguos demais pra decidir documento fiscal.
+    """
+    if not enderecos:
+        return None, "Pessoa sem endereco cadastrado no Bsoft."
+
+    ibge = (ibge or "").strip()
+    if not ibge:
+        return None, "NF-e sem codigo IBGE do municipio: nao da pra escolher o endereco."
+
+    candidatos = [e for e in enderecos if str(e.get("codIBGE") or "").strip() == ibge]
+    if not candidatos:
+        cidades = ", ".join(str(e.get("cidade") or "?") for e in enderecos[:5])
+        return None, (
+            f"Nenhum endereco cadastrado no municipio {ibge} da NF-e "
+            f"(cadastrados: {cidades})."
+        )
+
+    if len(candidatos) > 1:
+        # Empate: o marcado como preferencial e o que a tela usa por padrao.
+        preferenciais = [e for e in candidatos if str(e.get("enderecoPreferencial")).upper() == "S"]
+        if len(preferenciais) == 1:
+            return preferenciais[0], ""
+        return candidatos[0], (
+            f"{len(candidatos)} enderecos no mesmo municipio e nenhum preferencial "
+            "unico: confira qual o CT-e deve usar."
+        )
+
+    return candidatos[0], ""
+
+
+def resolver_parte(documento: str, ibge: str, *, buscar_pessoa, listar_enderecos) -> dict:
+    """Traduz documento + municipio da NF-e nos ids do cadastro do Bsoft.
+
+    As buscas entram por parametro pra esta funcao poder ser testada sem
+    tocar na API.
+    """
+    resultado = {
+        "documento": documento,
+        "pessoa_id": None,
+        "endereco_id": None,
+        "nome": "",
+        "aviso": "",
+    }
+    if not documento:
+        resultado["aviso"] = "Documento nao informado na NF-e."
+        return resultado
+
+    pessoa = buscar_pessoa(documento)
+    if not pessoa:
+        resultado["aviso"] = f"Documento {documento} nao esta cadastrado no Bsoft."
+        return resultado
+
+    resultado["pessoa_id"] = pessoa.get("id")
+    resultado["nome"] = pessoa.get("nome") or pessoa.get("razaoSocial") or ""
+
+    endereco, aviso = _escolher_endereco(listar_enderecos(pessoa["id"]), ibge)
+    if endereco:
+        resultado["endereco_id"] = endereco.get("id")
+    resultado["aviso"] = aviso
+    return resultado
+
+
+def resolver_partes(espelho: dict, *, buscar_pessoa, listar_enderecos) -> dict:
+    """Resolve remetente e destinatario de uma vez, a partir do espelho."""
+    remetente = resolver_parte(
+        espelho["remetente_doc"], espelho["ibge_origem"],
+        buscar_pessoa=buscar_pessoa, listar_enderecos=listar_enderecos,
+    )
+    destinatario = resolver_parte(
+        espelho["destinatario_doc"], espelho["ibge_destino"],
+        buscar_pessoa=buscar_pessoa, listar_enderecos=listar_enderecos,
+    )
+    pendencias = []
+    if remetente["aviso"]:
+        pendencias.append(f"Remetente: {remetente['aviso']}")
+    if destinatario["aviso"]:
+        pendencias.append(f"Destinatario: {destinatario['aviso']}")
+    return {
+        "remetente": remetente,
+        "destinatario": destinatario,
+        "pendencias": pendencias,
+        "completo": bool(
+            remetente["pessoa_id"] and remetente["endereco_id"]
+            and destinatario["pessoa_id"] and destinatario["endereco_id"]
+        ),
+    }

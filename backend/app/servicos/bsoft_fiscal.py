@@ -156,3 +156,38 @@ def encerrar_manifesto(manifesto_id: str) -> dict:
         "PATCH", f"/transporte/v1/manifestos/{manifesto_id}/encerrar", operacao_de_escrita=True
     )
     return corpo or {}
+
+
+# --------------------------------------------------------------------------
+# Pessoas e enderecos
+#
+# O CT-e referencia remetente, destinatario e os enderecos deles por id do
+# cadastro do Bsoft. A NF-e da o CNPJ/CPF e o codigo IBGE do municipio; e
+# daqui que sai o id correspondente.
+# --------------------------------------------------------------------------
+
+
+def buscar_pessoa(documento: str) -> dict | None:
+    """LEITURA. Busca a pessoa pelo CPF ou CNPJ.
+
+    O endpoint muda conforme o documento: destinatario da carga pode ser
+    produtor rural (CPF), como no CT-e 5053.
+    """
+    doc = "".join(filter(str.isdigit, documento or ""))
+    if len(doc) == 11:
+        caminho = f"/pessoas/v1/pessoas/fisicas/{doc}"
+    elif len(doc) == 14:
+        caminho = f"/pessoas/v1/pessoas/juridicas/{doc}"
+    else:
+        raise ValueError("Documento precisa ser um CPF (11) ou CNPJ (14 digitos)")
+
+    status, dados = chamar("GET", caminho)
+    if status == 204 or not dados:
+        return None
+    # A API responde uma lista mesmo pra busca por documento.
+    return dados[0] if isinstance(dados, list) else dados
+
+
+def listar_enderecos(pessoa_id: str | int) -> list:
+    """LEITURA. Enderecos cadastrados de uma pessoa."""
+    return listar(f"/pessoas/v1/pessoas/{pessoa_id}/enderecos")

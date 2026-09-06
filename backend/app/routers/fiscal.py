@@ -167,11 +167,15 @@ async def espelho_do_cte(
     arquivo: UploadFile,
     tarifa_por_tonelada: str = Form(""),
     embalagem: str = Form(""),
+    buscar_partes: bool = Form(False),
 ):
-    """Nao chama o Bsoft. Le o XML da NF-e e mostra como o CT-e sairia.
+    """Le o XML da NF-e e mostra como o CT-e sairia.
 
     Serve pra conferir contra um DACTE real antes de emitir qualquer coisa:
     e o mesmo caminho validado no teste dourado do CT-e 5053.
+
+    Com buscar_partes, consulta tambem os ids de pessoa e endereco no
+    cadastro do Bsoft. Continua sendo so leitura - nada e criado la.
     """
     conteudo = await arquivo.read()
     try:
@@ -190,6 +194,23 @@ async def espelho_do_cte(
     resultado["cfop"] = "5352" if cfops_id == settings.bsoft_cfops_id_estadual else "6352"
     resultado["regra_frete_id"] = settings.bsoft_regra_frete_id
     resultado["apolice"] = settings.bsoft_numero_apolice
+
+    if buscar_partes:
+        # Leitura no Bsoft. Falha aqui nao derruba o espelho: o resto do
+        # documento continua util pra conferencia.
+        try:
+            resultado["partes"] = await run_in_threadpool(
+                cte_montagem.resolver_partes,
+                resultado,
+                buscar_pessoa=bsoft_fiscal.buscar_pessoa,
+                listar_enderecos=bsoft_fiscal.listar_enderecos,
+            )
+            resultado["pendencias"] = resultado["pendencias"] + resultado["partes"]["pendencias"]
+        except BsoftError as exc:
+            resultado["partes"] = {"erro": str(exc)}
+            resultado["pendencias"] = resultado["pendencias"] + [
+                f"Nao foi possivel consultar os cadastros no Bsoft: {exc}"
+            ]
     return resultado
 
 
