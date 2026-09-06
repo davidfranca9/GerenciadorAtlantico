@@ -87,3 +87,48 @@ def test_cfops_interestadual_quando_uf_diferente():
 def test_cfops_cai_para_interestadual_sem_informacao():
     from app.routers.fiscal import escolher_cfops_id
     assert escolher_cfops_id("", "") == 3
+
+
+NFE_EXEMPLO = b"""<?xml version="1.0" encoding="UTF-8"?>
+<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe"><NFe><infNFe Id="NFe29260908187322000101570010000050341342801843">
+<ide><nNF>12345</nNF><serie>1</serie><tpNF>1</tpNF><dhEmi>2026-09-04T10:00:00-03:00</dhEmi></ide>
+<emit><CNPJ>08187322000101</CNPJ><xNome>FERTIMAXI</xNome></emit>
+<dest><CNPJ>11222333000144</CNPJ><xNome>CLIENTE TESTE</xNome>
+<enderDest><xMun>Jaiba</xMun><UF>MG</UF></enderDest></dest>
+<det nItem="1"><prod><xProd>FERTILIZANTE NPK</xProd><NCM>31052000</NCM><CFOP>5101</CFOP><qCom>640.0000</qCom></prod></det>
+<total><ICMSTot><vProd>50000.00</vProd><vBC>50000.00</vBC><vICMS>6000.00</vICMS>
+<vBCST>1000.00</vBCST><vST>180.00</vST><vNF>50000.00</vNF></ICMSTot></total>
+<transp><vol><qVol>640</qVol><pesoB>32000.000</pesoB></vol></transp>
+</infNFe></NFe></nfeProc>"""
+
+
+def test_extrai_dados_da_nfe():
+    dados = nfe_xml.extrair_dados(NFE_EXEMPLO)
+    assert dados["chave"] == CHAVE_VALIDA
+    assert dados["emitente_nome"] == "FERTIMAXI"
+    assert dados["uf_destino"] == "MG"
+    assert dados["peso_bruto"] == "32000.000"
+
+
+def test_mercadoria_transcreve_valores_fiscais_sem_calcular():
+    m = nfe_xml.extrair_mercadoria(NFE_EXEMPLO)
+    assert m["vBC"] == "50000.00"
+    assert m["vICMS"] == "6000.00"
+    assert m["vBCST"] == "1000.00"
+    assert m["vST"] == "180.00"
+    assert m["nCFOP"] == "5101"
+    assert m["NCM"] == "31052000"
+
+
+def test_mercadoria_traz_identificacao_da_nota():
+    m = nfe_xml.extrair_mercadoria(NFE_EXEMPLO)
+    assert m["notaFiscal"] == "12345"
+    assert m["serieNotaFiscal"] == "1"
+    assert m["tipoNF"] == "S"
+    assert m["chaveNFe"] == CHAVE_VALIDA
+
+
+def test_mercadoria_usa_peso_e_volume_do_transporte():
+    m = nfe_xml.extrair_mercadoria(NFE_EXEMPLO)
+    assert m["quantKg"] == "32000.000"
+    assert m["quant"] == "640"

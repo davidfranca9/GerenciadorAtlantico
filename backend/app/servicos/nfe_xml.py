@@ -38,6 +38,45 @@ def chave_valida(chave: str) -> bool:
     return dv == int(chave[43])
 
 
+def extrair_mercadoria(xml_bytes: bytes) -> dict:
+    """Monta a linha de mercadoria do CT-e a partir da NF-e.
+
+    Todos os valores sao TRANSCRITOS da nota, nunca calculados: sao os
+    mesmos campos que aparecem na secao Documentos da tela do Bsoft (BC de
+    ICMS, Valor do ICMS, BC de ICMS-ST, Valor ICMS-ST, CFOP, NCM, peso).
+    Calcular por conta propria e o que nao pode acontecer aqui.
+    """
+    raiz = ElementTree.fromstring(xml_bytes)
+    inf = raiz.find(".//nfe:infNFe", NS)
+    if inf is None:
+        raise NFeInvalida("XML nao parece ser de uma NF-e (infNFe nao encontrado)")
+
+    ide = inf.find("nfe:ide", NS)
+    total = inf.find(".//nfe:ICMSTot", NS)
+    vol = inf.find(".//nfe:vol", NS)
+    primeiro_item = inf.find("nfe:det", NS)
+    prod = primeiro_item.find("nfe:prod", NS) if primeiro_item is not None else None
+
+    return {
+        "chaveNFe": re.sub(r"\D", "", inf.attrib.get("Id", "")),
+        "notaFiscal": _texto(ide, "nfe:nNF"),
+        "serieNotaFiscal": _texto(ide, "nfe:serie"),
+        "dtFiscal": _texto(ide, "nfe:dhEmi")[:10],
+        "tipoNF": "S" if _texto(ide, "nfe:tpNF") == "1" else "E",
+        "nCFOP": _texto(prod, "nfe:CFOP"),
+        "NCM": _texto(prod, "nfe:NCM"),
+        "quant": _texto(vol, "nfe:qVol") or _texto(prod, "nfe:qCom"),
+        "quantKg": _texto(vol, "nfe:pesoB"),
+        "vProd": _texto(total, "nfe:vProd"),
+        "vBC": _texto(total, "nfe:vBC"),
+        "vICMS": _texto(total, "nfe:vICMS"),
+        "vBCST": _texto(total, "nfe:vBCST"),
+        "vST": _texto(total, "nfe:vST"),
+        "valor": _texto(total, "nfe:vNF"),
+        "descricao_produto": _texto(prod, "nfe:xProd"),
+    }
+
+
 def extrair_dados(xml_bytes: bytes) -> dict:
     """Devolve os dados da NF-e. Levanta NFeInvalida se o arquivo nao for
     uma NF-e legivel ou se a chave nao passar no digito verificador."""

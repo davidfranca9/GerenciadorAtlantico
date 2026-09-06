@@ -161,6 +161,50 @@ def simular(payload: SimularIn, db: Session = Depends(get_db)):
     }
 
 
+class ConferirIn(BaseModel):
+    chave_cte: str
+    valor_frete: float = 0
+
+
+@router.post("/conferir")
+async def conferir_contra_cte_real(payload: ConferirIn):
+    """Somente leitura. Busca o XML autorizado de um CT-e ja emitido por
+    voces e devolve os valores que a SEFAZ registrou, pra comparar com o que
+    o sistema montaria.
+
+    E assim que se prova que a emissao pelo sistema sai igual a manual:
+    reproduz um documento real e confere campo a campo, sem emitir nada.
+    """
+    chave = "".join(filter(str.isdigit, payload.chave_cte or ""))
+    if len(chave) != 44:
+        raise HTTPException(status_code=400, detail="Informe a chave de acesso do CT-e (44 digitos)")
+
+    try:
+        xml = await run_in_threadpool(bsoft_fiscal.obter_xml_ctes_emitidos, [chave])
+    except BsoftError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return {
+        "chave_consultada": chave,
+        "xml_autorizado": xml,
+        "ids_que_o_sistema_usaria": {
+            "agencia": settings.bsoft_agencia_id,
+            "talao_cte": settings.bsoft_talao_cte_id,
+            "regra_frete": settings.bsoft_regra_frete_id,
+            "natureza_carga": settings.bsoft_natureza_carga_id,
+            "apolice": settings.bsoft_numero_apolice,
+            "resp_seguro": "4 (emitente)",
+            "tipo_documentos": "N (NF-e)",
+            "cte_os": "N",
+        },
+        "observacao": (
+            "Compare os valores do XML autorizado com o que o sistema montaria "
+            "para a mesma NF-e. Divergencia aqui e erro de mapeamento e precisa "
+            "ser corrigida antes de qualquer emissao real."
+        ),
+    }
+
+
 @router.get("/operacoes")
 def listar_operacoes(db: Session = Depends(get_db)):
     operacoes = db.query(OperacaoFiscal).order_by(OperacaoFiscal.created_at.desc()).limit(200).all()
