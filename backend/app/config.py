@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     bsoft_regra_frete_id: int = 35            # regra "Calculo FERTIMAXI"
     bsoft_numero_apolice: str = "202511"      # apolice CHUBB SEGUROS BRASIL S.A.
     bsoft_natureza_carga_id: int = 4          # FERTILIZANTES
+    # Natureza da operacao (na API o campo e cfops_id). A escolha entre as
+    # duas segue a regra do CFOP: 5xxx dentro do estado, 6xxx fora dele.
+    bsoft_cfops_id_estadual: int = 1          # CFOP 5352
+    bsoft_cfops_id_interestadual: int = 3     # CFOP 6352
     # Ainda desconhecido: o cadastro paramCriaCteViaNFe esta vazio no tenant
     # e precisa ser criado no Bsoft (pergunta 1.6 do suporte). Sem ele, o
     # POST /conhecimentos/viaNFe nao tem como funcionar.

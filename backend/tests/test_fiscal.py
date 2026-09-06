@@ -72,3 +72,18 @@ def test_payload_zera_campos_opcionais_em_vez_de_omitir():
     corpo = montar_payload_cte(chave_nfe=CHAVE_VALIDA, parametro_criacao_cte="16", valor_frete=1)
     for campo in ("gris", "valorSeguro", "diaria", "valorPedagioConhecimento"):
         assert corpo[campo] == "0.00"
+
+
+def test_cfops_estadual_quando_mesma_uf():
+    from app.routers.fiscal import escolher_cfops_id
+    assert escolher_cfops_id("BA", "BA") == 1  # CFOP 5352
+
+
+def test_cfops_interestadual_quando_uf_diferente():
+    from app.routers.fiscal import escolher_cfops_id
+    assert escolher_cfops_id("BA", "MG") == 3  # CFOP 6352
+
+
+def test_cfops_cai_para_interestadual_sem_informacao():
+    from app.routers.fiscal import escolher_cfops_id
+    assert escolher_cfops_id("", "") == 3

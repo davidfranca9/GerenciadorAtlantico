@@ -87,6 +87,17 @@ def montar_payload_cte(
     return corpo
 
 
+def escolher_cfops_id(uf_origem: str, uf_destino: str) -> int:
+    """Natureza da operacao (cfops_id no Bsoft): CFOP 5352 quando a prestacao
+    fica dentro do estado, 6352 quando cruza a divisa. Sem as duas UFs, cai
+    no interestadual, que e o caso mais comum da operacao."""
+    origem = (uf_origem or "").strip().upper()
+    destino = (uf_destino or "").strip().upper()
+    if origem and destino and origem == destino:
+        return settings.bsoft_cfops_id_estadual
+    return settings.bsoft_cfops_id_interestadual
+
+
 class SimularIn(BaseModel):
     agendamento_id: int
     chave_nfe: str = ""
@@ -134,6 +145,8 @@ def simular(payload: SimularIn, db: Session = Depends(get_db)):
             "regra_frete": settings.bsoft_regra_frete_id,
             "apolice": settings.bsoft_numero_apolice,
             "natureza_carga": settings.bsoft_natureza_carga_id,
+            "cfops_estadual": f"{settings.bsoft_cfops_id_estadual} (CFOP 5352)",
+            "cfops_interestadual": f"{settings.bsoft_cfops_id_interestadual} (CFOP 6352)",
         },
         "agendamento": {
             "id": agendamento.id,
