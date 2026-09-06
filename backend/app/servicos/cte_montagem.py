@@ -29,22 +29,34 @@ TOMADOR_POR_MODALIDADE = {
 }
 
 
-# Especies cadastradas no tenant (lidas via GET /bsoft/configuracoes-cte).
-# A especie nao vem da NF-e: ela sai da embalagem do pedido, e varia -
-# big bag, saco, granel.
+# Especies cadastradas no tenant, na ordem em que aparecem na lista da tela
+# do Bsoft. A especie nao vem da NF-e: sai da embalagem do pedido.
+#
+# Os ids marcados como confirmados vieram da API (GET /bsoft/configuracoes-cte).
+# Os demais foram deduzidos da posicao na lista, que e sequencial e bate com
+# todos os sete confirmados - o id 2 nao aparece na tela. Deducao nenhuma
+# dessas afeta emissao hoje: as tres embalagens usadas apontam pra ids
+# confirmados.
 ESPECIES_BSOFT = {
-    1: "GRANEL",
-    3: "SACOS",
-    5: "BIG BAG",
-    8: "SACO DE 50 KG",
-    10: "BIG BAG 1000 KG",
-    13: "Tonelada",
-    14: "SACOS 50 KG",
+    1: "GRANEL",           # confirmado
+    3: "SACOS",            # confirmado
+    4: "FARDOS",
+    5: "BIG BAG",          # confirmado
+    6: "PALLETS",
+    7: "CAIXAS",
+    8: "SACO DE 50 KG",    # confirmado
+    9: "Saco de 20kg",
+    10: "BIG BAG 1000 KG",  # confirmado
+    11: "SACO DE 25 KG",
+    12: "SC X 25 KG",
+    13: "Tonelada",        # confirmado
+    14: "SACOS 50 KG",     # confirmado
 }
 
-# Quanto pesa uma unidade de cada especie. Serve pra conferir se a
-# quantidade de volumes fecha com o peso da carga - ver _conferir_volumes.
-PESO_UNITARIO_KG = {5: 1000, 8: 50, 10: 1000, 13: 1000, 14: 50}
+# A quantidade do CT-e e o numero de volumes fisicos, e a especie e um
+# rotulo do cadastro: BIG BAG 1000 KG nao quer dizer que cada volume pese
+# 1000 kg. Foi assim no CT-e 5053 (540 volumes, 27 t) e e a convencao da
+# operacao - por isso nao existe conferencia de volume x peso aqui.
 
 # O OCR normaliza toda embalagem de pedido pra este vocabulario (ver
 # servicos/ocr.py). E so isso que chega aqui, entao o de-para e direto e
@@ -82,33 +94,6 @@ def sugerir_especie(embalagem: str) -> dict:
             return {"especie_id": candidato, "nome": nome, "alternativas": [], "confianca": "alta"}
 
     return {"especie_id": None, "nome": "", "alternativas": [], "confianca": "nenhuma"}
-
-
-def _conferir_volumes(especie_id: int | None, quantidade: str, peso_kg: Decimal) -> str:
-    """Confere se quantidade de volumes x peso da especie fecha com a carga.
-
-    Foi essa conta que apareceu torta no CT-e 5053: 540 volumes registrados
-    como BIG BAG 1000 KG dariam 540 toneladas, mas a carga tem 27. Com
-    SACO DE 50 KG a conta fecha exata. Ou a especie do documento esta
-    errada, ou o cadastro chamado de big bag e de 50 kg.
-    """
-    unitario = PESO_UNITARIO_KG.get(especie_id or 0)
-    if not unitario or not quantidade:
-        return ""
-    try:
-        volumes = Decimal(quantidade)
-    except Exception:
-        return ""
-    if volumes <= 0 or peso_kg <= 0:
-        return ""
-    esperado = volumes * unitario
-    # Tolera 1% de diferenca por arredondamento de peso.
-    if abs(esperado - peso_kg) <= peso_kg / 100:
-        return ""
-    return (
-        f"Volumes nao fecham com o peso: {volumes} x {ESPECIES_BSOFT.get(especie_id, '?')} "
-        f"({unitario} kg) daria {esperado} kg, mas a carga tem {peso_kg} kg."
-    )
 
 
 def _duas_casas(valor: Decimal) -> str:
@@ -221,9 +206,4 @@ def _pendencias(espelho: dict, mercadoria: dict, tarifa: str | None) -> list[str
             f"Especie da carga indefinida: a embalagem do pedido "
             f"({embalagem or 'nao informada'}) nao casou com nenhuma especie do Bsoft."
         )
-    divergencia = _conferir_volumes(
-        especie["especie_id"], espelho["quantidade"], Decimal(espelho["peso_kg"] or "0")
-    )
-    if divergencia:
-        faltando.append(divergencia)
     return faltando

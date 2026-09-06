@@ -6,18 +6,13 @@ servicos/ocr.py), entao o de-para cobre exatamente esse vocabulario.
 from __future__ import annotations
 
 import sys
-from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.servicos.cte_montagem import (  # noqa: E402
-    ESPECIES_BSOFT,
-    _conferir_volumes,
-    sugerir_especie,
-)
+from app.servicos.cte_montagem import ESPECIES_BSOFT, sugerir_especie  # noqa: E402
 
 
 @pytest.mark.parametrize(
@@ -57,21 +52,19 @@ def test_todas_as_embalagens_do_ocr_tem_especie():
         assert especie_id in ESPECIES_BSOFT
 
 
-def test_volumes_fecham_com_saco_de_50():
-    # 540 sacos de 50 kg = 27 toneladas.
-    assert _conferir_volumes(8, "540", Decimal("27000")) == ""
+def test_catalogo_tem_todas_as_especies_da_tela():
+    esperadas = [
+        "GRANEL", "SACOS", "FARDOS", "BIG BAG", "PALLETS", "CAIXAS",
+        "SACO DE 50 KG", "Saco de 20kg", "BIG BAG 1000 KG",
+        "SACO DE 25 KG", "SC X 25 KG", "Tonelada", "SACOS 50 KG",
+    ]
+    assert list(ESPECIES_BSOFT.values()) == esperadas
 
 
-def test_volumes_nao_fecham_com_big_bag_de_1000():
-    # A conta torta que apareceu no CT-e 5053.
-    aviso = _conferir_volumes(10, "540", Decimal("27000"))
-    assert "nao fecham" in aviso
-    assert "540000" in aviso
-
-
-def test_granel_nao_tem_conferencia_de_volume():
-    assert _conferir_volumes(1, "540", Decimal("27000")) == ""
-
-
-def test_sem_quantidade_nao_reclama():
-    assert _conferir_volumes(8, "", Decimal("27000")) == ""
+def test_ids_confirmados_pela_api_nao_mudam():
+    # Estes sete vieram da API, nao da posicao na lista.
+    for especie_id, nome in {
+        1: "GRANEL", 3: "SACOS", 5: "BIG BAG", 8: "SACO DE 50 KG",
+        10: "BIG BAG 1000 KG", 13: "Tonelada", 14: "SACOS 50 KG",
+    }.items():
+        assert ESPECIES_BSOFT[especie_id] == nome
