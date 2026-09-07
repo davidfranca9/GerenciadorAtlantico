@@ -425,6 +425,9 @@ CST_TRIBUTACAO_NORMAL = "000"   # DACTE 5053: "00 - Tributacao normal"
 TIPO_CTE_NORMAL = "0"           # DACTE 5053: "TIPO DO CT-E Normal"
 TIPO_SERVICO_NORMAL = "0"       # DACTE 5053: "TIPO DO SERVICO Normal"
 
+# forPag do CT-e: 0 = pago, 1 = a pagar, 2 = outros.
+FORMA_PAGAMENTO_A_PAGAR = "1"
+
 
 def montar_payload_conhecimento(
     espelho: dict,
@@ -442,6 +445,7 @@ def montar_payload_conhecimento(
     seguradora_id=None,
     apolice_id=None,
     km: str = "",
+    forma_pagamento: str = "",
     dt_emissao: str = "",
 ) -> dict:
     """Monta o corpo do POST /conhecimentos.
@@ -511,6 +515,21 @@ def montar_payload_conhecimento(
         "totalServico": valor,
         "aliquota": str(aliquota_icms or ""),
         "valorICMS": valor_icms,
+        # Forma de pagamento do servico. Obrigatorio: o Bsoft recusa o POST
+        # sem ele ("Atributo obrigatorio [forPag]"). O DACTE 5053 mostra
+        # VALOR A RECEBER, ou seja, frete a pagar - por isso o padrao e 1.
+        # Fica ajustavel na tela porque e decisao de quem emite.
+        "forPag": str(forma_pagamento or FORMA_PAGAMENTO_A_PAGAR),
+        # Componentes que o DACTE 5053 nao traz: la so aparecem FRETE VALOR,
+        # ICMS e TARIFA PESO. Vao zerados em vez de omitidos, porque campo
+        # de valor ausente costuma ser recusado.
+        "valorISS": "0.00",
+        "valoresOutros": "0.00",
+        "valorSeguroAduaneiro": "0.00",
+        "valorPedagioConhecimento": "0.00",
+        "valorSeguro": "0.00",
+        "diaria": "0.00",
+        "Gris": "0.00",
         "mercadorias": [_linha_mercadoria(espelho, mercadoria, natureza_carga_id)],
     }
 

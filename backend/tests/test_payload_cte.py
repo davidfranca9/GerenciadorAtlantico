@@ -202,3 +202,20 @@ def test_sem_embalagem_a_especie_falta_no_payload():
         espelho, partes=PARTES_OK, veiculos=VEICULOS_OK, aliquota_icms="12"
     )
     assert any("Especie" in p for p in conferir_payload(corpo))
+
+
+def test_forma_de_pagamento_vai_no_payload():
+    # O Bsoft recusa o POST sem forPag: "Atributo obrigatorio [forPag] nao
+    # especificado". O padrao e 1 (a pagar), coerente com o VALOR A RECEBER
+    # do DACTE 5053.
+    assert payload()["forPag"] == "1"
+    assert payload(forma_pagamento="0")["forPag"] == "0"
+
+
+def test_componentes_ausentes_no_dacte_vao_zerados():
+    # O DACTE 5053 so traz FRETE VALOR, ICMS e TARIFA PESO. Os demais
+    # componentes vao zerados em vez de omitidos.
+    corpo = payload()
+    for campo in ("valorISS", "valoresOutros", "valorSeguroAduaneiro",
+                  "valorPedagioConhecimento", "valorSeguro", "diaria", "Gris"):
+        assert corpo[campo] == "0.00", campo

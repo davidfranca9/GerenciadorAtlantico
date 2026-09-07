@@ -179,6 +179,7 @@ function EmitirCte() {
   const [km, setKm] = useState("");
   const [embalagem, setEmbalagem] = useState("BIG BAG");
   const [especieId, setEspecieId] = useState("");
+  const [formaPagamento, setFormaPagamento] = useState("1");
   const [definitivo, setDefinitivo] = useState(false);
   const [escolhas, setEscolhas] = useState({});
   const [espelho, setEspelho] = useState(null);
@@ -196,6 +197,7 @@ function EmitirCte() {
     tarifa_por_tonelada: String(tarifa).replace(",", "."),
     aliquota_icms: String(aliquota).replace(",", "."),
     km: String(km).replace(",", "."),
+    forma_pagamento: formaPagamento,
     embalagem,
     especie_id: especieId,
     ...escolhas,

@@ -174,6 +174,7 @@ async def espelho_do_cte(
     especie_id: str = Form(""),
     aliquota_icms: str = Form(""),
     km: str = Form(""),
+    forma_pagamento: str = Form(""),
     endereco_remetente_id: str = Form(""),
     endereco_destinatario_id: str = Form(""),
     motorista_id: str = Form(""),
@@ -246,6 +247,7 @@ async def espelho_do_cte(
         aliquota_icms=aliquota_icms or None,
         cfops_id=cfops_id,
         km=km,
+        forma_pagamento=forma_pagamento,
         **seguro,
     )
     resultado["endpoint"] = "POST /transporte/v1/conhecimentos"
@@ -398,6 +400,7 @@ async def emitir_conhecimento(
         rascunho=not confirmar_emissao_real,
         cfops_id=escolher_cfops_id(espelho["uf_origem"], espelho["uf_destino"]),
         km=km,
+        forma_pagamento=forma_pagamento,
         **seguro,
     )
 
