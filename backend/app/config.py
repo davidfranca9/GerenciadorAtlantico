@@ -31,10 +31,13 @@ class Settings(BaseSettings):
     bsoft_talao_contrato_frete_id: int = 5    # talao RECIBO DE FRETE
     bsoft_regra_frete_id: int = 35            # regra "Calculo FERTIMAXI"
     bsoft_numero_apolice: str = "202511"      # apolice CHUBB SEGUROS BRASIL S.A.
-    # Ids da apolice no cadastro. Saem de GET /transporte/v1/apolicesSeguro
-    # (botao "Consultar configuracoes" na tela Bsoft). Vazios = pendencia.
+    # Apolice RCTR-C da CHUBB (numero 202511, vigencia 27/05/2026 a
+    # 31/05/2027), lida na tela de Apolices de Seguro: na listagem do Bsoft o
+    # id do registro vem no checkbox da linha (name="id" value="3").
+    bsoft_apolice_id: str = "3"
+    # Id da seguradora em si. Nao aparece na listagem; quando vazio, o
+    # sistema busca pela apolice em GET /transporte/v1/apolicesSeguro.
     bsoft_seguradora_id: str = ""
-    bsoft_apolice_id: str = ""
     bsoft_natureza_carga_id: int = 4          # FERTILIZANTES
     # Natureza da operacao (na API o campo e cfops_id). A escolha entre as
     # duas segue a regra do CFOP: 5xxx dentro do estado, 6xxx fora dele.
