@@ -35,9 +35,9 @@ class Settings(BaseSettings):
     # 31/05/2027), lida na tela de Apolices de Seguro: na listagem do Bsoft o
     # id do registro vem no checkbox da linha (name="id" value="3").
     bsoft_apolice_id: str = "3"
-    # Id da seguradora em si. Nao aparece na listagem; quando vazio, o
-    # sistema busca pela apolice em GET /transporte/v1/apolicesSeguro.
-    bsoft_seguradora_id: str = ""
+    # CHUBB SEGUROS BRASIL S.A., lido no cadastro da apolice 3 (o campo da
+    # tela se chama dados_seguradora_id, mesmo nome do campo da API).
+    bsoft_seguradora_id: str = "2096"
     bsoft_natureza_carga_id: int = 4          # FERTILIZANTES
     # Natureza da operacao (na API o campo e cfops_id). A escolha entre as
     # duas segue a regra do CFOP: 5xxx dentro do estado, 6xxx fora dele.
