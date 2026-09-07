@@ -201,11 +201,12 @@ def derivar(
         espelho["base_calculo"] = _duas_casas(frete)
 
     espelho["pendencias"] = _pendencias(espelho, mercadoria, tarifa_por_tonelada)
+    espelho["avisos"] = _avisos(espelho, mercadoria)
     return espelho
 
 
 def _pendencias(espelho: dict, mercadoria: dict, tarifa: str | None) -> list[str]:
-    """O que ainda impede o documento de sair identico ao manual."""
+    """O que IMPEDE a emissao. Aviso que so pede atencao vai em _avisos."""
     faltando = []
     if not tarifa:
         faltando.append(
@@ -217,11 +218,6 @@ def _pendencias(espelho: dict, mercadoria: dict, tarifa: str | None) -> list[str
             f"Modalidade de frete {mercadoria.get('modalidade_frete', '')!r} nao mapeada: "
             "o tomador do servico precisa ser confirmado."
         )
-    if espelho["peso_convertido_de_tonelada"]:
-        faltando.append(
-            f"Peso convertido de {mercadoria['peso_declarado']} t para {espelho['peso_kg']} kg. "
-            "Confira antes de emitir."
-        )
     # A especie da carga nao vem da nota: o 5053 usou BIG BAG 1000 KG
     # enquanto a NF-e trazia BAGS. Ela sai da embalagem do pedido.
     especie = espelho["especie"]
@@ -232,6 +228,22 @@ def _pendencias(espelho: dict, mercadoria: dict, tarifa: str | None) -> list[str
             f"({embalagem or 'nao informada'}) nao casou com nenhuma especie do Bsoft."
         )
     return faltando
+
+
+def _avisos(espelho: dict, mercadoria: dict) -> list[str]:
+    """O que vale conferir mas nao impede a emissao.
+
+    A conversao de peso entra aqui: ela esta certa (o CT-e 5053 registrou os
+    mesmos 27000 kg), so merece um olhar. Misturada com as pendencias, ela
+    travava o botao de emitir sem nada de fato pendente.
+    """
+    recados = []
+    if espelho["peso_convertido_de_tonelada"]:
+        recados.append(
+            f"Peso convertido de {mercadoria['peso_declarado']} t para {espelho['peso_kg']} kg, "
+            "porque a nota declara o peso na unidade do produto."
+        )
+    return recados
 
 
 # --------------------------------------------------------------------------

@@ -336,12 +336,27 @@ function EmitirCte() {
           )}
 
           {e.pendencias?.length > 0 && (
-                <div className="inline-alert warning">
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <strong>Falta resolver:</strong>
+            <div className="inline-alert warning">
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <strong>Falta resolver antes de emitir:</strong>
                 {e.pendencias.map((item, i) => <span key={i}>• {item}</span>)}
               </div>
             </div>
+          )}
+
+          {/* Avisos nao bloqueiam a emissao: sao coisas certas que so
+              merecem um olhar antes de mandar. */}
+          {e.avisos?.length > 0 && (
+            <div className="inline-alert info">
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <strong>Confira:</strong>
+                {e.avisos.map((item, i) => <span key={i}>• {item}</span>)}
+              </div>
+            </div>
+          )}
+
+          {espelho && !e.pendencias?.length && (
+            <div className="inline-alert info">Tudo conferido. Pode gerar.</div>
           )}
 
               <Secao titulo="Identificação">
