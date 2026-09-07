@@ -53,6 +53,8 @@ function EmitirCte() {
   const [tarifa, setTarifa] = useState("");
   const [aliquota, setAliquota] = useState("12");
   const [embalagem, setEmbalagem] = useState("BIG BAG");
+  const [km, setKm] = useState("");
+  const [definitivo, setDefinitivo] = useState(false);
   const [espelho, setEspelho] = useState(null);
   const [resultado, setResultado] = useState(null);
   const [ocupado, setOcupado] = useState(false);
@@ -67,6 +69,7 @@ function EmitirCte() {
     agendamento_id: agendamentoId,
     tarifa_por_tonelada: String(tarifa).replace(",", "."),
     aliquota_icms: String(aliquota).replace(",", "."),
+    km: String(km).replace(",", "."),
     embalagem,
   });
 
@@ -93,7 +96,10 @@ function EmitirCte() {
     setErro("");
     setResultado(null);
     try {
-      setResultado(await api.fiscalEmitirConhecimento(arquivo, campos()));
+      setResultado(await api.fiscalEmitirConhecimento(arquivo, {
+        ...campos(),
+        confirmar_emissao_real: definitivo ? "true" : "",
+      }));
     } catch (err) {
       setErro(err.message);
     } finally {
@@ -138,6 +144,10 @@ function EmitirCte() {
               <input value={aliquota} onChange={(e) => setAliquota(e.target.value)} placeholder="12" />
             </div>
             <div className="field">
+              <label>Km do trecho</label>
+              <input value={km} onChange={(e) => setKm(e.target.value)} placeholder="850" />
+            </div>
+            <div className="field">
               <label>Embalagem</label>
               <select value={embalagem} onChange={(e) => setEmbalagem(e.target.value)}>
                 {EMBALAGENS.map((item) => <option key={item} value={item}>{item}</option>)}
@@ -158,13 +168,19 @@ function EmitirCte() {
                 style={{ display: "none" }}
               />
             </label>
-            <button className="btn-primary" disabled={ocupado || !agendamentoId || !arquivo || !tarifa} onClick={handleConferir}>
+            <button className="btn-primary" disabled={ocupado || !agendamentoId || !arquivo || !tarifa || !km} onClick={handleConferir}>
               {ocupado ? "Processando..." : "Conferir espelho"}
             </button>
             {espelho && !espelho.pendencias?.length && (
-              <button className="btn-primary" disabled={ocupado} onClick={handleGerarRascunho}>
-                Gerar rascunho no Bsoft
-              </button>
+              <>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
+                  <input type="checkbox" checked={definitivo} onChange={(e) => setDefinitivo(e.target.checked)} />
+                  Emitir definitivo (não rascunho)
+                </label>
+                <button className="btn-primary" disabled={ocupado} onClick={handleGerarRascunho}>
+                  {definitivo ? "Emitir CT-e no Bsoft" : "Gerar rascunho no Bsoft"}
+                </button>
+              </>
             )}
           </div>
 
@@ -172,8 +188,8 @@ function EmitirCte() {
 
           {resultado && (
             <div className="inline-alert info">
-              Rascunho criado (operação #{resultado.operacao?.id}, CT-e {resultado.operacao?.cod_conhecimento_bsoft || "—"}).
-              Confira na tela do Bsoft antes de autorizar.
+              {resultado.rascunho ? "Rascunho criado" : "CT-e emitido"} (operação #{resultado.operacao?.id},
+              {" "}CT-e {resultado.operacao?.cod_conhecimento_bsoft || "—"}). Confira na tela do Bsoft.
             </div>
           )}
 

@@ -30,6 +30,11 @@ TOMADOR_POR_MODALIDADE = {
     "4": "destinatario",
 }
 
+# Quem paga o frete (campo pagamentoFrete). Sai da mesma informacao que
+# define o tomador, porque e a mesma pergunta: de quem e a conta.
+# R = remetente, D = destinatario.
+PAGAMENTO_POR_TOMADOR = {"remetente": "R", "destinatario": "D"}
+
 
 # Especies cadastradas no tenant, na ordem em que aparecem na lista da tela
 # do Bsoft. A especie nao vem da NF-e: sai da embalagem do pedido.
@@ -342,6 +347,9 @@ def montar_payload_conhecimento(
     cfops_id=None,
     numero_apolice=None,
     natureza_carga_id=None,
+    seguradora_id=None,
+    apolice_id=None,
+    km: str = "",
     dt_emissao: str = "",
 ) -> dict:
     """Monta o corpo do POST /conhecimentos.
@@ -366,6 +374,13 @@ def montar_payload_conhecimento(
         "regraFrete_id": str(regra_frete_id if regra_frete_id is not None else settings.bsoft_regra_frete_id),
         "cfops_id": str(cfops_id if cfops_id is not None else settings.bsoft_cfops_id_interestadual),
         "numeroApolice": str(numero_apolice if numero_apolice is not None else settings.bsoft_numero_apolice),
+        "seguradora_id": str(seguradora_id if seguradora_id is not None else settings.bsoft_seguradora_id),
+        "apolice_id": str(apolice_id if apolice_id is not None else settings.bsoft_apolice_id),
+        # Quilometragem do trecho: nao sai da NF-e nem do cadastro, e
+        # informada por viagem.
+        "km": str(km or ""),
+        # Quem paga o frete, derivado do mesmo modFrete que define o tomador.
+        "pagamentoFrete": PAGAMENTO_POR_TOMADOR.get(espelho.get("tomador", ""), ""),
         "dtEmissao": dt_emissao or datetime.now().strftime("%Y-%m-%d %H:%M"),
         "rascunho": "S" if rascunho else "N",
         "modalidade": MODAL_RODOVIARIO,
@@ -448,6 +463,13 @@ def conferir_payload(corpo: dict) -> list[str]:
         "enderecoDestinatario_id": "Endereco do destinatario nao resolvido.",
         "valorFrete": "Valor do frete ausente (falta a tarifa).",
         "aliquota": "Aliquota de ICMS nao informada.",
+        "pagamentoFrete": "Nao deu pra saber quem paga o frete (modalidade da NF-e nao mapeada).",
+        "km": "Quilometragem do trecho nao informada.",
+        "seguradora_id": (
+            "Id da seguradora nao configurado (BSOFT_SEGURADORA_ID). Rode "
+            "'Consultar configuracoes' na tela Bsoft pra pegar o id da apolice."
+        ),
+        "apolice_id": "Id da apolice nao configurado (BSOFT_APOLICE_ID).",
     }
     for campo, mensagem in obrigatorios.items():
         if not corpo.get(campo):

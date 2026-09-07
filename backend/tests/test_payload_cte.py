@@ -26,7 +26,10 @@ VEICULOS_OK = {"motorista_id": "652", "veiculo_id": "28", "carreta_id": "29"}
 
 def payload(**kwargs):
     espelho = derivar(NFE_158852, tarifa_por_tonelada=TARIFA_5053, embalagem="BIG BAG")
-    base = dict(partes=PARTES_OK, veiculos=VEICULOS_OK, aliquota_icms="12")
+    base = dict(
+        partes=PARTES_OK, veiculos=VEICULOS_OK, aliquota_icms="12",
+        km="850", seguradora_id="647", apolice_id="52",
+    )
     base.update(kwargs)
     return montar_payload_conhecimento(espelho, **base)
 
@@ -143,6 +146,35 @@ def test_parte_nao_resolvida_vira_pendencia():
     pendencias = conferir_payload(corpo)
     assert any("Remetente" in p for p in pendencias)
     assert any("Endereco do destinatario" in p for p in pendencias)
+
+
+def test_quem_paga_o_frete_sai_da_modalidade_da_nota():
+    # A NF-e 158852 tem modFrete 1 (por conta do destinatario), e o CT-e
+    # 5053 saiu com o destinatario como tomador. Mesma pergunta, mesma
+    # resposta: a conta e dele.
+    assert payload()["pagamentoFrete"] == "D"
+
+
+def test_seguro_vai_com_apolice_e_ids():
+    corpo = payload()
+    assert corpo["numeroApolice"] == "202511"   # CHUBB, conferida no DACTE
+    assert corpo["seguradora_id"] == "647"
+    assert corpo["apolice_id"] == "52"
+
+
+def test_km_entra_no_payload():
+    assert payload(km="850")["km"] == "850"
+
+
+def test_sem_km_vira_pendencia():
+    # A quilometragem nao sai da nota nem do cadastro: e por viagem.
+    assert any("Quilometragem" in p for p in conferir_payload(payload(km="")))
+
+
+def test_sem_ids_de_seguro_vira_pendencia():
+    pendencias = conferir_payload(payload(seguradora_id="", apolice_id=""))
+    assert any("seguradora" in p for p in pendencias)
+    assert any("apolice" in p for p in pendencias)
 
 
 def test_sem_embalagem_a_especie_falta_no_payload():

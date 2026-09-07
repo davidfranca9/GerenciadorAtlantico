@@ -3,11 +3,14 @@
 Fluxo: agendamento + XML da NF-e -> operacao fiscal (rascunho local) ->
 importa a NF-e no Bsoft -> cria o CT-e pelo viaNFe -> acompanha o status.
 
-Duas travas protegem a operacao:
+Protecoes da operacao:
 1. `settings.bsoft_emissao_habilitada` - com ela desligada, nenhuma chamada
-   de escrita sai do processo. E o padrao.
+   de escrita sai do processo. Hoje ligada, por autorizacao do responsavel;
+   pra desligar sem deploy, BSOFT_EMISSAO_HABILITADA=false.
 2. Indice unico (agendamento_id, chave_nfe) - impede emitir dois CT-e pra
    mesma carga, mesmo com clique duplo ou retry.
+3. Payload incompleto e recusado antes do envio, e o CT-e sai como rascunho
+   a menos que alguem marque a emissao definitiva.
 
 O endpoint /simular monta e devolve o payload exato que seria enviado, sem
 chamar nada. E como se valida o mapeamento antes de existir risco fiscal.
@@ -169,6 +172,7 @@ async def espelho_do_cte(
     embalagem: str = Form(""),
     buscar_partes: bool = Form(False),
     aliquota_icms: str = Form(""),
+    km: str = Form(""),
     agendamento_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
@@ -229,6 +233,7 @@ async def espelho_do_cte(
         veiculos=veiculos,
         aliquota_icms=aliquota_icms or None,
         cfops_id=cfops_id,
+        km=km,
     )
     resultado["endpoint"] = "POST /transporte/v1/conhecimentos"
     resultado["payload"] = corpo
@@ -260,6 +265,7 @@ async def emitir_conhecimento(
     agendamento_id: int = Form(...),
     tarifa_por_tonelada: str = Form(...),
     aliquota_icms: str = Form(...),
+    km: str = Form(""),
     embalagem: str = Form(""),
     confirmar_emissao_real: bool = Form(False),
     db: Session = Depends(get_db),
@@ -321,6 +327,7 @@ async def emitir_conhecimento(
         aliquota_icms=aliquota_icms,
         rascunho=not confirmar_emissao_real,
         cfops_id=escolher_cfops_id(espelho["uf_origem"], espelho["uf_destino"]),
+        km=km,
     )
 
     # Payload incompleto nao vai pra frente: melhor recusar aqui do que

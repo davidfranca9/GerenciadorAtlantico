@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     bsoft_talao_contrato_frete_id: int = 5    # talao RECIBO DE FRETE
     bsoft_regra_frete_id: int = 35            # regra "Calculo FERTIMAXI"
     bsoft_numero_apolice: str = "202511"      # apolice CHUBB SEGUROS BRASIL S.A.
+    # Ids da apolice no cadastro. Saem de GET /transporte/v1/apolicesSeguro
+    # (botao "Consultar configuracoes" na tela Bsoft). Vazios = pendencia.
+    bsoft_seguradora_id: str = ""
+    bsoft_apolice_id: str = ""
     bsoft_natureza_carga_id: int = 4          # FERTILIZANTES
     # Natureza da operacao (na API o campo e cfops_id). A escolha entre as
     # duas segue a regra do CFOP: 5xxx dentro do estado, 6xxx fora dele.
@@ -40,10 +44,11 @@ class Settings(BaseSettings):
     # e precisa ser criado no Bsoft (pergunta 1.6 do suporte). Sem ele, o
     # POST /conhecimentos/viaNFe nao tem como funcionar.
     bsoft_parametro_criacao_cte: str = ""
-    # Trava geral: enquanto False, nenhuma operacao que cria/altera documento
-    # fiscal no Bsoft e executada (so leitura). Serve pra manter o codigo em
-    # producao sem risco ate o suporte confirmar o comportamento da API.
-    bsoft_emissao_habilitada: bool = False
+    # Trava geral: com False, nenhuma operacao que cria ou altera documento
+    # fiscal no Bsoft e executada (so leitura). Ligada por autorizacao
+    # explicita do responsavel, que cancela o CT-e no Bsoft se sair errado.
+    # Pra desligar sem deploy: BSOFT_EMISSAO_HABILITADA=false.
+    bsoft_emissao_habilitada: bool = True
 
     gemini_api_key: str = ""
 
