@@ -91,11 +91,15 @@ def test_veiculo_e_motorista_entram_quando_existem():
     assert corpo["carreta_id"] == "29"
 
 
-def test_veiculo_ausente_nao_vira_campo_vazio():
-    # Mandar id em branco e pior que nao mandar o campo.
+def test_veiculo_ausente_vai_como_campo_vazio():
+    # Eu tinha omitido o campo quando o id nao era encontrado, achando que
+    # era mais seguro. A API mostrou o contrario: ela cobra a presenca da
+    # chave e recusava um campo por vez, primeiro carreta_id e depois
+    # semireboque_id.
     corpo = payload(veiculos={})
-    assert "veiculos_id" not in corpo
-    assert "motorista_id" not in corpo
+    assert corpo["veiculos_id"] == ""
+    assert corpo["motorista_id"] == ""
+    assert corpo["semireboque_id"] == ""
 
 
 def test_constantes_da_tela_de_emissao():

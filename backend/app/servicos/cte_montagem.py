@@ -559,14 +559,17 @@ def montar_payload_conhecimento(
     # motorista, cavalo e carretas.
     corpo["conjuntoVeiculos_id"] = str(conjunto_veiculos_id or "")
 
+    # A cadeia de veiculos vai inteira, mesmo com id desconhecido: a API
+    # cobra a presenca da chave. Omitir o campo fazia o Bsoft recusar um por
+    # vez - primeiro carreta_id, depois semireboque_id.
     for campo, valor_id in (
         ("motorista_id", veiculos.get("motorista_id")),
         ("veiculos_id", veiculos.get("veiculo_id")),
         ("carreta_id", veiculos.get("carreta_id")),
         ("semireboque_id", veiculos.get("semireboque_id")),
+        ("quartoVeiculo_id", veiculos.get("quarto_veiculo_id")),
     ):
-        if valor_id:
-            corpo[campo] = str(valor_id)
+        corpo[campo] = str(valor_id or "")
 
     return corpo
 
