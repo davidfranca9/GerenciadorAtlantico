@@ -445,6 +445,34 @@ async def emitir_conhecimento(
     return {"operacao": _to_dict(operacao), "rascunho": not confirmar_emissao_real}
 
 
+@router.get("/nfes-recebidas")
+async def listar_nfes_recebidas(data_inicio: str, data_fim: str, ator: str = "TRA"):
+    """LEITURA. Chaves das NF-e recebidas no periodo (maximo 3 meses).
+
+    Serve pra achar uma nota que ainda nao virou CT-e: o Bsoft recusa
+    emitir duas vezes sobre a mesma NF-e.
+    """
+    try:
+        chaves = await run_in_threadpool(
+            bsoft_fiscal.listar_chaves_nfes_recebidas, data_inicio, data_fim, ator
+        )
+    except BsoftError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {"chaves": chaves}
+
+
+@router.get("/nfe-xml")
+async def baixar_xml_nfe(chave: str):
+    """LEITURA. XML de uma NF-e recebida, pelo numero da chave."""
+    limpa = "".join(filter(str.isdigit, chave or ""))
+    if len(limpa) != 44:
+        raise HTTPException(status_code=400, detail="Informe a chave da NF-e (44 digitos)")
+    try:
+        return {"xml": await run_in_threadpool(bsoft_fiscal.obter_xml_nfes_recebidas, [limpa])}
+    except BsoftError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @router.get("/motoristas")
 async def procurar_motoristas(nome: str = ""):
     """LEITURA. Busca motorista pelo nome no cadastro do Bsoft.

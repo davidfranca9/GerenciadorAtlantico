@@ -385,3 +385,28 @@ def buscar_pessoas_por_nome(termo: str, limite: int = 25) -> list:
             if len(achadas) >= limite:
                 break
     return achadas
+
+
+def listar_chaves_nfes_recebidas(data_inicio: str, data_fim: str, ator: str = "TRA") -> list:
+    """LEITURA. Chaves das NF-e recebidas no periodo.
+
+    A documentacao exige dataInicio e dataFim com no maximo 3 meses de
+    intervalo. O ator TRA filtra as notas em que a Atlantico aparece como
+    transportadora - que sao justamente as que viram CT-e.
+    """
+    return listar(
+        "/eDoc/v1/chavesDeAcesso/NFesRecebidas",
+        {"dataInicio": data_inicio, "dataFim": data_fim, "ator": ator},
+    )
+
+
+def obter_xml_nfes_recebidas(chaves: list[str]) -> object:
+    """LEITURA. XML das NF-e recebidas. Maximo de 50 chaves por requisicao."""
+    if len(chaves) > 50:
+        raise ValueError("A consulta aceita no maximo 50 chaves por requisicao")
+    _, corpo = chamar(
+        "POST",
+        "/eDoc/v1/XMLDocumentosFiscais/NFesRecebidas",
+        json_body={"chaveAcesso": list(chaves)},
+    )
+    return corpo

@@ -132,8 +132,12 @@ def mostrar_espelho(dados: dict) -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("acao", choices=["espelho", "emitir", "agendamentos", "configuracoes"])
+    p.add_argument("acao", choices=["espelho", "emitir", "agendamentos", "configuracoes",
+                                    "nfes", "baixar-nfe"])
     p.add_argument("--cadastro", default="", help="filtra a acao configuracoes")
+    p.add_argument("--de", default="", help="dataInicio (AAAA-MM-DD) da acao nfes")
+    p.add_argument("--ate", default="", help="dataFim da acao nfes, no maximo 3 meses depois")
+    p.add_argument("--chave", default="", help="chave da NF-e da acao baixar-nfe")
     p.add_argument("--xml", default="", help="XML da NF-e")
     p.add_argument("--token-file", required=True, help="arquivo com o token da sessao")
     p.add_argument("--credenciais", default="",
@@ -156,6 +160,28 @@ def main() -> int:
     p.add_argument("--api", default=API_PADRAO)
     p.add_argument("--timeout", type=int, default=180)
     args = p.parse_args()
+
+    if args.acao == "nfes":
+        # Acha uma NF-e que ainda nao virou CT-e: o Bsoft recusa a segunda
+        # emissao sobre a mesma nota.
+        resposta = requests.get(
+            f"{args.api}/fiscal/nfes-recebidas",
+            headers={"Authorization": f"Bearer {obter_token(args)}"},
+            params={"data_inicio": args.de, "data_fim": args.ate},
+            timeout=args.timeout,
+        )
+        print(json.dumps(resposta.json(), ensure_ascii=False, indent=1)[:3000])
+        return 0
+
+    if args.acao == "baixar-nfe":
+        resposta = requests.get(
+            f"{args.api}/fiscal/nfe-xml",
+            headers={"Authorization": f"Bearer {obter_token(args)}"},
+            params={"chave": args.chave},
+            timeout=args.timeout,
+        )
+        print(json.dumps(resposta.json(), ensure_ascii=False)[:4000])
+        return 0
 
     if args.acao == "configuracoes":
         # Le os cadastros do Bsoft que o CT-e referencia por id.
