@@ -126,6 +126,7 @@ function EmitirCte() {
     }
   }
 
+  const e = espelho || {};
   const p = espelho?.payload || {};
   const merc = p.mercadorias?.[0] || {};
   const pronto = espelho && !espelho.pendencias?.length;
@@ -210,16 +211,14 @@ function EmitirCte() {
             </div>
           )}
 
-          {espelho && (
-            <>
-              {espelho.pendencias?.length > 0 && (
+          {e.pendencias?.length > 0 && (
                 <div className="inline-alert warning">
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <strong>Falta resolver:</strong>
-                    {espelho.pendencias.map((item, i) => <span key={i}>• {item}</span>)}
-                  </div>
-                </div>
-              )}
+                {e.pendencias.map((item, i) => <span key={i}>• {item}</span>)}
+              </div>
+            </div>
+          )}
 
               <Secao titulo="Identificação">
                 <Linha>
@@ -234,25 +233,25 @@ function EmitirCte() {
 
               <Secao titulo="Prestação">
                 <Linha>
-                  <Campo rotulo="CFOP" valor={espelho.cfop} largura={2} />
-                  <Campo rotulo="Origem" valor={`${espelho.municipio_origem} - ${espelho.uf_origem} (${espelho.ibge_origem})`} largura={3} />
-                  <Campo rotulo="Destino" valor={`${espelho.municipio_destino} - ${espelho.uf_destino} (${espelho.ibge_destino})`} largura={3} />
+                  <Campo rotulo="CFOP" valor={e.cfop} largura={2} />
+                  <Campo rotulo="Origem" valor={`${e.municipio_origem} - ${e.uf_origem} (${e.ibge_origem})`} largura={3} />
+                  <Campo rotulo="Destino" valor={`${e.municipio_destino} - ${e.uf_destino} (${e.ibge_destino})`} largura={3} />
                 </Linha>
               </Secao>
 
               <Secao titulo="Participantes">
                 <Linha>
-                  <Campo rotulo="Remetente" valor={espelho.remetente_nome} largura={3} />
-                  <Campo rotulo="CNPJ/CPF" valor={espelho.remetente_doc} />
-                  <Campo rotulo="Cadastro" valor={espelho.partes?.remetente?.pessoa_id} />
+                  <Campo rotulo="Remetente" valor={e.remetente_nome} largura={3} />
+                  <Campo rotulo="CNPJ/CPF" valor={e.remetente_doc} />
+                  <Campo rotulo="Cadastro" valor={e.partes?.remetente?.pessoa_id} />
                 </Linha>
                 <Linha>
-                  <Campo rotulo="Destinatário" valor={espelho.destinatario_nome} largura={3} />
-                  <Campo rotulo="CNPJ/CPF" valor={espelho.destinatario_doc} />
-                  <Campo rotulo="Cadastro" valor={espelho.partes?.destinatario?.pessoa_id} />
+                  <Campo rotulo="Destinatário" valor={e.destinatario_nome} largura={3} />
+                  <Campo rotulo="CNPJ/CPF" valor={e.destinatario_doc} />
+                  <Campo rotulo="Cadastro" valor={e.partes?.destinatario?.pessoa_id} />
                 </Linha>
                 <Linha>
-                  <Campo rotulo="Tomador do serviço" valor={espelho.tomador === "destinatario" ? espelho.destinatario_nome : espelho.remetente_nome} largura={3} />
+                  <Campo rotulo="Tomador do serviço" valor={e.tomador === "destinatario" ? e.destinatario_nome : e.remetente_nome} largura={3} />
                   <Campo rotulo="Paga o frete" valor={p.pagamentoFrete === "D" ? "Destinatário" : p.pagamentoFrete === "R" ? "Remetente" : "—"} />
                   <Campo rotulo="Km" valor={p.km} />
                 </Linha>
@@ -260,13 +259,13 @@ function EmitirCte() {
 
               <Secao titulo="Carga">
                 <Linha>
-                  <Campo rotulo="Produto predominante" valor={espelho.produto_predominante} largura={4} />
-                  <Campo rotulo="Espécie" valor={espelho.especie?.nome} largura={2} />
+                  <Campo rotulo="Produto predominante" valor={e.produto_predominante} largura={4} />
+                  <Campo rotulo="Espécie" valor={e.especie?.nome} largura={2} />
                 </Linha>
                 <Linha>
-                  <Campo rotulo="Peso bruto" valor={`${espelho.peso_kg} kg`} />
-                  <Campo rotulo="Quantidade" valor={espelho.quantidade} />
-                  <Campo rotulo="Valor da mercadoria" valor={formatarValor(espelho.valor_mercadoria)} />
+                  <Campo rotulo="Peso bruto" valor={`${e.peso_kg} kg`} />
+                  <Campo rotulo="Quantidade" valor={e.quantidade} />
+                  <Campo rotulo="Valor da mercadoria" valor={formatarValor(e.valor_mercadoria)} />
                   <Campo rotulo="Natureza da carga" valor={merc.naturezaCarga === "4" ? "Fertilizantes" : merc.naturezaCarga} />
                 </Linha>
               </Secao>
@@ -335,10 +334,10 @@ function EmitirCte() {
 
               <Secao titulo="Veículo e motorista">
                 <Linha>
-                  <Campo rotulo="Motorista" valor={espelho.veiculos?.motorista_id ? `cadastro ${espelho.veiculos.motorista_id}` : "não encontrado"} />
-                  <Campo rotulo="Cavalo" valor={espelho.veiculos?.veiculo_id ? `cadastro ${espelho.veiculos.veiculo_id}` : "não encontrado"} />
-                  <Campo rotulo="Carreta" valor={espelho.veiculos?.carreta_id ? `cadastro ${espelho.veiculos.carreta_id}` : "—"} />
-                  <Campo rotulo="Segunda carreta" valor={espelho.veiculos?.semireboque_id ? `cadastro ${espelho.veiculos.semireboque_id}` : "—"} />
+                  <Campo rotulo="Motorista" valor={e.veiculos?.motorista_id ? `cadastro ${e.veiculos.motorista_id}` : "não encontrado"} />
+                  <Campo rotulo="Cavalo" valor={e.veiculos?.veiculo_id ? `cadastro ${e.veiculos.veiculo_id}` : "não encontrado"} />
+                  <Campo rotulo="Carreta" valor={e.veiculos?.carreta_id ? `cadastro ${e.veiculos.carreta_id}` : "—"} />
+                  <Campo rotulo="Segunda carreta" valor={e.veiculos?.semireboque_id ? `cadastro ${e.veiculos.semireboque_id}` : "—"} />
                 </Linha>
               </Secao>
 
@@ -357,8 +356,6 @@ function EmitirCte() {
                   </pre>
                 </details>
               </div>
-            </>
-          )}
         </div>
       )}
     </div>
