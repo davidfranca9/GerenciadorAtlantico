@@ -251,9 +251,12 @@ def _todos_os_veiculos() -> list:
     todos: list = []
     for pagina in range(MAX_PAGINAS_VEICULOS):
         inicio = pagina * TAMANHO_PAGINA
+        # 'fim' e QUANTOS registros voltam (maximo 100), nao a posicao final.
+        # Somar inicio + TAMANHO_PAGINA mandava fim=200 na segunda pagina e a
+        # API respondia 400 "Limite invalido, valor maximo aceitavel: 100".
         lote = listar(
             "/transporte/v1/veiculos",
-            {"inicio": inicio, "fim": inicio + TAMANHO_PAGINA},
+            {"inicio": inicio, "fim": TAMANHO_PAGINA},
         )
         if not lote:
             break
@@ -336,10 +339,18 @@ def _todas_as_pessoas_fisicas() -> list:
     todas: list = []
     for pagina in range(MAX_PAGINAS_VEICULOS):
         inicio = pagina * TAMANHO_PAGINA
-        lote = listar(
-            "/pessoas/v1/pessoas/fisicas",
-            {"inicio": inicio, "fim": inicio + TAMANHO_PAGINA},
-        )
+        # Mesmo caso dos veiculos: 'fim' e a quantidade, nao a posicao final.
+        try:
+            lote = listar(
+                "/pessoas/v1/pessoas/fisicas",
+                {"inicio": inicio, "fim": TAMANHO_PAGINA},
+            )
+        except BsoftError:
+            # Falha no meio da paginacao nao pode zerar o que ja veio: a lupa
+            # passa a procurar no que foi lido ate aqui em vez de devolver erro.
+            if not todas:
+                raise
+            break
         if not lote:
             break
         todas.extend(lote)
