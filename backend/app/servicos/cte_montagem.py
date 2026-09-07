@@ -463,6 +463,7 @@ def montar_payload_conhecimento(
     apolice_id=None,
     km: str = "",
     forma_pagamento: str = "",
+    conjunto_veiculos_id: str = "",
     dt_emissao: str = "",
 ) -> dict:
     """Monta o corpo do POST /conhecimentos.
@@ -552,6 +553,11 @@ def montar_payload_conhecimento(
 
     for campo in CAMPOS_PRESENTES_VAZIOS:
         corpo.setdefault(campo, "")
+
+    # Este a API cobra de verdade: vazio nao passa, ela repete o
+    # "nao especificado". E o conjunto cadastrado no Bsoft que junta
+    # motorista, cavalo e carretas.
+    corpo["conjuntoVeiculos_id"] = str(conjunto_veiculos_id or "")
 
     for campo, valor_id in (
         ("motorista_id", veiculos.get("motorista_id")),

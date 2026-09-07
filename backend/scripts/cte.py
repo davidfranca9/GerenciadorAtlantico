@@ -44,6 +44,8 @@ def montar_campos(args) -> dict:
         campos["endereco_destinatario_id"] = args.endereco_destinatario
     if args.motorista:
         campos["motorista_id"] = args.motorista
+    if args.conjunto:
+        campos["conjunto_veiculos_id"] = args.conjunto
     return {k: v for k, v in campos.items() if v not in (None, "")}
 
 
@@ -147,6 +149,8 @@ def main() -> int:
     p.add_argument("--endereco-remetente", default="")
     p.add_argument("--endereco-destinatario", default="")
     p.add_argument("--motorista", default="")
+    p.add_argument("--conjunto", default="",
+                   help="id do conjunto de veiculos; a API exige valor, vazio nao passa")
     p.add_argument("--definitivo", action="store_true",
                    help="emite documento definitivo em vez de rascunho")
     p.add_argument("--api", default=API_PADRAO)
