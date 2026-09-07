@@ -33,3 +33,6 @@ frontend/build/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Permissoes locais do Claude Code (pessoais, nao versionar)
+.claude/settings.local.json

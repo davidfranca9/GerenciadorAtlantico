@@ -324,6 +324,7 @@ async def emitir_conhecimento(
     tarifa_por_tonelada: str = Form(...),
     aliquota_icms: str = Form(...),
     km: str = Form(""),
+    forma_pagamento: str = Form(""),
     embalagem: str = Form(""),
     especie_id: str = Form(""),
     endereco_remetente_id: str = Form(""),
