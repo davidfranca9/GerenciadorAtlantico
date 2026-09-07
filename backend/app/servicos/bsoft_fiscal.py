@@ -75,6 +75,26 @@ def criar_cte_via_nfe(
     return resposta or {}
 
 
+def criar_conhecimento(corpo: dict) -> dict:
+    """ESCRITA. Cria o CT-e pelo payload completo.
+
+    E o caminho que reproduz a tela de emissao campo a campo, sem depender
+    do paramCriaCteViaNFe (que esta vazio no tenant).
+
+    O payload sai de cte_montagem.montar_payload_conhecimento, que por
+    padrao marca rascunho = "S". Nao confirme rascunho = "N" enquanto a
+    pergunta 1.5 do suporte nao estiver respondida: nao esta documentado se
+    o rascunho realmente evita efeito fiscal.
+    """
+    if not corpo.get("mercadorias"):
+        raise ValueError("Payload sem mercadorias: o CT-e precisa da NF-e transportada")
+
+    _, resposta = chamar(
+        "POST", "/transporte/v1/conhecimentos", json_body=corpo, operacao_de_escrita=True
+    )
+    return resposta or {}
+
+
 def consultar_conhecimentos(params: dict | None = None) -> list:
     """LEITURA. Filtros documentados: dataInicio, dataFim, chaveAcesso."""
     return listar("/transporte/v1/conhecimentos", params)

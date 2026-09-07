@@ -331,6 +331,35 @@ export async function fiscalImportarNfe(agendamentoId, arquivo) {
   return res.json();
 }
 
+async function enviarFormularioFiscal(caminho, campos, arquivo, mensagemErro) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("arquivo", arquivo);
+  Object.entries(campos).forEach(([chave, valor]) => {
+    if (valor !== undefined && valor !== null && valor !== "") formData.append(chave, valor);
+  });
+  const res = await fetch(`${API_URL}${caminho}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    // O backend devolve as pendencias como lista dentro de detail.
+    if (data.detail?.pendencias) throw new Error(data.detail.pendencias.join(" | "));
+    throw new Error(data.detail || mensagemErro);
+  }
+  return res.json();
+}
+
+export function fiscalEspelho(arquivo, campos) {
+  return enviarFormularioFiscal("/fiscal/espelho", campos, arquivo, "Falha ao montar o espelho do CT-e");
+}
+
+export function fiscalEmitirConhecimento(arquivo, campos) {
+  return enviarFormularioFiscal("/fiscal/emitir", campos, arquivo, "Falha ao criar o CT-e");
+}
+
 export function fiscalEmitirCte(operacaoId, payload) {
   return request(`/fiscal/operacoes/${operacaoId}/cte`, { method: "POST", body: payload });
 }

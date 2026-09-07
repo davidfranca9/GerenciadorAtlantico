@@ -22,14 +22,39 @@ function formatarDataHora(texto) {
   return `${partes[2]}/${partes[1]}/${partes[0]}${hora ? ` ${hora.slice(0, 5)}` : ""}`;
 }
 
+const EMBALAGENS = ["GRANEL", "BIG BAG", "SACARIA"];
+
+function ListaPendencias({ itens }) {
+  if (!itens?.length) return <div className="inline-alert info">Tudo conferido. Pode gerar o rascunho.</div>;
+  return (
+    <div className="inline-alert warning">
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <strong>Falta resolver antes de emitir:</strong>
+        {itens.map((p, i) => <span key={i}>• {p}</span>)}
+      </div>
+    </div>
+  );
+}
+
+function LinhaEspelho({ rotulo, valor }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+      <span style={{ color: "var(--muted)", fontSize: 12.5 }}>{rotulo}</span>
+      <strong style={{ fontSize: 12.5, textAlign: "right" }}>{valor || "—"}</strong>
+    </div>
+  );
+}
+
 function EmitirCte() {
   const [aberto, setAberto] = useState(false);
   const [agendamentos, setAgendamentos] = useState([]);
   const [agendamentoId, setAgendamentoId] = useState("");
-  const [chaveNfe, setChaveNfe] = useState("");
-  const [valorFrete, setValorFrete] = useState("");
-  const [parametro, setParametro] = useState("");
-  const [simulacao, setSimulacao] = useState(null);
+  const [arquivo, setArquivo] = useState(null);
+  const [tarifa, setTarifa] = useState("");
+  const [aliquota, setAliquota] = useState("12");
+  const [embalagem, setEmbalagem] = useState("BIG BAG");
+  const [espelho, setEspelho] = useState(null);
+  const [resultado, setResultado] = useState(null);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -38,17 +63,24 @@ function EmitirCte() {
     api.listarAgendamentos().then(setAgendamentos).catch(() => {});
   }, [aberto, agendamentos.length]);
 
-  async function handleSimular() {
+  const campos = () => ({
+    agendamento_id: agendamentoId,
+    tarifa_por_tonelada: String(tarifa).replace(",", "."),
+    aliquota_icms: String(aliquota).replace(",", "."),
+    embalagem,
+  });
+
+  async function handleConferir() {
+    if (!arquivo) {
+      setErro("Envie o XML da NF-e primeiro.");
+      return;
+    }
     setOcupado(true);
     setErro("");
-    setSimulacao(null);
+    setEspelho(null);
+    setResultado(null);
     try {
-      setSimulacao(await api.fiscalSimular({
-        agendamento_id: Number(agendamentoId),
-        chave_nfe: chaveNfe,
-        valor_frete: parseFloat(String(valorFrete).replace(",", ".")) || 0,
-        parametro_criacao_cte: parametro,
-      }));
+      setEspelho(await api.fiscalEspelho(arquivo, { ...campos(), buscar_partes: true }));
     } catch (err) {
       setErro(err.message);
     } finally {
@@ -56,19 +88,12 @@ function EmitirCte() {
     }
   }
 
-  async function handleImportarXml(e) {
-    const arquivo = e.target.files?.[0];
-    e.target.value = "";
-    if (!arquivo || !agendamentoId) {
-      setErro("Selecione o agendamento antes de enviar o XML.");
-      return;
-    }
+  async function handleGerarRascunho() {
     setOcupado(true);
     setErro("");
+    setResultado(null);
     try {
-      const resultado = await api.fiscalImportarNfe(Number(agendamentoId), arquivo);
-      if (resultado.nfe?.chave) setChaveNfe(resultado.nfe.chave);
-      if (resultado.aviso) setErro(resultado.aviso);
+      setResultado(await api.fiscalEmitirConhecimento(arquivo, campos()));
     } catch (err) {
       setErro(err.message);
     } finally {
@@ -80,9 +105,9 @@ function EmitirCte() {
     <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div>
-          <strong style={{ fontSize: 15 }}>Emitir CT-e a partir de um agendamento</strong>
+          <strong style={{ fontSize: 15 }}>Gerar CT-e a partir da NF-e</strong>
           <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>
-            Monta a operação e mostra exatamente o que seria enviado ao Bsoft.
+            Confira o espelho contra a tela do Bsoft antes de gerar. O envio sai sempre como rascunho.
           </div>
         </div>
         <button className="btn-secondary" onClick={() => setAberto((v) => !v)}>
@@ -99,58 +124,90 @@ function EmitirCte() {
                 <option value="">Selecione</option>
                 {agendamentos.map((a) => (
                   <option key={a.id} value={a.id}>
-                    #{a.id} · {a.loading_date} · {a.driver_name || "sem motorista"} · {a.plate_cavalo}
+                    #{a.id} · {a.data_agendada || a.loading_date} · {a.driver_name || "sem motorista"} · {a.plate_cavalo}
                   </option>
                 ))}
               </select>
             </div>
             <div className="field">
-              <label>Valor do frete</label>
-              <input value={valorFrete} onChange={(e) => setValorFrete(e.target.value)} placeholder="5550,00" />
+              <label>Tarifa por tonelada</label>
+              <input value={tarifa} onChange={(e) => setTarifa(e.target.value)} placeholder="300,00" />
             </div>
             <div className="field">
-              <label>Parâmetro de criação de CT-e</label>
-              <input value={parametro} onChange={(e) => setParametro(e.target.value)} placeholder="ainda não configurado" />
+              <label>Alíquota de ICMS (%)</label>
+              <input value={aliquota} onChange={(e) => setAliquota(e.target.value)} placeholder="12" />
             </div>
-          </div>
-
-          <div className="field">
-            <label>Chave da NF-e (44 dígitos)</label>
-            <input value={chaveNfe} onChange={(e) => setChaveNfe(e.target.value)} placeholder="ou envie o XML abaixo" />
+            <div className="field">
+              <label>Embalagem</label>
+              <select value={embalagem} onChange={(e) => setEmbalagem(e.target.value)}>
+                {EMBALAGENS.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </div>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <label className="btn-secondary" style={{ cursor: "pointer" }}>
-              Enviar XML da NF-e
-              <input type="file" accept=".xml" onChange={handleImportarXml} disabled={ocupado} style={{ display: "none" }} />
+              {arquivo ? "XML: " + arquivo.name : "Enviar XML da NF-e"}
+              <input
+                type="file"
+                accept=".xml"
+                onChange={(e) => {
+                  setArquivo(e.target.files?.[0] || null);
+                  setEspelho(null);
+                }}
+                style={{ display: "none" }}
+              />
             </label>
-            <button className="btn-primary" disabled={ocupado || !agendamentoId} onClick={handleSimular}>
-              {ocupado ? "Processando..." : "Simular emissão"}
+            <button className="btn-primary" disabled={ocupado || !agendamentoId || !arquivo || !tarifa} onClick={handleConferir}>
+              {ocupado ? "Processando..." : "Conferir espelho"}
             </button>
+            {espelho && !espelho.pendencias?.length && (
+              <button className="btn-primary" disabled={ocupado} onClick={handleGerarRascunho}>
+                Gerar rascunho no Bsoft
+              </button>
+            )}
           </div>
 
           {erro && <div className="inline-alert warning">{erro}</div>}
 
-          {simulacao && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {simulacao.pendencias.length > 0 ? (
-                <div className="inline-alert warning">
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <strong>Falta para poder emitir:</strong>
-                    {simulacao.pendencias.map((p, i) => <span key={i}>• {p}</span>)}
-                  </div>
-                </div>
-              ) : (
-                <div className="inline-alert info">Tudo pronto para emitir.</div>
-              )}
+          {resultado && (
+            <div className="inline-alert info">
+              Rascunho criado (operação #{resultado.operacao?.id}, CT-e {resultado.operacao?.cod_conhecimento_bsoft || "—"}).
+              Confira na tela do Bsoft antes de autorizar.
+            </div>
+          )}
+
+          {espelho && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <ListaPendencias itens={espelho.pendencias} />
               <div>
-                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
-                  {simulacao.endpoint}
+                <strong style={{ fontSize: 13 }}>Como o CT-e vai sair</strong>
+                <div style={{ marginTop: 8 }}>
+                  <LinhaEspelho rotulo="Remetente" valor={espelho.remetente_nome} />
+                  <LinhaEspelho rotulo="Destinatário" valor={espelho.destinatario_nome} />
+                  <LinhaEspelho rotulo="Tomador" valor={espelho.tomador} />
+                  <LinhaEspelho rotulo="Origem" valor={espelho.municipio_origem + " - " + espelho.uf_origem} />
+                  <LinhaEspelho rotulo="Destino" valor={espelho.municipio_destino + " - " + espelho.uf_destino} />
+                  <LinhaEspelho rotulo="CFOP" valor={espelho.cfop} />
+                  <LinhaEspelho rotulo="Produto" valor={espelho.produto_predominante} />
+                  <LinhaEspelho rotulo="Espécie" valor={espelho.especie?.nome} />
+                  <LinhaEspelho rotulo="Peso" valor={espelho.peso_kg + " kg"} />
+                  <LinhaEspelho rotulo="Volumes" valor={espelho.quantidade} />
+                  <LinhaEspelho rotulo="Valor da mercadoria" valor={formatarValor(espelho.valor_mercadoria)} />
+                  <LinhaEspelho rotulo="Frete" valor={formatarValor(espelho.valor_frete)} />
+                  <LinhaEspelho rotulo="ICMS" valor={formatarValor(espelho.payload?.valorICMS)} />
                 </div>
-                <pre className="card" style={{ fontSize: 11.5, margin: 0, overflow: "auto", maxHeight: 320 }}>
-                  {JSON.stringify(simulacao.payload, null, 2)}
-                </pre>
               </div>
+              {espelho.payload && (
+                <details>
+                  <summary style={{ cursor: "pointer", fontSize: 12.5, color: "var(--muted)" }}>
+                    Ver o que será enviado ({espelho.endpoint})
+                  </summary>
+                  <pre className="card" style={{ fontSize: 11.5, marginTop: 8, overflow: "auto", maxHeight: 320 }}>
+                    {JSON.stringify(espelho.payload, null, 2)}
+                  </pre>
+                </details>
+              )}
             </div>
           )}
         </>

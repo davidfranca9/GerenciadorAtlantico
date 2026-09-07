@@ -254,6 +254,111 @@ def _resolver_veiculos(agendamento) -> dict:
     return encontrados
 
 
+@router.post("/emitir")
+async def emitir_conhecimento(
+    arquivo: UploadFile,
+    agendamento_id: int = Form(...),
+    tarifa_por_tonelada: str = Form(...),
+    aliquota_icms: str = Form(...),
+    embalagem: str = Form(""),
+    confirmar_emissao_real: bool = Form(False),
+    db: Session = Depends(get_db),
+    usuario: User = Depends(get_current_user),
+):
+    """Cria o CT-e pelo payload completo do POST /conhecimentos.
+
+    Por padrao cria RASCUNHO. So manda documento definitivo com
+    confirmar_emissao_real, e mesmo assim a trava
+    settings.bsoft_emissao_habilitada precisa estar ligada - com ela
+    desligada, nenhuma requisicao sai daqui.
+    """
+    agendamento = db.get(Agendamento, agendamento_id)
+    if agendamento is None:
+        raise HTTPException(status_code=404, detail="Agendamento nao encontrado")
+
+    conteudo = await arquivo.read()
+    try:
+        espelho = cte_montagem.derivar(
+            conteudo, tarifa_por_tonelada=tarifa_por_tonelada, embalagem=embalagem
+        )
+    except nfe_xml.NFeInvalida as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ElementTree.ParseError as exc:
+        raise HTTPException(status_code=400, detail=f"XML ilegivel: {exc}")
+
+    chave = espelho["chaves_nfe"][0]
+    # Protecao contra emissao duplicada: o indice unico
+    # (agendamento_id, chave_nfe) garante uma operacao por carga.
+    operacao = (
+        db.query(OperacaoFiscal)
+        .filter(OperacaoFiscal.agendamento_id == agendamento_id, OperacaoFiscal.chave_nfe == chave)
+        .one_or_none()
+    )
+    if operacao and operacao.cod_conhecimento_bsoft:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Essa NF-e ja gerou o CT-e {operacao.cod_conhecimento_bsoft}. Nao sera emitido de novo.",
+        )
+    if operacao is None:
+        operacao = OperacaoFiscal(agendamento_id=agendamento_id, chave_nfe=chave, status="RASCUNHO")
+        db.add(operacao)
+
+    try:
+        partes = await run_in_threadpool(
+            cte_montagem.resolver_partes,
+            espelho,
+            buscar_pessoa=bsoft_fiscal.buscar_pessoa,
+            listar_enderecos=bsoft_fiscal.listar_enderecos,
+        )
+        veiculos = await run_in_threadpool(_resolver_veiculos, agendamento)
+    except BsoftError as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao consultar cadastros: {exc}")
+
+    corpo = cte_montagem.montar_payload_conhecimento(
+        espelho,
+        partes=partes,
+        veiculos=veiculos,
+        aliquota_icms=aliquota_icms,
+        rascunho=not confirmar_emissao_real,
+        cfops_id=escolher_cfops_id(espelho["uf_origem"], espelho["uf_destino"]),
+    )
+
+    # Payload incompleto nao vai pra frente: melhor recusar aqui do que
+    # deixar o Bsoft criar um documento torto.
+    pendencias = partes["pendencias"] + cte_montagem.conferir_payload(corpo)
+    if pendencias:
+        raise HTTPException(status_code=400, detail={"pendencias": pendencias})
+
+    operacao.ultimo_payload = json.dumps(sanitizar(corpo))[:4000]
+    operacao.tentativas += 1
+    operacao.solicitado_por = usuario.email
+    operacao.status = "ENVIANDO_CTE"
+    db.commit()
+
+    try:
+        resposta = await run_in_threadpool(bsoft_fiscal.criar_conhecimento, corpo)
+    except BsoftEmissaoBloqueada as exc:
+        operacao.status = "RASCUNHO"
+        operacao.erro = str(exc)[:1000]
+        db.commit()
+        raise HTTPException(status_code=409, detail=str(exc))
+    except BsoftError as exc:
+        # Sem retry automatico: pode ter criado do outro lado.
+        operacao.status = "CTE_REJEITADO"
+        operacao.erro = str(exc)[:1000]
+        db.commit()
+        logger.warning("Falha ao criar CT-e do agendamento %s: %s", agendamento_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    operacao.cod_conhecimento_bsoft = str(resposta.get("codConhecimentos", ""))
+    operacao.ultima_resposta = json.dumps(sanitizar(resposta))[:4000]
+    operacao.status = "CTE_CRIADO"
+    operacao.erro = ""
+    db.commit()
+    db.refresh(operacao)
+    return {"operacao": _to_dict(operacao), "rascunho": not confirmar_emissao_real}
+
+
 class ConferirIn(BaseModel):
     chave_cte: str
     valor_frete: float = 0
