@@ -115,6 +115,12 @@ def test_tipo_do_cte_e_do_servico_saem_normais():
     assert corpo["tpServ"] == "0"
 
 
+def test_agencia_de_comissao_acompanha_a_agencia():
+    # A tela de emissao do Bsoft preenche as duas com o mesmo valor.
+    corpo = payload()
+    assert corpo["agenciasComissao_id"] == corpo["agencias_id"]
+
+
 def test_ids_do_tenant_entram_no_payload():
     corpo = payload()
     assert corpo["agencias_id"] == "2"

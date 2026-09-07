@@ -368,8 +368,12 @@ def montar_payload_conhecimento(
     else:
         valor_icms = ""
 
+    agencia = str(agencia_id if agencia_id is not None else settings.bsoft_agencia_id)
     corpo = {
-        "agencias_id": str(agencia_id if agencia_id is not None else settings.bsoft_agencia_id),
+        "agencias_id": agencia,
+        # A tela de emissao preenche a agencia de comissao com a mesma
+        # agencia, entao o payload faz igual.
+        "agenciasComissao_id": agencia,
         "tiposTaloes_id": str(talao_id if talao_id is not None else settings.bsoft_talao_cte_id),
         "regraFrete_id": str(regra_frete_id if regra_frete_id is not None else settings.bsoft_regra_frete_id),
         "cfops_id": str(cfops_id if cfops_id is not None else settings.bsoft_cfops_id_interestadual),
