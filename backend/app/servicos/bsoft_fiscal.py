@@ -11,6 +11,7 @@ CT-e, criar MDF-e novo - esta em PERGUNTAS_SUPORTE_BSOFT.md, nao no codigo.
 from __future__ import annotations
 
 import base64
+import time
 
 from .bsoft_client import chamar, listar
 
@@ -213,10 +214,11 @@ def listar_enderecos(pessoa_id: str | int) -> list:
     return listar(f"/pessoas/v1/pessoas/{pessoa_id}/enderecos")
 
 
-# Quantas paginas de veiculos percorrer antes de desistir. A listagem nao
-# aceita filtro por placa (nao ha parametro documentado), entao a busca e
-# local - com teto pra nao varrer o cadastro inteiro sem querer.
-MAX_PAGINAS_VEICULOS = 20
+# Quantas paginas de veiculos percorrer. A listagem nao aceita filtro por
+# placa (nao ha parametro documentado), entao a busca e local. Com o cache
+# a varredura acontece uma vez a cada cinco minutos, entao da pra cobrir
+# uma frota maior sem deixar a tela lenta.
+MAX_PAGINAS_VEICULOS = 50
 TAMANHO_PAGINA = 100
 
 
@@ -224,17 +226,20 @@ def _so_alfanumerico(texto: str) -> str:
     return "".join(c for c in (texto or "").upper() if c.isalnum())
 
 
-def buscar_veiculo_por_placa(placa: str) -> dict | None:
-    """LEITURA. Procura o veiculo pela placa.
+# A frota nao muda de minuto em minuto, e paginar o cadastro inteiro pra
+# cada placa deixava a tela lenta (sao ate tres placas por CT-e). O cache
+# de processo transforma tres varreduras em uma.
+_CACHE_VEICULOS: dict = {"quando": 0.0, "lista": []}
+VALIDADE_CACHE_SEGUNDOS = 300
 
-    O GET /transporte/v1/veiculos nao tem parametro de busca documentado,
-    entao pagina a listagem e compara a placa ja normalizada (o cadastro
-    pode ter hifen, o agendamento nao).
-    """
-    alvo = _so_alfanumerico(placa)
-    if not alvo:
-        return None
 
+def _todos_os_veiculos() -> list:
+    """LEITURA. Cadastro de veiculos, com cache curto."""
+    agora = time.time()
+    if _CACHE_VEICULOS["lista"] and agora - _CACHE_VEICULOS["quando"] < VALIDADE_CACHE_SEGUNDOS:
+        return _CACHE_VEICULOS["lista"]
+
+    todos: list = []
     for pagina in range(MAX_PAGINAS_VEICULOS):
         inicio = pagina * TAMANHO_PAGINA
         lote = listar(
@@ -242,12 +247,28 @@ def buscar_veiculo_por_placa(placa: str) -> dict | None:
             {"inicio": inicio, "fim": inicio + TAMANHO_PAGINA},
         )
         if not lote:
-            return None
-        for veiculo in lote:
-            if _so_alfanumerico(str(veiculo.get("placa", ""))) == alvo:
-                return veiculo
+            break
+        todos.extend(lote)
         if len(lote) < TAMANHO_PAGINA:
-            return None
+            break
+
+    _CACHE_VEICULOS.update({"quando": agora, "lista": todos})
+    return todos
+
+
+def buscar_veiculo_por_placa(placa: str) -> dict | None:
+    """LEITURA. Procura o veiculo pela placa.
+
+    O GET /transporte/v1/veiculos nao tem parametro de busca documentado,
+    entao a comparacao e local, com a placa normalizada (o cadastro pode
+    ter hifen e o agendamento nao).
+    """
+    alvo = _so_alfanumerico(placa)
+    if not alvo:
+        return None
+    for veiculo in _todos_os_veiculos():
+        if _so_alfanumerico(str(veiculo.get("placa", ""))) == alvo:
+            return veiculo
     return None
 
 

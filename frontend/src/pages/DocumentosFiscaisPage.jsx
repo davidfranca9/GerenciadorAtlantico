@@ -61,6 +61,22 @@ function Linha({ children }) {
   return <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>{children}</div>;
 }
 
+// O campo de CPF tem 11 digitos; sem limite dava pra digitar 14 e o
+// backend acabava procurando em pessoas juridicas.
+function formatarCpf(texto) {
+  const d = String(texto || "").replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
+// Aceita os dois padroes de placa: ABC1234 e ABC1D23 (Mercosul).
+function formatarPlaca(texto) {
+  const limpo = String(texto || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7);
+  return limpo.length > 3 ? `${limpo.slice(0, 3)}-${limpo.slice(3)}` : limpo;
+}
+
 function Escolher({ rotulo, valor, opcoes, aoMudar }) {
   return (
     <div style={{ flex: 2, minWidth: 220 }}>
@@ -73,14 +89,14 @@ function Escolher({ rotulo, valor, opcoes, aoMudar }) {
   );
 }
 
-function Corrigir({ rotulo, valor, placeholder, aoMudar }) {
+function Corrigir({ rotulo, valor, placeholder, aoMudar, formatar }) {
   return (
     <div style={{ flex: 1, minWidth: 140 }}>
       <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--muted)" }}>{rotulo}</div>
       <input
         value={valor || ""}
         placeholder={placeholder}
-        onChange={(e) => aoMudar(e.target.value)}
+        onChange={(e) => aoMudar(formatar ? formatar(e.target.value) : e.target.value)}
         style={{ width: "100%", marginTop: 2 }}
       />
     </div>
@@ -398,25 +414,29 @@ function EmitirCte() {
                       <Corrigir
                         rotulo="CPF do motorista"
                         valor={escolhas.motorista_cpf}
-                        placeholder={e.veiculos.procurou.motorista_cpf || "só números"}
+                        placeholder={e.veiculos.procurou.motorista_cpf || "000.000.000-00"}
+                        formatar={formatarCpf}
                         aoMudar={(v) => setEscolhas((x) => ({ ...x, motorista_cpf: v }))}
                       />
                       <Corrigir
                         rotulo="Placa do cavalo"
                         valor={escolhas.placa_cavalo}
                         placeholder={e.veiculos.procurou.veiculo_id || "ABC1D23"}
+                        formatar={formatarPlaca}
                         aoMudar={(v) => setEscolhas((x) => ({ ...x, placa_cavalo: v }))}
                       />
                       <Corrigir
                         rotulo="Placa da carreta"
                         valor={escolhas.placa_carreta1}
                         placeholder={e.veiculos.procurou.carreta_id || "ABC1D23"}
+                        formatar={formatarPlaca}
                         aoMudar={(v) => setEscolhas((x) => ({ ...x, placa_carreta1: v }))}
                       />
                       <Corrigir
                         rotulo="Segunda carreta"
                         valor={escolhas.placa_carreta2}
                         placeholder={e.veiculos.procurou.semireboque_id || "ABC1D23"}
+                        formatar={formatarPlaca}
                         aoMudar={(v) => setEscolhas((x) => ({ ...x, placa_carreta2: v }))}
                       />
                     </Linha>
