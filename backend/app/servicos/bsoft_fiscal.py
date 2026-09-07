@@ -13,7 +13,7 @@ from __future__ import annotations
 import base64
 import time
 
-from .bsoft_client import chamar, listar
+from .bsoft_client import BsoftError, chamar, listar
 
 # --------------------------------------------------------------------------
 # NF-e
@@ -202,7 +202,16 @@ def buscar_pessoa(documento: str) -> dict | None:
     else:
         raise ValueError("Documento precisa ser um CPF (11) ou CNPJ (14 digitos)")
 
-    status, dados = chamar("GET", caminho)
+    try:
+        status, dados = chamar("GET", caminho)
+    except BsoftError as exc:
+        # 404 aqui nao e falha de consulta: e a resposta de que o documento
+        # nao esta cadastrado. Tratar como erro derrubava a busca inteira,
+        # inclusive as partes que ja tinham sido resolvidas.
+        if getattr(exc, "status", None) == 404:
+            return None
+        raise
+
     if status == 204 or not dados:
         return None
     # A API responde uma lista mesmo pra busca por documento.

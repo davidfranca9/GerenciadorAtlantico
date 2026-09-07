@@ -128,3 +128,28 @@ def test_importar_nfe_envia_xml_em_base64():
 def test_xml_ctes_limita_50_chaves():
     with pytest.raises(ValueError):
         bsoft_fiscal.obter_xml_ctes_emitidos(["1" * 44] * 51)
+
+
+def test_pessoa_nao_cadastrada_devolve_none_em_vez_de_erro():
+    """404 na busca por documento e resposta, nao falha.
+
+    Tratar como erro derrubava a resolucao inteira das partes, inclusive as
+    que ja tinham sido encontradas.
+    """
+    from unittest.mock import patch
+    from app.servicos import bsoft_fiscal
+    from app.servicos.bsoft_client import BsoftError
+
+    with patch.object(bsoft_fiscal, "chamar", side_effect=BsoftError("404 ...", status=404)):
+        assert bsoft_fiscal.buscar_pessoa("42523543552") is None
+
+
+def test_outros_erros_da_busca_de_pessoa_continuam_subindo():
+    from unittest.mock import patch
+    import pytest as _pytest
+    from app.servicos import bsoft_fiscal
+    from app.servicos.bsoft_client import BsoftError
+
+    with patch.object(bsoft_fiscal, "chamar", side_effect=BsoftError("500 ...", status=500)):
+        with _pytest.raises(BsoftError):
+            bsoft_fiscal.buscar_pessoa("42523543552")
