@@ -106,6 +106,15 @@ def test_constantes_da_tela_de_emissao():
     assert corpo["cteOS"] == "N"
 
 
+def test_tipo_do_cte_e_do_servico_saem_normais():
+    # DACTE 5053: "TIPO DO CT-E Normal" e "TIPO DO SERVICO Normal", que no
+    # combo da tela sao os dois value="0". Vao explicitos em vez de contar
+    # com o padrao do Bsoft.
+    corpo = payload()
+    assert corpo["tpCTe"] == "0"
+    assert corpo["tpServ"] == "0"
+
+
 def test_ids_do_tenant_entram_no_payload():
     corpo = payload()
     assert corpo["agencias_id"] == "2"

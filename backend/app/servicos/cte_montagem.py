@@ -36,28 +36,26 @@ TOMADOR_POR_MODALIDADE = {
 PAGAMENTO_POR_TOMADOR = {"remetente": "R", "destinatario": "D"}
 
 
-# Especies cadastradas no tenant, na ordem em que aparecem na lista da tela
-# do Bsoft. A especie nao vem da NF-e: sai da embalagem do pedido.
+# Especies cadastradas no tenant. A especie nao vem da NF-e: sai da
+# embalagem do pedido.
 #
-# Os ids marcados como confirmados vieram da API (GET /bsoft/configuracoes-cte).
-# Os demais foram deduzidos da posicao na lista, que e sequencial e bate com
-# todos os sete confirmados - o id 2 nao aparece na tela. Deducao nenhuma
-# dessas afeta emissao hoje: as tres embalagens usadas apontam pra ids
-# confirmados.
+# Todos os ids foram lidos do combo especieId, no formulario de emissao de
+# CT-e do Bsoft. (Seis deles eu tinha deduzido pela posicao na lista antes
+# de conseguir ler a tela; a leitura confirmou os seis.)
 ESPECIES_BSOFT = {
-    1: "GRANEL",           # confirmado
-    3: "SACOS",            # confirmado
+    1: "GRANEL",
+    3: "SACOS",
     4: "FARDOS",
-    5: "BIG BAG",          # confirmado
+    5: "BIG BAG",
     6: "PALLETS",
     7: "CAIXAS",
-    8: "SACO DE 50 KG",    # confirmado
+    8: "SACO DE 50 KG",
     9: "Saco de 20kg",
-    10: "BIG BAG 1000 KG",  # confirmado
+    10: "BIG BAG 1000 KG",
     11: "SACO DE 25 KG",
     12: "SC X 25 KG",
-    13: "Tonelada",        # confirmado
-    14: "SACOS 50 KG",     # confirmado
+    13: "Tonelada",
+    14: "SACOS 50 KG",
 }
 
 # A quantidade do CT-e e o numero de volumes fisicos, e a especie e um
@@ -328,10 +326,12 @@ def resolver_partes(espelho: dict, *, buscar_pessoa, listar_enderecos) -> dict:
 # --------------------------------------------------------------------------
 
 # Constantes lidas da tela de emissao e conferidas no DACTE 5053.
-MODAL_RODOVIARIO = "R"
+MODAL_RODOVIARIO = "R"          # unica opcao do combo dados_modalidade
 TIPO_DOCUMENTO_NFE = "N"        # radio "NF-e" na tela
 RESP_SEGURO_EMITENTE = "4"      # "Emi - Emitente"
 CST_TRIBUTACAO_NORMAL = "000"   # DACTE 5053: "00 - Tributacao normal"
+TIPO_CTE_NORMAL = "0"           # DACTE 5053: "TIPO DO CT-E Normal"
+TIPO_SERVICO_NORMAL = "0"       # DACTE 5053: "TIPO DO SERVICO Normal"
 
 
 def montar_payload_conhecimento(
@@ -384,6 +384,10 @@ def montar_payload_conhecimento(
         "dtEmissao": dt_emissao or datetime.now().strftime("%Y-%m-%d %H:%M"),
         "rascunho": "S" if rascunho else "N",
         "modalidade": MODAL_RODOVIARIO,
+        # Explicitos em vez de contar com o padrao do Bsoft: os dois saem
+        # impressos no DACTE, entao e coisa que da pra conferir.
+        "tpCTe": TIPO_CTE_NORMAL,
+        "tpServ": TIPO_SERVICO_NORMAL,
         "tipoDocumentos": TIPO_DOCUMENTO_NFE,
         "respSeg": RESP_SEGURO_EMITENTE,
         "cteOS": "N",
