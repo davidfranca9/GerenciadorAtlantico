@@ -213,6 +213,19 @@ function EmitirCte() {
       const dados = await api.fiscalEspelho(arquivo, { ...campos(), buscar_partes: true });
       setEspelho(dados);
       if (dados.especie?.especie_id && !especieId) setEspecieId(String(dados.especie.especie_id));
+      /* Traz para os campos o que foi procurado no Bsoft. Antes isso ficava so
+         no placeholder cinza: a tela parecia vazia e ninguem via a placa que o
+         sistema usou. O que voce ja tiver digitado nao e sobrescrito. */
+      const procurou = dados.veiculos?.procurou;
+      if (procurou) {
+        setEscolhas((x) => ({
+          ...x,
+          placa_cavalo: x.placa_cavalo || formatarPlaca(procurou.veiculo_id || ""),
+          placa_carreta1: x.placa_carreta1 || formatarPlaca(procurou.carreta_id || ""),
+          placa_carreta2: x.placa_carreta2 || formatarPlaca(procurou.semireboque_id || ""),
+          motorista_cpf: x.motorista_cpf || formatarCpf(procurou.motorista_cpf || ""),
+        }));
+      }
     } catch (err) {
       setErro(err.message);
     } finally {
@@ -464,7 +477,19 @@ function EmitirCte() {
 
               <Secao titulo="Veículo e motorista">
                 <Linha>
-                  <Campo rotulo="Motorista" valor={e.veiculos?.motorista_id ? `cadastro ${e.veiculos.motorista_id}` : "não encontrado"} />
+                  {/* O que você escolheu na lupa vale mais do que o resultado
+                      da última busca automática: antes o topo continuava
+                      dizendo "não encontrado" mesmo com o motorista escolhido. */}
+                  <Campo
+                    rotulo="Motorista"
+                    valor={
+                      escolhas.motorista_nome
+                        ? `${escolhas.motorista_nome}${escolhas.motorista_cpf ? ` · ${escolhas.motorista_cpf}` : ""}`
+                        : e.veiculos?.motorista_id
+                          ? `cadastro ${e.veiculos.motorista_id}`
+                          : "não encontrado"
+                    }
+                  />
                   <Campo rotulo="Cavalo" valor={e.veiculos?.veiculo_id ? `cadastro ${e.veiculos.veiculo_id}` : "não encontrado"} />
                   <Campo rotulo="Carreta" valor={e.veiculos?.carreta_id ? `cadastro ${e.veiculos.carreta_id}` : "—"} />
                   <Campo rotulo="Segunda carreta" valor={e.veiculos?.semireboque_id ? `cadastro ${e.veiculos.semireboque_id}` : "—"} />
@@ -490,8 +515,13 @@ function EmitirCte() {
                         procurar={api.fiscalProcurarMotoristas}
                         rotular={(r) => `${r.nome}${r.cpf ? " · " + r.cpf : ""}`}
                         escolhido={escolhas.motorista_nome}
+                        /* Traz o CPF junto para o campo ao lado: quem escolheu
+                           pelo nome quer conferir de quem se trata. O envio
+                           continua usando o motorista_id — o backend so cai no
+                           CPF quando nao ha id (fiscal.py, "if motorista_id"). */
                         aoEscolher={(r) => setEscolhas((x) => ({
-                          ...x, motorista_id: r.id, motorista_nome: r.nome, motorista_cpf: "",
+                          ...x, motorista_id: r.id, motorista_nome: r.nome,
+                          motorista_cpf: formatarCpf(r.cpf || ""),
                         }))}
                       />
                       <Corrigir
@@ -500,6 +530,19 @@ function EmitirCte() {
                         placeholder={e.veiculos.procurou.veiculo_id || "ABC1D23"}
                         formatar={formatarPlaca}
                         aoMudar={(v) => setEscolhas((x) => ({ ...x, placa_cavalo: v }))}
+                      />
+                      {/* O endpoint de busca de veiculo ja existia no backend e
+                          no cliente, mas a tela nunca chamou. Serve para quando
+                          a placa do agendamento nao bate com a do cadastro. */}
+                      <BuscaComLupa
+                        rotulo="Ou procure a placa"
+                        placeholder="parte da placa"
+                        procurar={api.fiscalProcurarVeiculos}
+                        rotular={(r) => r.placa}
+                        escolhido={escolhas.placa_cavalo_nome}
+                        aoEscolher={(r) => setEscolhas((x) => ({
+                          ...x, placa_cavalo: formatarPlaca(r.placa || ""), placa_cavalo_nome: r.placa,
+                        }))}
                       />
                       <Corrigir
                         rotulo="Placa da carreta"
