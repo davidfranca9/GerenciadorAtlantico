@@ -218,6 +218,7 @@ async def espelho_do_cte(
             listar_enderecos=bsoft_fiscal.listar_enderecos,
         )
         veiculos = await run_in_threadpool(_resolver_veiculos, agendamento)
+        seguro = await run_in_threadpool(_resolver_apolice)
     except BsoftError as exc:
         resultado["partes"] = {"erro": str(exc)}
         resultado["pendencias"] = resultado["pendencias"] + [
@@ -234,6 +235,7 @@ async def espelho_do_cte(
         aliquota_icms=aliquota_icms or None,
         cfops_id=cfops_id,
         km=km,
+        **seguro,
     )
     resultado["endpoint"] = "POST /transporte/v1/conhecimentos"
     resultado["payload"] = corpo
@@ -241,6 +243,26 @@ async def espelho_do_cte(
         resultado["pendencias"] + partes["pendencias"] + cte_montagem.conferir_payload(corpo)
     )
     return resultado
+
+
+def _resolver_apolice() -> dict:
+    """Ids do seguro. Configurado por variavel vence; senao, busca pelo numero.
+
+    O numero da apolice ja e conhecido (202511, conferido no DACTE 5053),
+    entao nao faz sentido pedir o id na mao: a consulta resolve.
+    """
+    if settings.bsoft_seguradora_id:
+        return {
+            "seguradora_id": settings.bsoft_seguradora_id,
+            "apolice_id": settings.bsoft_apolice_id,
+        }
+    achada = bsoft_fiscal.buscar_apolice(settings.bsoft_numero_apolice)
+    if not achada:
+        return {"seguradora_id": "", "apolice_id": ""}
+    return {
+        "seguradora_id": str(achada.get("seguradora_id") or ""),
+        "apolice_id": str(achada.get("apolice_id") or ""),
+    }
 
 
 def _resolver_veiculos(agendamento) -> dict:
@@ -317,6 +339,7 @@ async def emitir_conhecimento(
             listar_enderecos=bsoft_fiscal.listar_enderecos,
         )
         veiculos = await run_in_threadpool(_resolver_veiculos, agendamento)
+        seguro = await run_in_threadpool(_resolver_apolice)
     except BsoftError as exc:
         raise HTTPException(status_code=502, detail=f"Falha ao consultar cadastros: {exc}")
 
@@ -328,6 +351,7 @@ async def emitir_conhecimento(
         rascunho=not confirmar_emissao_real,
         cfops_id=escolher_cfops_id(espelho["uf_origem"], espelho["uf_destino"]),
         km=km,
+        **seguro,
     )
 
     # Payload incompleto nao vai pra frente: melhor recusar aqui do que

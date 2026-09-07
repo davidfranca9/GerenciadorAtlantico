@@ -465,11 +465,12 @@ def conferir_payload(corpo: dict) -> list[str]:
         "aliquota": "Aliquota de ICMS nao informada.",
         "pagamentoFrete": "Nao deu pra saber quem paga o frete (modalidade da NF-e nao mapeada).",
         "km": "Quilometragem do trecho nao informada.",
+        # apolice_id nao entra aqui: a documentacao marca o campo como
+        # opcional. So a seguradora e obrigatoria.
         "seguradora_id": (
-            "Id da seguradora nao configurado (BSOFT_SEGURADORA_ID). Rode "
-            "'Consultar configuracoes' na tela Bsoft pra pegar o id da apolice."
+            f"Seguradora da apolice {settings.bsoft_numero_apolice} nao encontrada. "
+            "Confira se a apolice esta cadastrada no Bsoft."
         ),
-        "apolice_id": "Id da apolice nao configurado (BSOFT_APOLICE_ID).",
     }
     for campo, mensagem in obrigatorios.items():
         if not corpo.get(campo):

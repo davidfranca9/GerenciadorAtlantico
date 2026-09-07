@@ -249,3 +249,35 @@ def buscar_veiculo_por_placa(placa: str) -> dict | None:
         if len(lote) < TAMANHO_PAGINA:
             return None
     return None
+
+
+# Nomes possiveis do campo de numero na apolice. O cadastro nao esta
+# documentado campo a campo, entao a busca tenta os nomes plausiveis em vez
+# de fixar um so e falhar em silencio.
+CAMPOS_NUMERO_APOLICE = ("numeroApolice", "numero", "apolice", "Apolice", "nroApolice")
+CAMPOS_SEGURADORA = ("seguradora_id", "seguradoraId", "seguradora")
+
+
+def buscar_apolice(numero: str) -> dict | None:
+    """LEITURA. Acha a apolice de seguro pelo numero e devolve os ids.
+
+    O CT-e exige seguradora_id; apolice_id e opcional pela documentacao.
+    Como o numero ja e conhecido (202511, conferido no DACTE), da pra
+    resolver o id por consulta em vez de configurar na mao.
+    """
+    alvo = str(numero or "").strip()
+    if not alvo:
+        return None
+
+    for registro in listar("/transporte/v1/apolicesSeguro"):
+        for campo in CAMPOS_NUMERO_APOLICE:
+            if str(registro.get(campo, "")).strip() == alvo:
+                seguradora = next(
+                    (registro[c] for c in CAMPOS_SEGURADORA if registro.get(c)), ""
+                )
+                return {
+                    "apolice_id": registro.get("id", ""),
+                    "seguradora_id": seguradora,
+                    "registro": registro,
+                }
+    return None

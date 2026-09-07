@@ -171,10 +171,14 @@ def test_sem_km_vira_pendencia():
     assert any("Quilometragem" in p for p in conferir_payload(payload(km="")))
 
 
-def test_sem_ids_de_seguro_vira_pendencia():
-    pendencias = conferir_payload(payload(seguradora_id="", apolice_id=""))
-    assert any("seguradora" in p for p in pendencias)
-    assert any("apolice" in p for p in pendencias)
+def test_sem_seguradora_vira_pendencia():
+    assert any("Seguradora" in p for p in conferir_payload(payload(seguradora_id="")))
+
+
+def test_apolice_id_e_opcional():
+    # A documentacao marca apolice_id como nao obrigatorio; so a seguradora
+    # trava a emissao.
+    assert conferir_payload(payload(apolice_id="")) == []
 
 
 def test_sem_embalagem_a_especie_falta_no_payload():
