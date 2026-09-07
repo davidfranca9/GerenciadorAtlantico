@@ -243,10 +243,23 @@ def _so_digitos(texto) -> str:
     return "".join(c for c in str(texto or "") if c.isdigit())
 
 
+# O cadastro de enderecos nao esta documentado campo a campo, e o nome do
+# CEP varia. Tentar so "cep" fazia o desempate falhar em silencio.
+CAMPOS_CEP = ("cep", "CEP", "codigoPostal", "cepEndereco", "enderecoCep")
+
+
+def _cep_do_endereco(endereco: dict) -> str:
+    for campo in CAMPOS_CEP:
+        digitos = _so_digitos(endereco.get(campo))
+        if len(digitos) == 8:
+            return digitos
+    return ""
+
+
 def _descrever(endereco: dict) -> str:
     partes = [endereco.get("logradouro"), endereco.get("numero"), endereco.get("bairro")]
     linha = ", ".join(str(x) for x in partes if x)
-    cep = _so_digitos(endereco.get("cep"))
+    cep = _cep_do_endereco(endereco)
     return f"{linha} - CEP {cep}" if cep else linha or f"endereco {endereco.get('id')}"
 
 
@@ -277,7 +290,7 @@ def _escolher_endereco(enderecos: list, ibge: str, cep: str = "") -> tuple:
         ), enderecos
 
     if len(candidatos) > 1 and _so_digitos(cep):
-        por_cep = [e for e in candidatos if _so_digitos(e.get("cep")) == _so_digitos(cep)]
+        por_cep = [e for e in candidatos if _cep_do_endereco(e) == _so_digitos(cep)]
         if len(por_cep) == 1:
             return por_cep[0], "", candidatos
         if por_cep:

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from .bsoft_client import BsoftError, chamar, listar
 
@@ -242,28 +243,49 @@ _CACHE_VEICULOS: dict = {"quando": 0.0, "lista": []}
 VALIDADE_CACHE_SEGUNDOS = 300
 
 
+# Quantas paginas buscar ao mesmo tempo. Cada pagina e uma ida e volta ao
+# Bsoft; em serie, 50 paginas viravam 50 esperas enfileiradas e a tela
+# demorava demais. Sao todas GET, entao podem ir juntas.
+PAGINAS_SIMULTANEAS = 8
+
+
+def _paginar(caminho: str) -> list:
+    """LEITURA. Le uma listagem inteira, em ondas de paginas paralelas.
+
+    'fim' e QUANTOS registros voltam (maximo 100), nao a posicao final:
+    somar inicio + TAMANHO_PAGINA mandava fim=200 na segunda pagina e a API
+    respondia 400 "Limite invalido, valor maximo aceitavel: 100".
+    """
+    todos: list = []
+    pagina = 0
+    while pagina < MAX_PAGINAS_VEICULOS:
+        faixa = range(pagina, min(pagina + PAGINAS_SIMULTANEAS, MAX_PAGINAS_VEICULOS))
+        with ThreadPoolExecutor(max_workers=PAGINAS_SIMULTANEAS) as executor:
+            ondas = list(executor.map(
+                lambda p: listar(caminho, {"inicio": p * TAMANHO_PAGINA, "fim": TAMANHO_PAGINA}),
+                faixa,
+            ))
+
+        chegou_ao_fim = False
+        for lote in ondas:
+            todos.extend(lote)
+            # Pagina incompleta significa que o cadastro acabou.
+            if len(lote) < TAMANHO_PAGINA:
+                chegou_ao_fim = True
+        if chegou_ao_fim:
+            break
+        pagina += PAGINAS_SIMULTANEAS
+
+    return todos
+
+
 def _todos_os_veiculos() -> list:
     """LEITURA. Cadastro de veiculos, com cache curto."""
     agora = time.time()
     if _CACHE_VEICULOS["lista"] and agora - _CACHE_VEICULOS["quando"] < VALIDADE_CACHE_SEGUNDOS:
         return _CACHE_VEICULOS["lista"]
 
-    todos: list = []
-    for pagina in range(MAX_PAGINAS_VEICULOS):
-        inicio = pagina * TAMANHO_PAGINA
-        # 'fim' e QUANTOS registros voltam (maximo 100), nao a posicao final.
-        # Somar inicio + TAMANHO_PAGINA mandava fim=200 na segunda pagina e a
-        # API respondia 400 "Limite invalido, valor maximo aceitavel: 100".
-        lote = listar(
-            "/transporte/v1/veiculos",
-            {"inicio": inicio, "fim": TAMANHO_PAGINA},
-        )
-        if not lote:
-            break
-        todos.extend(lote)
-        if len(lote) < TAMANHO_PAGINA:
-            break
-
+    todos = _paginar("/transporte/v1/veiculos")
     _CACHE_VEICULOS.update({"quando": agora, "lista": todos})
     return todos
 
@@ -336,27 +358,7 @@ def _todas_as_pessoas_fisicas() -> list:
     if _CACHE_PESSOAS["lista"] and agora - _CACHE_PESSOAS["quando"] < VALIDADE_CACHE_SEGUNDOS:
         return _CACHE_PESSOAS["lista"]
 
-    todas: list = []
-    for pagina in range(MAX_PAGINAS_VEICULOS):
-        inicio = pagina * TAMANHO_PAGINA
-        # Mesmo caso dos veiculos: 'fim' e a quantidade, nao a posicao final.
-        try:
-            lote = listar(
-                "/pessoas/v1/pessoas/fisicas",
-                {"inicio": inicio, "fim": TAMANHO_PAGINA},
-            )
-        except BsoftError:
-            # Falha no meio da paginacao nao pode zerar o que ja veio: a lupa
-            # passa a procurar no que foi lido ate aqui em vez de devolver erro.
-            if not todas:
-                raise
-            break
-        if not lote:
-            break
-        todas.extend(lote)
-        if len(lote) < TAMANHO_PAGINA:
-            break
-
+    todas = _paginar("/pessoas/v1/pessoas/fisicas")
     _CACHE_PESSOAS.update({"quando": agora, "lista": todas})
     return todas
 
