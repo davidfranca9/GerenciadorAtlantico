@@ -77,8 +77,22 @@ class DadosInsuficientes(Exception):
     pass
 
 
-def sugerir_especie(embalagem: str) -> dict:
-    """Traduz a embalagem do pedido pra especie do cadastro do Bsoft."""
+def sugerir_especie(embalagem: str, especie_id=None) -> dict:
+    """Traduz a embalagem do pedido pra especie do cadastro do Bsoft.
+
+    Quando a especie e escolhida na tela, ela vence a embalagem: e o mesmo
+    comportamento do Bsoft, onde o campo e um combo que o operador ajusta.
+    """
+    if especie_id:
+        escolhida = int(especie_id)
+        if escolhida in ESPECIES_BSOFT:
+            return {
+                "especie_id": escolhida,
+                "nome": ESPECIES_BSOFT[escolhida],
+                "alternativas": [],
+                "confianca": "alta",
+            }
+
     texto = (embalagem or "").strip().upper()
     if not texto:
         return {"especie_id": None, "nome": "", "alternativas": [], "confianca": "nenhuma"}
@@ -128,6 +142,7 @@ def derivar(
     *,
     tarifa_por_tonelada: str | None = None,
     embalagem: str = "",
+    especie_id=None,
 ) -> dict:
     """Monta o espelho do CT-e a partir do XML da NF-e.
 
@@ -170,7 +185,7 @@ def derivar(
         "peso_kg": str(kg),
         "quantidade": mercadoria["quant"],
         "peso_convertido_de_tonelada": bool(mercadoria.get("peso_provavelmente_em_tonelada")),
-        "especie": sugerir_especie(embalagem),
+        "especie": sugerir_especie(embalagem, especie_id),
         "embalagem_do_pedido": embalagem,
         # Guardado inteiro porque e daqui que sai a linha de mercadorias[]
         # do payload, com os valores fiscais transcritos da nota.

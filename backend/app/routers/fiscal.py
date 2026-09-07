@@ -171,6 +171,7 @@ async def espelho_do_cte(
     tarifa_por_tonelada: str = Form(""),
     embalagem: str = Form(""),
     buscar_partes: bool = Form(False),
+    especie_id: str = Form(""),
     aliquota_icms: str = Form(""),
     km: str = Form(""),
     agendamento_id: int | None = Form(None),
@@ -193,6 +194,7 @@ async def espelho_do_cte(
             conteudo,
             tarifa_por_tonelada=tarifa_por_tonelada or None,
             embalagem=embalagem,
+            especie_id=especie_id or None,
         )
     except nfe_xml.NFeInvalida as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -289,6 +291,7 @@ async def emitir_conhecimento(
     aliquota_icms: str = Form(...),
     km: str = Form(""),
     embalagem: str = Form(""),
+    especie_id: str = Form(""),
     confirmar_emissao_real: bool = Form(False),
     db: Session = Depends(get_db),
     usuario: User = Depends(get_current_user),
@@ -307,7 +310,10 @@ async def emitir_conhecimento(
     conteudo = await arquivo.read()
     try:
         espelho = cte_montagem.derivar(
-            conteudo, tarifa_por_tonelada=tarifa_por_tonelada, embalagem=embalagem
+            conteudo,
+            tarifa_por_tonelada=tarifa_por_tonelada,
+            embalagem=embalagem,
+            especie_id=especie_id or None,
         )
     except nfe_xml.NFeInvalida as exc:
         raise HTTPException(status_code=400, detail=str(exc))
