@@ -191,7 +191,7 @@ function EmitirCte() {
     api.listarAgendamentos().then(setAgendamentos).catch(() => {});
   }, [aberto, agendamentos.length]);
 
-  const campos = () => ({
+  const campos = (recentes) => ({
     agendamento_id: agendamentoId,
     tarifa_por_tonelada: String(tarifa).replace(",", "."),
     aliquota_icms: String(aliquota).replace(",", "."),
@@ -199,9 +199,10 @@ function EmitirCte() {
     embalagem,
     especie_id: especieId,
     ...escolhas,
+    ...(recentes || {}),
   });
 
-  async function handleConferir() {
+  async function handleConferir(recentes) {
     if (!arquivo) {
       setErro("Envie o XML da NF-e primeiro.");
       return;
@@ -210,7 +211,7 @@ function EmitirCte() {
     setErro("");
     setResultado(null);
     try {
-      const dados = await api.fiscalEspelho(arquivo, { ...campos(), buscar_partes: true });
+      const dados = await api.fiscalEspelho(arquivo, { ...campos(recentes), buscar_partes: true });
       setEspelho(dados);
       if (dados.especie?.especie_id && !especieId) setEspecieId(String(dados.especie.especie_id));
       /* Traz para os campos o que foi procurado no Bsoft. Antes isso ficava so
@@ -380,7 +381,11 @@ function EmitirCte() {
                         rotulo="Endereço do remetente"
                         valor={escolhas.endereco_remetente_id || e.partes.remetente.endereco_id}
                         opcoes={e.partes.remetente.enderecos}
-                        aoMudar={(v) => setEscolhas((x) => ({ ...x, endereco_remetente_id: v }))}
+                        aoMudar={(v) => {
+                          const novas = { ...escolhas, endereco_remetente_id: v };
+                          setEscolhas(novas);
+                          handleConferir(novas);
+                        }}
                       />
                     )}
                     {e.partes?.destinatario?.enderecos?.length > 1 && (
@@ -388,7 +393,11 @@ function EmitirCte() {
                         rotulo="Endereço do destinatário"
                         valor={escolhas.endereco_destinatario_id || e.partes.destinatario.endereco_id}
                         opcoes={e.partes.destinatario.enderecos}
-                        aoMudar={(v) => setEscolhas((x) => ({ ...x, endereco_destinatario_id: v }))}
+                        aoMudar={(v) => {
+                          const novas = { ...escolhas, endereco_destinatario_id: v };
+                          setEscolhas(novas);
+                          handleConferir(novas);
+                        }}
                       />
                     )}
                   </Linha>
@@ -519,10 +528,14 @@ function EmitirCte() {
                            pelo nome quer conferir de quem se trata. O envio
                            continua usando o motorista_id — o backend so cai no
                            CPF quando nao ha id (fiscal.py, "if motorista_id"). */
-                        aoEscolher={(r) => setEscolhas((x) => ({
-                          ...x, motorista_id: r.id, motorista_nome: r.nome,
-                          motorista_cpf: formatarCpf(r.cpf || ""),
-                        }))}
+                        aoEscolher={(r) => {
+                          const novas = {
+                            ...escolhas, motorista_id: r.id, motorista_nome: r.nome,
+                            motorista_cpf: formatarCpf(r.cpf || ""),
+                          };
+                          setEscolhas(novas);
+                          handleConferir(novas);
+                        }}
                       />
                       <Corrigir
                         rotulo="Placa do cavalo"
