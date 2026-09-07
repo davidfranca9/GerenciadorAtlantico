@@ -352,6 +352,14 @@ async function enviarFormularioFiscal(caminho, campos, arquivo, mensagemErro) {
   return res.json();
 }
 
+export function fiscalProcurarMotoristas(nome) {
+  return request(`/fiscal/motoristas?nome=${encodeURIComponent(nome)}`);
+}
+
+export function fiscalProcurarVeiculos(placa) {
+  return request(`/fiscal/veiculos?placa=${encodeURIComponent(placa)}`);
+}
+
 export function fiscalEspelho(arquivo, campos) {
   return enviarFormularioFiscal("/fiscal/espelho", campos, arquivo, "Falha ao montar o espelho do CT-e");
 }

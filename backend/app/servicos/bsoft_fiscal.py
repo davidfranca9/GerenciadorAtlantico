@@ -311,3 +311,64 @@ def buscar_apolice(numero: str) -> dict | None:
                     "registro": registro,
                 }
     return None
+
+
+_CACHE_PESSOAS: dict = {"quando": 0.0, "lista": []}
+
+
+def _nome_da_pessoa(pessoa: dict) -> str:
+    """O cadastro guarda nome e sobrenome separados nas pessoas fisicas."""
+    inteiro = " ".join(
+        str(pessoa.get(campo) or "").strip()
+        for campo in ("nome", "sobrenome")
+    ).strip()
+    return inteiro or str(pessoa.get("razaoSocial") or "").strip()
+
+
+def _todas_as_pessoas_fisicas() -> list:
+    """LEITURA. Cadastro de pessoas fisicas, com o mesmo cache curto dos
+    veiculos - a busca por nome nao tem filtro documentado na API, entao a
+    comparacao e local."""
+    agora = time.time()
+    if _CACHE_PESSOAS["lista"] and agora - _CACHE_PESSOAS["quando"] < VALIDADE_CACHE_SEGUNDOS:
+        return _CACHE_PESSOAS["lista"]
+
+    todas: list = []
+    for pagina in range(MAX_PAGINAS_VEICULOS):
+        inicio = pagina * TAMANHO_PAGINA
+        lote = listar(
+            "/pessoas/v1/pessoas/fisicas",
+            {"inicio": inicio, "fim": inicio + TAMANHO_PAGINA},
+        )
+        if not lote:
+            break
+        todas.extend(lote)
+        if len(lote) < TAMANHO_PAGINA:
+            break
+
+    _CACHE_PESSOAS.update({"quando": agora, "lista": todas})
+    return todas
+
+
+def buscar_pessoas_por_nome(termo: str, limite: int = 25) -> list:
+    """LEITURA. Pessoas fisicas cujo nome contem o termo.
+
+    E a lupa da tela: quando o CPF do agendamento nao acha ninguem, da pra
+    procurar o motorista pelo nome.
+    """
+    alvo = (termo or "").strip().upper()
+    if len(alvo) < 3:
+        return []
+
+    achadas = []
+    for pessoa in _todas_as_pessoas_fisicas():
+        nome = _nome_da_pessoa(pessoa)
+        if alvo in nome.upper():
+            achadas.append({
+                "id": pessoa.get("id"),
+                "nome": nome,
+                "cpf": pessoa.get("cpf", ""),
+            })
+            if len(achadas) >= limite:
+                break
+    return achadas

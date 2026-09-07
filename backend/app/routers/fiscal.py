@@ -437,6 +437,40 @@ async def emitir_conhecimento(
     return {"operacao": _to_dict(operacao), "rascunho": not confirmar_emissao_real}
 
 
+@router.get("/motoristas")
+async def procurar_motoristas(nome: str = ""):
+    """LEITURA. Busca motorista pelo nome no cadastro do Bsoft.
+
+    E a lupa da tela: quando o CPF do agendamento nao acha ninguem, da pra
+    achar a pessoa pelo nome e usar o id dela.
+    """
+    if len((nome or "").strip()) < 3:
+        return {"resultados": [], "aviso": "Digite ao menos 3 letras do nome."}
+    try:
+        resultados = await run_in_threadpool(bsoft_fiscal.buscar_pessoas_por_nome, nome)
+    except BsoftError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {"resultados": resultados}
+
+
+@router.get("/veiculos")
+async def procurar_veiculos(placa: str = ""):
+    """LEITURA. Busca veiculo por parte da placa."""
+    alvo = "".join(c for c in (placa or "").upper() if c.isalnum())
+    if len(alvo) < 3:
+        return {"resultados": [], "aviso": "Digite ao menos 3 caracteres da placa."}
+    try:
+        todos = await run_in_threadpool(bsoft_fiscal._todos_os_veiculos)
+    except BsoftError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    resultados = [
+        {"id": v.get("id"), "placa": v.get("placa")}
+        for v in todos
+        if alvo in "".join(c for c in str(v.get("placa", "")).upper() if c.isalnum())
+    ][:25]
+    return {"resultados": resultados}
+
+
 class ConferirIn(BaseModel):
     chave_cte: str
     valor_frete: float = 0

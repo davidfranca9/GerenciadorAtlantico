@@ -77,6 +77,72 @@ function formatarPlaca(texto) {
   return limpo.length > 3 ? `${limpo.slice(0, 3)}-${limpo.slice(3)}` : limpo;
 }
 
+// Campo com lupa: procura no cadastro do Bsoft e deixa escolher o
+// registro. E o que a tela deles faz nos campos vinculados.
+function BuscaComLupa({ rotulo, placeholder, procurar, rotular, aoEscolher, escolhido }) {
+  const [termo, setTermo] = useState("");
+  const [resultados, setResultados] = useState(null);
+  const [buscando, setBuscando] = useState(false);
+  const [aviso, setAviso] = useState("");
+
+  async function buscar() {
+    setBuscando(true);
+    setAviso("");
+    try {
+      const dados = await procurar(termo);
+      setResultados(dados.resultados || []);
+      if (dados.aviso) setAviso(dados.aviso);
+      else if (!dados.resultados?.length) setAviso("Nada encontrado no cadastro do Bsoft.");
+    } catch (err) {
+      setAviso(err.message);
+    } finally {
+      setBuscando(false);
+    }
+  }
+
+  return (
+    <div style={{ flex: 2, minWidth: 260 }}>
+      <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--muted)" }}>{rotulo}</div>
+      <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
+        <input
+          value={termo}
+          placeholder={placeholder}
+          onChange={(ev) => setTermo(ev.target.value)}
+          onKeyDown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); buscar(); } }}
+          style={{ flex: 1 }}
+        />
+        <button className="btn-secondary" type="button" onClick={buscar} disabled={buscando} title="Procurar no Bsoft">
+          {buscando ? "..." : "🔍"}
+        </button>
+      </div>
+      {escolhido && (
+        <div style={{ fontSize: 12, marginTop: 4 }}>
+          Selecionado: <strong>{escolhido}</strong>
+        </div>
+      )}
+      {aviso && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4 }}>{aviso}</div>}
+      {resultados?.length > 0 && (
+        <div style={{ marginTop: 6, maxHeight: 170, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 6 }}>
+          {resultados.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => { aoEscolher(r); setResultados(null); }}
+              style={{
+                display: "block", width: "100%", textAlign: "left", padding: "6px 10px",
+                background: "none", border: "none", borderBottom: "1px solid var(--border)",
+                cursor: "pointer", fontSize: 12.5,
+              }}
+            >
+              {rotular(r)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Escolher({ rotulo, valor, opcoes, aoMudar }) {
   return (
     <div style={{ flex: 2, minWidth: 220 }}>
@@ -416,7 +482,17 @@ function EmitirCte() {
                         valor={escolhas.motorista_cpf}
                         placeholder={e.veiculos.procurou.motorista_cpf || "000.000.000-00"}
                         formatar={formatarCpf}
-                        aoMudar={(v) => setEscolhas((x) => ({ ...x, motorista_cpf: v }))}
+                        aoMudar={(v) => setEscolhas((x) => ({ ...x, motorista_cpf: v, motorista_id: "" }))}
+                      />
+                      <BuscaComLupa
+                        rotulo="Ou procure o motorista pelo nome"
+                        placeholder="nome do motorista"
+                        procurar={api.fiscalProcurarMotoristas}
+                        rotular={(r) => `${r.nome}${r.cpf ? " · " + r.cpf : ""}`}
+                        escolhido={escolhas.motorista_nome}
+                        aoEscolher={(r) => setEscolhas((x) => ({
+                          ...x, motorista_id: r.id, motorista_nome: r.nome, motorista_cpf: "",
+                        }))}
                       />
                       <Corrigir
                         rotulo="Placa do cavalo"
