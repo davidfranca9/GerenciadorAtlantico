@@ -422,6 +422,23 @@ MODAL_RODOVIARIO = "R"          # unica opcao do combo dados_modalidade
 TIPO_DOCUMENTO_NFE = "N"        # radio "NF-e" na tela
 RESP_SEGURO_EMITENTE = "4"      # "Emi - Emitente"
 CST_TRIBUTACAO_NORMAL = "000"   # DACTE 5053: "00 - Tributacao normal"
+# Campos que a API exige PRESENTES, mesmo sem valor. O Bsoft recusa com
+# "Atributo obrigatorio [X] nao especificado" quando a chave nem existe -
+# foi assim com forPag e depois com conjuntoVeiculos_id. No exemplo da
+# documentacao todos estes vem como string vazia, entao e assim que vao,
+# em vez de descobrir um por vez a cada tentativa.
+CAMPOS_PRESENTES_VAZIOS = (
+    "CL", "anulou_id", "cliente_id", "complementoPedido", "complementou_id",
+    "conjuntoVeiculos_id", "enderecoCliente_id", "enderecoColeta_id",
+    "enderecoEntrega_id", "estadoColeta", "estadoEntrega",
+    "gerouReciboFreteExterno", "imprimirProprietario", "localColeta",
+    "localEntrega", "mercadoriaOrdem_id", "nMinu", "nOCA", "nroConhecimento",
+    "nroRegistroEstadual", "numeroCartao", "operacoesMercadorias_id",
+    "operacoes_id", "ordensCarregamento_id", "pedidos_id", "percurso_id",
+    "perfisApropriacao_id", "precosConhecimento_id", "regrasCarreto_id",
+    "rotaDistribuicao_id", "tipoOperacaoTMS_id", "tolerancia", "vTar",
+)
+
 TIPO_CTE_NORMAL = "0"           # DACTE 5053: "TIPO DO CT-E Normal"
 TIPO_SERVICO_NORMAL = "0"       # DACTE 5053: "TIPO DO SERVICO Normal"
 
@@ -532,6 +549,9 @@ def montar_payload_conhecimento(
         "Gris": "0.00",
         "mercadorias": [_linha_mercadoria(espelho, mercadoria, natureza_carga_id)],
     }
+
+    for campo in CAMPOS_PRESENTES_VAZIOS:
+        corpo.setdefault(campo, "")
 
     for campo, valor_id in (
         ("motorista_id", veiculos.get("motorista_id")),

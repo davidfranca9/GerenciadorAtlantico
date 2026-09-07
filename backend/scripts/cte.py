@@ -130,7 +130,8 @@ def mostrar_espelho(dados: dict) -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("acao", choices=["espelho", "emitir", "agendamentos"])
+    p.add_argument("acao", choices=["espelho", "emitir", "agendamentos", "configuracoes"])
+    p.add_argument("--cadastro", default="", help="filtra a acao configuracoes")
     p.add_argument("--xml", default="", help="XML da NF-e")
     p.add_argument("--token-file", required=True, help="arquivo com o token da sessao")
     p.add_argument("--credenciais", default="",
@@ -151,6 +152,22 @@ def main() -> int:
     p.add_argument("--api", default=API_PADRAO)
     p.add_argument("--timeout", type=int, default=180)
     args = p.parse_args()
+
+    if args.acao == "configuracoes":
+        # Le os cadastros do Bsoft que o CT-e referencia por id.
+        resposta = requests.get(
+            f"{args.api}/bsoft/configuracoes-cte",
+            headers={"Authorization": f"Bearer {obter_token(args)}"},
+            timeout=args.timeout,
+        )
+        dados = resposta.json()
+        alvo = args.cadastro
+        for nome, conteudo in (dados or {}).items():
+            if alvo and alvo not in nome:
+                continue
+            print(f"\n== {nome} ==")
+            print(json.dumps(conteudo, ensure_ascii=False, indent=1)[:2500])
+        return 0
 
     if args.acao == "agendamentos":
         # Emitir exige um agendamento; esta acao existe pra achar o id.
