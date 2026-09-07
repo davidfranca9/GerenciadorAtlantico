@@ -275,6 +275,34 @@ export function obterEmail(id) {
   return request(`/email/mensagens/${encodeURIComponent(id)}`);
 }
 
+export function obterThreadEmail(id) {
+  return request(`/email/mensagens/${encodeURIComponent(id)}/thread`);
+}
+
+export function contarEmailsNovos(desde) {
+  return request(`/email/novos?desde=${Math.floor(desde / 1000)}`);
+}
+
+// O anexo vem como arquivo, nao JSON: baixa com o token e entrega ao
+// navegador com o nome original.
+export async function baixarAnexoEmail(id, indice, nome) {
+  const token = getToken();
+  const res = await fetch(
+    `${API_URL}/email/mensagens/${encodeURIComponent(id)}/anexos/${indice}`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+  if (!res.ok) throw new Error("Falha ao baixar o anexo");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nome || "anexo";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function enviarEmail({ destinatarios, assunto, corpo, anexos }) {
   const token = getToken();
   const formData = new FormData();

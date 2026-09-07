@@ -66,6 +66,16 @@ export default function EmailsPage() {
   const [erro, setErro] = useState("");
   const [selecionado, setSelecionado] = useState(cache.selecionado);
   const [detalhe, setDetalhe] = useState(cache.detalhe);
+
+  // Visitar a aba zera o contador do menu lateral.
+  useEffect(() => {
+    try {
+      localStorage.setItem("emailUltimaVisita", String(Date.now()));
+      window.dispatchEvent(new Event("emailVisitado"));
+    } catch {
+      /* navegador sem storage: o contador so nao zera */
+    }
+  }, []);
   const [carregandoDetalhe, setCarregandoDetalhe] = useState(false);
   const [compor, setCompor] = useState(null);
   const [composeKey, setComposeKey] = useState(0);
@@ -119,8 +129,9 @@ export default function EmailsPage() {
     setDetalhe(null);
     setErro("");
     try {
-      const data = await api.obterEmail(msg.id);
-      setDetalhe(data);
+      const data = await api.obterThreadEmail(msg.id);
+      // A conversa vem inteira; a ultima mensagem e a que abre expandida.
+      setDetalhe({ ...data.mensagens[data.mensagens.length - 1], thread: data.mensagens });
       cache.detalhe = data;
       setMensagens((prev) => {
         const novo = prev.map((m) => (m.id === msg.id ? { ...m, lida: true } : m));
@@ -333,22 +344,47 @@ export default function EmailsPage() {
                   <strong>{detalhe.remetente.nome || detalhe.remetente.email}</strong>{" "}
                   <span>&lt;{detalhe.remetente.email}&gt;</span>
                 </div>
-                <small>{formatarData(detalhe.data)}</small>
+                <small>
+                  {formatarData(detalhe.data)}
+                  {detalhe.thread?.length > 1 && ` · ${detalhe.thread.length} mensagens nesta conversa`}
+                </small>
               </div>
-              {detalhe.anexos?.length > 0 && (
-                <div className="inbox-detail-attachments">
-                  <Icon name="file" size={14} /> {detalhe.anexos.join(", ")}
-                </div>
-              )}
-              <iframe
-                title="Corpo do e-mail"
-                className="inbox-detail-body"
-                sandbox=""
-                srcDoc={
-                  detalhe.corpo_html ||
-                  `<pre style="white-space:pre-wrap;font-family:inherit;margin:0">${escapeHtml(detalhe.corpo_texto || "(mensagem vazia)")}</pre>`
-                }
-              />
+              <div style={{ display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", flex: 1 }}>
+                {(detalhe.thread || [detalhe]).map((msg, i, todas) => (
+                  <div key={msg.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {todas.length > 1 && (
+                      <div style={{ fontSize: 12, color: "var(--muted)", borderTop: i ? "1px solid var(--border)" : "none", paddingTop: i ? 12 : 0 }}>
+                        <strong>{msg.remetente.nome || msg.remetente.email}</strong> · {formatarData(msg.data)}
+                      </div>
+                    )}
+                    {msg.anexos?.length > 0 && (
+                      <div className="inbox-detail-attachments" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        <Icon name="file" size={14} />
+                        {msg.anexos.map((anexo) => (
+                          <button
+                            key={anexo.indice}
+                            className="btn-ghost"
+                            title={`${Math.round((anexo.tamanho || 0) / 1024)} KB`}
+                            onClick={() => api.baixarAnexoEmail(msg.id, anexo.indice, anexo.nome)}
+                          >
+                            {anexo.nome}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <iframe
+                      title={`Mensagem ${msg.id}`}
+                      className="inbox-detail-body"
+                      sandbox=""
+                      style={{ minHeight: todas.length > 1 ? 260 : undefined }}
+                      srcDoc={
+                        msg.corpo_html ||
+                        `<pre style="white-space:pre-wrap;font-family:inherit;margin:0">${escapeHtml(msg.corpo_texto || "(mensagem vazia)")}</pre>`
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
             </>
           ) : null}
         </section>

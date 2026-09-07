@@ -3,6 +3,7 @@ import { NavLink, Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import Icon from "./Icon";
+import * as api from "../api/client";
 
 export const NAV_SECTIONS = [
   { title: "Operação", items: [
@@ -35,11 +36,59 @@ function initials(user) {
   return source.split(/\s|@/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
 
+// Conta os e-mails chegados desde a ultima vez que a aba foi aberta. A
+// marca da visita fica no navegador, entao o contador zera sozinho quando
+// alguem entra em E-mails.
+function useEmailsNovos() {
+  const [novos, setNovos] = useState(0);
+
+  useEffect(() => {
+    let vivo = true;
+
+    async function conferir() {
+      let desde;
+      try {
+        desde = Number(localStorage.getItem("emailUltimaVisita"));
+      } catch {
+        return;
+      }
+      if (!desde) {
+        // Primeira vez: marca agora e nao acusa nada como novo.
+        try {
+          localStorage.setItem("emailUltimaVisita", String(Date.now()));
+        } catch {
+          /* sem storage, o contador so nao funciona */
+        }
+        return;
+      }
+      try {
+        const dados = await api.contarEmailsNovos(desde);
+        if (vivo) setNovos(dados.novos || 0);
+      } catch {
+        /* contador e informativo: falha nao aparece na tela */
+      }
+    }
+
+    conferir();
+    const timer = setInterval(conferir, 60000);
+    const aoVisitar = () => setNovos(0);
+    window.addEventListener("emailVisitado", aoVisitar);
+    return () => {
+      vivo = false;
+      clearInterval(timer);
+      window.removeEventListener("emailVisitado", aoVisitar);
+    };
+  }, []);
+
+  return novos;
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const emailsNovos = useEmailsNovos();
   const bloqueadas = user?.role === "admin" ? [] : (user?.paginas_bloqueadas || "").split(",").filter(Boolean);
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
@@ -71,7 +120,21 @@ export default function Layout() {
               <nav>
                 {section.items.map((item) => (
                   <NavLink key={item.to} to={item.to} className={({ isActive }) => `sidebar-btn${isActive ? " active" : ""}`}>
-                    <span className="nav-icon"><Icon name={item.icon} /></span><span>{item.label}</span><Icon name="chevron" size={14} className="nav-chevron" />
+                    <span className="nav-icon"><Icon name={item.icon} /></span>
+                    <span>{item.label}</span>
+                    {item.to === "/emails" && emailsNovos > 0 && (
+                      <span
+                        title={`${emailsNovos} e-mail${emailsNovos === 1 ? "" : "s"} desde sua ultima visita`}
+                        style={{
+                          marginLeft: "auto", background: "var(--accent, #2f9e6d)", color: "#fff",
+                          borderRadius: 999, fontSize: 11, fontWeight: 700, lineHeight: 1,
+                          padding: "3px 7px", fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {emailsNovos > 99 ? "99+" : emailsNovos}
+                      </span>
+                    )}
+                    <Icon name="chevron" size={14} className="nav-chevron" />
                   </NavLink>
                 ))}
               </nav>

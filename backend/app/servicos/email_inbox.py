@@ -174,7 +174,7 @@ def obter_mensagem(msg_id: str) -> dict:
 
         corpo_html = ""
         corpo_texto = ""
-        anexos: list[str] = []
+        anexos: list[dict] = []
         imagens_inline: dict[str, str] = {}
 
         if msg.is_multipart():
@@ -190,7 +190,13 @@ def obter_mensagem(msg_id: str) -> dict:
                     continue
 
                 if "attachment" in disposicao:
-                    anexos.append(_decodificar(parte.get_filename()) or "arquivo")
+                    conteudo = parte.get_payload(decode=True) or b""
+                    anexos.append({
+                        "indice": len(anexos),
+                        "nome": _decodificar(parte.get_filename()) or "arquivo",
+                        "tipo": parte.get_content_type(),
+                        "tamanho": len(conteudo),
+                    })
                     continue
 
                 payload = parte.get_payload(decode=True)
@@ -226,3 +232,83 @@ def obter_mensagem(msg_id: str) -> dict:
             "corpo_texto": corpo_texto,
             "anexos": anexos,
         }
+
+
+def _partes_anexas(msg) -> list:
+    """Anexos de uma mensagem, na ordem em que aparecem.
+
+    Imagem embutida na assinatura (com Content-ID) nao conta: ela ja vai
+    inline no corpo e poluiria a lista com logotipos.
+    """
+    encontrados = []
+    if not msg.is_multipart():
+        return encontrados
+    for parte in msg.walk():
+        disposicao = str(parte.get("Content-Disposition", ""))
+        if "attachment" not in disposicao:
+            continue
+        conteudo = parte.get_payload(decode=True)
+        encontrados.append({
+            "nome": _decodificar(parte.get_filename()) or "arquivo",
+            "tipo": parte.get_content_type(),
+            "tamanho": len(conteudo or b""),
+            "conteudo": conteudo or b"",
+        })
+    return encontrados
+
+
+def obter_anexo(msg_id: str, indice: int) -> dict:
+    """Devolve um anexo com o conteudo, pra download."""
+    with _lock:
+        conexao = _obter_conexao()
+        if conexao.select("INBOX")[0] != "OK":
+            raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
+        status, dados = conexao.fetch(msg_id.encode(), "(BODY[])")
+        if status != "OK" or not dados or not isinstance(dados[0], tuple):
+            raise InboxIndisponivel("Mensagem nao encontrada")
+
+    anexos = _partes_anexas(email.message_from_bytes(dados[0][1]))
+    if indice < 0 or indice >= len(anexos):
+        raise InboxIndisponivel("Anexo nao encontrado")
+    return anexos[indice]
+
+
+def obter_thread(msg_id: str) -> list:
+    """Ids de todas as mensagens da mesma conversa, da mais antiga pra mais
+    recente.
+
+    Usa a extensao X-GM-THRID do Gmail: uma resposta trocada varias vezes
+    fica num unico thread, e sem isso a tela mostrava so a mensagem aberta.
+    """
+    with _lock:
+        conexao = _obter_conexao()
+        if conexao.select("INBOX")[0] != "OK":
+            raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
+
+        status, dados = conexao.fetch(msg_id.encode(), "(X-GM-THRID)")
+        if status != "OK" or not dados:
+            return [msg_id]
+        achado = re.search(rb"X-GM-THRID (\d+)", dados[0] if isinstance(dados[0], bytes) else dados[0][0] or b"")
+        if not achado:
+            return [msg_id]
+
+        status, resultado = conexao.search(None, "X-GM-THRID", achado.group(1).decode())
+        if status != "OK" or not resultado or not resultado[0]:
+            return [msg_id]
+        return [i.decode() for i in resultado[0].split()]
+
+
+def contar_desde(epoch: int) -> int:
+    """Quantas mensagens chegaram depois do instante informado.
+
+    O Gmail aceita 'after:' com epoch em segundos na busca X-GM-RAW, entao
+    da pra contar sem baixar mensagem nenhuma.
+    """
+    with _lock:
+        conexao = _obter_conexao()
+        if conexao.select("INBOX")[0] != "OK":
+            raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
+        status, resultado = conexao.search(None, "X-GM-RAW", f'"after:{int(epoch)}"')
+        if status != "OK" or not resultado or not resultado[0]:
+            return 0
+        return len(resultado[0].split())
