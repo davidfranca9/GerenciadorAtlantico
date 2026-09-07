@@ -138,6 +138,7 @@ def main() -> int:
     p.add_argument("--de", default="", help="dataInicio (AAAA-MM-DD) da acao nfes")
     p.add_argument("--ate", default="", help="dataFim da acao nfes, no maximo 3 meses depois")
     p.add_argument("--chave", default="", help="chave da NF-e da acao baixar-nfe")
+    p.add_argument("--saida", default="", help="arquivo onde gravar o XML baixado")
     p.add_argument("--xml", default="", help="XML da NF-e")
     p.add_argument("--token-file", required=True, help="arquivo com o token da sessao")
     p.add_argument("--credenciais", default="",
@@ -180,7 +181,15 @@ def main() -> int:
             params={"chave": args.chave},
             timeout=args.timeout,
         )
-        print(json.dumps(resposta.json(), ensure_ascii=False)[:4000])
+        dados = resposta.json()
+        if not args.saida:
+            print(json.dumps(dados, ensure_ascii=False)[:2000])
+            return 0
+        # O XML inteiro nao cabe na saida do terminal, entao vai pra arquivo
+        # e o que se imprime e so a confirmacao.
+        xml = dados["xml"][0]["xml"]["autorizacao"]
+        Path(args.saida).write_text(xml, encoding="utf-8")
+        print(f"XML gravado em {args.saida} ({len(xml)} caracteres)")
         return 0
 
     if args.acao == "configuracoes":

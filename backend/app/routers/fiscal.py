@@ -416,7 +416,7 @@ async def emitir_conhecimento(
         raise HTTPException(status_code=400, detail={"pendencias": pendencias})
 
     operacao.ultimo_payload = json.dumps(sanitizar(corpo))[:4000]
-    operacao.tentativas += 1
+    operacao.tentativas = (operacao.tentativas or 0) + 1
     operacao.solicitado_por = usuario.email
     operacao.status = "ENVIANDO_CTE"
     db.commit()
@@ -657,7 +657,7 @@ async def emitir_cte(
         valor_frete=payload.valor_frete,
     )
     operacao.ultimo_payload = json.dumps(sanitizar(corpo))[:4000]
-    operacao.tentativas += 1
+    operacao.tentativas = (operacao.tentativas or 0) + 1
     operacao.solicitado_por = usuario.email
     operacao.status = "ENVIANDO_CTE"
     db.commit()
