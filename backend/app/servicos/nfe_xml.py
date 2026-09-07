@@ -170,12 +170,14 @@ def extrair_dados(xml_bytes: bytes) -> dict:
         "emitente_nome": _texto(emit, "nfe:xNome"),
         "municipio_origem": _texto(ender_emit, "nfe:xMun"),
         "ibge_origem": _texto(ender_emit, "nfe:cMun"),
+        "cep_origem": _texto(ender_emit, "nfe:CEP"),
         "uf_origem": _texto(ender_emit, "nfe:UF"),
         "destinatario_doc": cnpj_dest or cpf_dest,
         "destinatario_tipo": "juridica" if cnpj_dest else ("fisica" if cpf_dest else ""),
         "destinatario_nome": _texto(dest, "nfe:xNome"),
         "municipio_destino": _texto(ender_dest, "nfe:xMun"),
         "ibge_destino": _texto(ender_dest, "nfe:cMun"),
+        "cep_destino": _texto(ender_dest, "nfe:CEP"),
         "uf_destino": _texto(ender_dest, "nfe:UF"),
         # modFrete 1 = por conta do destinatario (FOB). Define quem e o
         # tomador do CT-e, entao segue junto.

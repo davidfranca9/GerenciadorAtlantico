@@ -174,6 +174,13 @@ async def espelho_do_cte(
     especie_id: str = Form(""),
     aliquota_icms: str = Form(""),
     km: str = Form(""),
+    endereco_remetente_id: str = Form(""),
+    endereco_destinatario_id: str = Form(""),
+    motorista_id: str = Form(""),
+    motorista_cpf: str = Form(""),
+    placa_cavalo: str = Form(""),
+    placa_carreta1: str = Form(""),
+    placa_carreta2: str = Form(""),
     agendamento_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
@@ -218,8 +225,10 @@ async def espelho_do_cte(
             resultado,
             buscar_pessoa=bsoft_fiscal.buscar_pessoa,
             listar_enderecos=bsoft_fiscal.listar_enderecos,
+            endereco_remetente_id=endereco_remetente_id or None,
+            endereco_destinatario_id=endereco_destinatario_id or None,
         )
-        veiculos = await run_in_threadpool(_resolver_veiculos, agendamento)
+        veiculos = await run_in_threadpool(_resolver_veiculos, agendamento, _escolhas(locals()))
         seguro = await run_in_threadpool(_resolver_apolice)
     except BsoftError as exc:
         resultado["partes"] = {"erro": str(exc)}
@@ -267,17 +276,40 @@ def _resolver_apolice() -> dict:
     }
 
 
-def _resolver_veiculos(agendamento) -> dict:
-    """Traduz motorista e placas do agendamento em ids do Bsoft."""
-    if agendamento is None:
-        return {}
-    motorista = bsoft_fiscal.buscar_pessoa(agendamento.driver_cpf) if agendamento.driver_cpf else None
-    encontrados = {"motorista_id": motorista.get("id") if motorista else None}
-    for campo, placa in (
-        ("veiculo_id", agendamento.plate_cavalo),
-        ("carreta_id", agendamento.plate_carreta1),
-        ("semireboque_id", agendamento.plate_carreta2),
-    ):
+CAMPOS_ESCOLHA = (
+    "motorista_id", "motorista_cpf", "placa_cavalo",
+    "placa_carreta1", "placa_carreta2",
+)
+
+
+def _escolhas(valores: dict) -> dict:
+    """Junta o que foi escolhido na tela, ignorando os campos vazios."""
+    return {nome: valores[nome] for nome in CAMPOS_ESCOLHA if valores.get(nome)}
+
+
+def _resolver_veiculos(agendamento, escolhas: dict | None = None) -> dict:
+    """Traduz motorista e placas em ids do Bsoft.
+
+    O que vier da tela vence o agendamento: quando o cadastro nao e achado
+    pela placa ou pelo CPF, quem opera corrige ali em vez de ficar travado.
+    Devolve tambem o que foi procurado, pra tela poder explicar a falha.
+    """
+    escolhas = escolhas or {}
+    cpf = escolhas.get("motorista_cpf") or getattr(agendamento, "driver_cpf", "")
+    placas = {
+        "veiculo_id": escolhas.get("placa_cavalo") or getattr(agendamento, "plate_cavalo", ""),
+        "carreta_id": escolhas.get("placa_carreta1") or getattr(agendamento, "plate_carreta1", ""),
+        "semireboque_id": escolhas.get("placa_carreta2") or getattr(agendamento, "plate_carreta2", ""),
+    }
+    encontrados = {"procurou": dict(placas, motorista_cpf=cpf)}
+
+    if escolhas.get("motorista_id"):
+        encontrados["motorista_id"] = escolhas["motorista_id"]
+    else:
+        motorista = bsoft_fiscal.buscar_pessoa(cpf) if cpf else None
+        encontrados["motorista_id"] = motorista.get("id") if motorista else None
+
+    for campo, placa in placas.items():
         veiculo = bsoft_fiscal.buscar_veiculo_por_placa(placa) if placa else None
         encontrados[campo] = veiculo.get("id") if veiculo else None
     return encontrados
@@ -292,6 +324,13 @@ async def emitir_conhecimento(
     km: str = Form(""),
     embalagem: str = Form(""),
     especie_id: str = Form(""),
+    endereco_remetente_id: str = Form(""),
+    endereco_destinatario_id: str = Form(""),
+    motorista_id: str = Form(""),
+    motorista_cpf: str = Form(""),
+    placa_cavalo: str = Form(""),
+    placa_carreta1: str = Form(""),
+    placa_carreta2: str = Form(""),
     confirmar_emissao_real: bool = Form(False),
     db: Session = Depends(get_db),
     usuario: User = Depends(get_current_user),
@@ -343,8 +382,10 @@ async def emitir_conhecimento(
             espelho,
             buscar_pessoa=bsoft_fiscal.buscar_pessoa,
             listar_enderecos=bsoft_fiscal.listar_enderecos,
+            endereco_remetente_id=endereco_remetente_id or None,
+            endereco_destinatario_id=endereco_destinatario_id or None,
         )
-        veiculos = await run_in_threadpool(_resolver_veiculos, agendamento)
+        veiculos = await run_in_threadpool(_resolver_veiculos, agendamento, _escolhas(locals()))
         seguro = await run_in_threadpool(_resolver_apolice)
     except BsoftError as exc:
         raise HTTPException(status_code=502, detail=f"Falha ao consultar cadastros: {exc}")

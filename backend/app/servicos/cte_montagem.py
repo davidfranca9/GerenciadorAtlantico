@@ -175,9 +175,11 @@ def derivar(
         "tomador": tomador,
         "tomador_doc": dados["destinatario_doc"] if tomador == "destinatario" else dados["emitente_cnpj"],
         "ibge_origem": dados["ibge_origem"],
+        "cep_origem": dados["cep_origem"],
         "municipio_origem": dados["municipio_origem"],
         "uf_origem": dados["uf_origem"],
         "ibge_destino": dados["ibge_destino"],
+        "cep_destino": dados["cep_destino"],
         "municipio_destino": dados["municipio_destino"],
         "uf_destino": dados["uf_destino"],
         "produto_predominante": mercadoria["descricao_produto"][:TAMANHO_PRODUTO_PREDOMINANTE].rstrip(),
@@ -237,19 +239,34 @@ def _pendencias(espelho: dict, mercadoria: dict, tarifa: str | None) -> list[str
 # --------------------------------------------------------------------------
 
 
-def _escolher_endereco(enderecos: list, ibge: str) -> tuple[dict | None, str]:
-    """Escolhe o endereco que corresponde ao municipio da NF-e.
+def _so_digitos(texto) -> str:
+    return "".join(c for c in str(texto or "") if c.isdigit())
 
-    Uma pessoa pode ter varios enderecos cadastrados, e o CT-e precisa do
-    que bate com a operacao. O criterio e o codigo IBGE, que e exato - CEP
-    e nome de cidade sao ambiguos demais pra decidir documento fiscal.
+
+def _descrever(endereco: dict) -> str:
+    partes = [endereco.get("logradouro"), endereco.get("numero"), endereco.get("bairro")]
+    linha = ", ".join(str(x) for x in partes if x)
+    cep = _so_digitos(endereco.get("cep"))
+    return f"{linha} - CEP {cep}" if cep else linha or f"endereco {endereco.get('id')}"
+
+
+def _escolher_endereco(enderecos: list, ibge: str, cep: str = "") -> tuple:
+    """Escolhe o endereco que corresponde ao da NF-e.
+
+    Primeiro o codigo IBGE, que restringe ao municipio. Se sobrar mais de
+    um, o CEP desempata - a nota traz o CEP de cada parte, entao a escolha
+    continua vindo do documento e nao de chute. So depois disso entra o
+    marcado como preferencial.
+
+    Devolve tambem as candidatas, pra quem opera poder escolher na tela
+    quando nem assim der pra decidir.
     """
     if not enderecos:
-        return None, "Pessoa sem endereco cadastrado no Bsoft."
+        return None, "Pessoa sem endereco cadastrado no Bsoft.", []
 
     ibge = (ibge or "").strip()
     if not ibge:
-        return None, "NF-e sem codigo IBGE do municipio: nao da pra escolher o endereco."
+        return None, "NF-e sem codigo IBGE do municipio: nao da pra escolher o endereco.", []
 
     candidatos = [e for e in enderecos if str(e.get("codIBGE") or "").strip() == ibge]
     if not candidatos:
@@ -257,22 +274,36 @@ def _escolher_endereco(enderecos: list, ibge: str) -> tuple[dict | None, str]:
         return None, (
             f"Nenhum endereco cadastrado no municipio {ibge} da NF-e "
             f"(cadastrados: {cidades})."
-        )
+        ), enderecos
+
+    if len(candidatos) > 1 and _so_digitos(cep):
+        por_cep = [e for e in candidatos if _so_digitos(e.get("cep")) == _so_digitos(cep)]
+        if len(por_cep) == 1:
+            return por_cep[0], "", candidatos
+        if por_cep:
+            candidatos = por_cep
 
     if len(candidatos) > 1:
-        # Empate: o marcado como preferencial e o que a tela usa por padrao.
         preferenciais = [e for e in candidatos if str(e.get("enderecoPreferencial")).upper() == "S"]
         if len(preferenciais) == 1:
-            return preferenciais[0], ""
-        return candidatos[0], (
-            f"{len(candidatos)} enderecos no mesmo municipio e nenhum preferencial "
-            "unico: confira qual o CT-e deve usar."
-        )
+            return preferenciais[0], "", candidatos
+        return None, (
+            f"{len(candidatos)} enderecos possiveis no municipio da NF-e: "
+            "escolha qual o CT-e deve usar."
+        ), candidatos
 
-    return candidatos[0], ""
+    return candidatos[0], "", candidatos
 
 
-def resolver_parte(documento: str, ibge: str, *, buscar_pessoa, listar_enderecos) -> dict:
+def resolver_parte(
+    documento: str,
+    ibge: str,
+    *,
+    buscar_pessoa,
+    listar_enderecos,
+    cep: str = "",
+    endereco_id=None,
+) -> dict:
     """Traduz documento + municipio da NF-e nos ids do cadastro do Bsoft.
 
     As buscas entram por parametro pra esta funcao poder ser testada sem
@@ -284,6 +315,7 @@ def resolver_parte(documento: str, ibge: str, *, buscar_pessoa, listar_enderecos
         "endereco_id": None,
         "nome": "",
         "aviso": "",
+        "enderecos": [],
     }
     if not documento:
         resultado["aviso"] = "Documento nao informado na NF-e."
@@ -297,22 +329,42 @@ def resolver_parte(documento: str, ibge: str, *, buscar_pessoa, listar_enderecos
     resultado["pessoa_id"] = pessoa.get("id")
     resultado["nome"] = pessoa.get("nome") or pessoa.get("razaoSocial") or ""
 
-    endereco, aviso = _escolher_endereco(listar_enderecos(pessoa["id"]), ibge)
+    disponiveis = listar_enderecos(pessoa["id"])
+    endereco, aviso, candidatos = _escolher_endereco(disponiveis, ibge, cep)
+    resultado["enderecos"] = [
+        {"id": e.get("id"), "descricao": _descrever(e)} for e in (candidatos or disponiveis)
+    ]
+
+    # Escolha feita na tela vence a automatica.
+    if endereco_id:
+        resultado["endereco_id"] = str(endereco_id)
+        resultado["aviso"] = ""
+        return resultado
+
     if endereco:
         resultado["endereco_id"] = endereco.get("id")
     resultado["aviso"] = aviso
     return resultado
 
 
-def resolver_partes(espelho: dict, *, buscar_pessoa, listar_enderecos) -> dict:
+def resolver_partes(
+    espelho: dict,
+    *,
+    buscar_pessoa,
+    listar_enderecos,
+    endereco_remetente_id=None,
+    endereco_destinatario_id=None,
+) -> dict:
     """Resolve remetente e destinatario de uma vez, a partir do espelho."""
     remetente = resolver_parte(
         espelho["remetente_doc"], espelho["ibge_origem"],
         buscar_pessoa=buscar_pessoa, listar_enderecos=listar_enderecos,
+        cep=espelho.get("cep_origem", ""), endereco_id=endereco_remetente_id,
     )
     destinatario = resolver_parte(
         espelho["destinatario_doc"], espelho["ibge_destino"],
         buscar_pessoa=buscar_pessoa, listar_enderecos=listar_enderecos,
+        cep=espelho.get("cep_destino", ""), endereco_id=endereco_destinatario_id,
     )
     pendencias = []
     if remetente["aviso"]:

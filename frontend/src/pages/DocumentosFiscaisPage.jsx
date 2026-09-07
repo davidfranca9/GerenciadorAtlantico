@@ -61,6 +61,32 @@ function Linha({ children }) {
   return <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>{children}</div>;
 }
 
+function Escolher({ rotulo, valor, opcoes, aoMudar }) {
+  return (
+    <div style={{ flex: 2, minWidth: 220 }}>
+      <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--muted)" }}>{rotulo}</div>
+      <select value={valor || ""} onChange={(e) => aoMudar(e.target.value)} style={{ width: "100%", marginTop: 2 }}>
+        <option value="">Selecione</option>
+        {opcoes.map((o) => <option key={o.id} value={o.id}>{o.descricao}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function Corrigir({ rotulo, valor, placeholder, aoMudar }) {
+  return (
+    <div style={{ flex: 1, minWidth: 140 }}>
+      <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--muted)" }}>{rotulo}</div>
+      <input
+        value={valor || ""}
+        placeholder={placeholder}
+        onChange={(e) => aoMudar(e.target.value)}
+        style={{ width: "100%", marginTop: 2 }}
+      />
+    </div>
+  );
+}
+
 function EmitirCte() {
   const [aberto, setAberto] = useState(false);
   const [agendamentos, setAgendamentos] = useState([]);
@@ -72,6 +98,7 @@ function EmitirCte() {
   const [embalagem, setEmbalagem] = useState("BIG BAG");
   const [especieId, setEspecieId] = useState("");
   const [definitivo, setDefinitivo] = useState(false);
+  const [escolhas, setEscolhas] = useState({});
   const [espelho, setEspelho] = useState(null);
   const [resultado, setResultado] = useState(null);
   const [ocupado, setOcupado] = useState(false);
@@ -89,6 +116,7 @@ function EmitirCte() {
     km: String(km).replace(",", "."),
     embalagem,
     especie_id: especieId,
+    ...escolhas,
   });
 
   async function handleConferir() {
@@ -250,6 +278,26 @@ function EmitirCte() {
                   <Campo rotulo="CNPJ/CPF" valor={e.destinatario_doc} />
                   <Campo rotulo="Cadastro" valor={e.partes?.destinatario?.pessoa_id} />
                 </Linha>
+                {(e.partes?.remetente?.enderecos?.length > 1 || e.partes?.destinatario?.enderecos?.length > 1) && (
+                  <Linha>
+                    {e.partes?.remetente?.enderecos?.length > 1 && (
+                      <Escolher
+                        rotulo="Endereço do remetente"
+                        valor={escolhas.endereco_remetente_id || e.partes.remetente.endereco_id}
+                        opcoes={e.partes.remetente.enderecos}
+                        aoMudar={(v) => setEscolhas((x) => ({ ...x, endereco_remetente_id: v }))}
+                      />
+                    )}
+                    {e.partes?.destinatario?.enderecos?.length > 1 && (
+                      <Escolher
+                        rotulo="Endereço do destinatário"
+                        valor={escolhas.endereco_destinatario_id || e.partes.destinatario.endereco_id}
+                        opcoes={e.partes.destinatario.enderecos}
+                        aoMudar={(v) => setEscolhas((x) => ({ ...x, endereco_destinatario_id: v }))}
+                      />
+                    )}
+                  </Linha>
+                )}
                 <Linha>
                   <Campo rotulo="Tomador do serviço" valor={e.tomador === "destinatario" ? e.destinatario_nome : e.remetente_nome} largura={3} />
                   <Campo rotulo="Paga o frete" valor={p.pagamentoFrete === "D" ? "Destinatário" : p.pagamentoFrete === "R" ? "Remetente" : "—"} />
@@ -339,6 +387,46 @@ function EmitirCte() {
                   <Campo rotulo="Carreta" valor={e.veiculos?.carreta_id ? `cadastro ${e.veiculos.carreta_id}` : "—"} />
                   <Campo rotulo="Segunda carreta" valor={e.veiculos?.semireboque_id ? `cadastro ${e.veiculos.semireboque_id}` : "—"} />
                 </Linha>
+                {e.veiculos?.procurou && (
+                  <>
+                    <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
+                      Procurei por: CPF {e.veiculos.procurou.motorista_cpf || "(vazio)"}, placas{" "}
+                      {[e.veiculos.procurou.veiculo_id, e.veiculos.procurou.carreta_id, e.veiculos.procurou.semireboque_id]
+                        .filter(Boolean).join(", ") || "(nenhuma)"}. Corrija abaixo se estiver diferente do cadastro do Bsoft.
+                    </div>
+                    <Linha>
+                      <Corrigir
+                        rotulo="CPF do motorista"
+                        valor={escolhas.motorista_cpf}
+                        placeholder={e.veiculos.procurou.motorista_cpf || "só números"}
+                        aoMudar={(v) => setEscolhas((x) => ({ ...x, motorista_cpf: v }))}
+                      />
+                      <Corrigir
+                        rotulo="Placa do cavalo"
+                        valor={escolhas.placa_cavalo}
+                        placeholder={e.veiculos.procurou.veiculo_id || "ABC1D23"}
+                        aoMudar={(v) => setEscolhas((x) => ({ ...x, placa_cavalo: v }))}
+                      />
+                      <Corrigir
+                        rotulo="Placa da carreta"
+                        valor={escolhas.placa_carreta1}
+                        placeholder={e.veiculos.procurou.carreta_id || "ABC1D23"}
+                        aoMudar={(v) => setEscolhas((x) => ({ ...x, placa_carreta1: v }))}
+                      />
+                      <Corrigir
+                        rotulo="Segunda carreta"
+                        valor={escolhas.placa_carreta2}
+                        placeholder={e.veiculos.procurou.semireboque_id || "ABC1D23"}
+                        aoMudar={(v) => setEscolhas((x) => ({ ...x, placa_carreta2: v }))}
+                      />
+                    </Linha>
+                    <div>
+                      <button className="btn-secondary" disabled={ocupado} onClick={handleConferir}>
+                        Buscar de novo
+                      </button>
+                    </div>
+                  </>
+                )}
               </Secao>
 
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>

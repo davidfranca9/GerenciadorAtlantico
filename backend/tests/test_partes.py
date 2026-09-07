@@ -86,14 +86,42 @@ def test_empate_no_municipio_usa_o_preferencial():
     assert resultado["aviso"] == ""
 
 
-def test_empate_sem_preferencial_avisa():
+def test_empate_sem_preferencial_pede_escolha_e_lista_as_opcoes():
     outro = {"id": "9004", "codIBGE": "2908507", "cidade": "CONCEICAO DO JACUIPE"}
     resultado = resolver_parte(
         "08068476000176", "2908507",
         buscar_pessoa=busca_fixa(FERTIMAXI),
         listar_enderecos=enderecos_fixos(END_JACUIPE, outro),
     )
-    assert "nenhum preferencial" in resultado["aviso"]
+    assert resultado["endereco_id"] is None
+    assert "escolha qual" in resultado["aviso"]
+    assert {e["id"] for e in resultado["enderecos"]} == {"9001", "9004"}
+
+
+def test_cep_da_nota_desempata_enderecos_do_mesmo_municipio():
+    # Os dois ficam no municipio da nota; so o CEP separa.
+    certo = dict(END_JACUIPE, cep="44245-000")
+    outro = {"id": "9004", "codIBGE": "2908507", "cep": "44245999"}
+    resultado = resolver_parte(
+        "08068476000176", "2908507",
+        buscar_pessoa=busca_fixa(FERTIMAXI),
+        listar_enderecos=enderecos_fixos(outro, certo),
+        cep="44245000",
+    )
+    assert resultado["endereco_id"] == "9001"
+    assert resultado["aviso"] == ""
+
+
+def test_escolha_manual_vence_a_automatica():
+    outro = {"id": "9004", "codIBGE": "2908507"}
+    resultado = resolver_parte(
+        "08068476000176", "2908507",
+        buscar_pessoa=busca_fixa(FERTIMAXI),
+        listar_enderecos=enderecos_fixos(END_JACUIPE, outro),
+        endereco_id="9004",
+    )
+    assert resultado["endereco_id"] == "9004"
+    assert resultado["aviso"] == ""
 
 
 def test_pessoa_sem_endereco_avisa():
