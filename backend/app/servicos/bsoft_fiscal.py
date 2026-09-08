@@ -410,3 +410,23 @@ def obter_xml_nfes_recebidas(chaves: list[str]) -> object:
         json_body={"chaveAcesso": list(chaves)},
     )
     return corpo
+
+
+def listar_conjuntos_veiculos() -> list:
+    """LEITURA. Conjuntos cadastrados: motorista, cavalo e carretas juntos.
+
+    E a forma mais pratica de preencher o CT-e: escolher o motorista traz
+    as placas dele, em vez de digitar uma a uma. A API tambem aceita os
+    veiculos avulsos, mas exige um dos dois caminhos.
+    """
+    conjuntos = []
+    for item in listar("/transporte/v1/conjuntoVeiculos"):
+        placas = [item.get(campo) for campo in ("veiculo", "central", "carreta", "quartoVeiculo")]
+        placas = [p for p in placas if p]
+        conjuntos.append({
+            "id": item.get("id"),
+            "motorista": (item.get("motorista") or "").strip(),
+            "placas": placas,
+            "descricao": " · ".join([(item.get("motorista") or "sem motorista").strip()] + placas),
+        })
+    return conjuntos

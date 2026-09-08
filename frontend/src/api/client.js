@@ -380,6 +380,10 @@ async function enviarFormularioFiscal(caminho, campos, arquivo, mensagemErro) {
   return res.json();
 }
 
+export function fiscalListarConjuntos() {
+  return request("/fiscal/conjuntos");
+}
+
 export function fiscalProcurarMotoristas(nome) {
   return request(`/fiscal/motoristas?nome=${encodeURIComponent(nome)}`);
 }

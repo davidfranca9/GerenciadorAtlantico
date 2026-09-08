@@ -182,6 +182,7 @@ function EmitirCte() {
   const [formaPagamento, setFormaPagamento] = useState("1");
   const [definitivo, setDefinitivo] = useState(false);
   const [escolhas, setEscolhas] = useState({});
+  const [conjuntos, setConjuntos] = useState([]);
   const [espelho, setEspelho] = useState(null);
   const [resultado, setResultado] = useState(null);
   const [ocupado, setOcupado] = useState(false);
@@ -190,6 +191,9 @@ function EmitirCte() {
   useEffect(() => {
     if (!aberto || agendamentos.length) return;
     api.listarAgendamentos().then(setAgendamentos).catch(() => {});
+    api.fiscalListarConjuntos()
+      .then((d) => setConjuntos(d.conjuntos || []))
+      .catch(() => {});
   }, [aberto, agendamentos.length]);
 
   const campos = (recentes) => ({

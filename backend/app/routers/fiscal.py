@@ -491,6 +491,22 @@ async def baixar_xml_nfe(chave: str):
         raise HTTPException(status_code=502, detail=str(exc))
 
 
+@router.get("/conjuntos")
+async def listar_conjuntos():
+    """LEITURA. Conjuntos de veiculos cadastrados (motorista + cavalo +
+    carretas).
+
+    A API do Bsoft aceita OU o conjunto OU os veiculos avulsos, e cobra um
+    dos dois. Quando as placas do agendamento nao estao no cadastro, o
+    conjunto e a saida - por isso a tela precisa oferecer a escolha.
+    """
+    try:
+        conjuntos = await run_in_threadpool(bsoft_fiscal.listar_conjuntos_veiculos)
+    except BsoftError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {"conjuntos": conjuntos}
+
+
 @router.get("/motoristas")
 async def procurar_motoristas(nome: str = ""):
     """LEITURA. Busca motorista pelo nome no cadastro do Bsoft.
