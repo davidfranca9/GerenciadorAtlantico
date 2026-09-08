@@ -139,8 +139,10 @@ def mostrar_espelho(dados: dict) -> None:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("acao", choices=["espelho", "emitir", "agendamentos", "configuracoes",
-                                    "nfes", "baixar-nfe", "varrer", "conhecimentos", "conhecimento"])
+                                    "nfes", "baixar-nfe", "varrer", "conhecimentos", "conhecimento", "emails"])
     p.add_argument("--cadastro", default="", help="filtra a acao configuracoes")
+    p.add_argument("--busca", default="has:attachment newer_than:3d",
+                   help="busca do Gmail na acao emails")
     p.add_argument("--de", default="", help="dataInicio (AAAA-MM-DD) da acao nfes")
     p.add_argument("--ate", default="", help="dataFim da acao nfes, no maximo 3 meses depois")
     p.add_argument("--chave", default="", help="chave da NF-e da acao baixar-nfe")
@@ -205,6 +207,21 @@ def main() -> int:
         print(f"XML gravado em {args.saida} ({len(xml)} caracteres)")
         return 0
 
+    if args.acao == "emails":
+        # As NF-e chegam por e-mail antes de aparecerem no Bsoft; procurar
+        # aqui e o jeito de achar carga nova pra emitir.
+        resposta = requests.get(
+            f"{args.api}/email/mensagens",
+            headers={"Authorization": f"Bearer {obter_token(args)}"},
+            params={"pagina": 1, "tamanho_pagina": 15, "busca": args.busca},
+            timeout=args.timeout,
+        )
+        for msg in (resposta.json() or {}).get("mensagens", []):
+            remetente = (msg.get("remetente") or {}).get("email", "")
+            print(f"[{msg.get('id')}] {msg.get('data', '')[:16]}  {remetente[:38]:40} "
+                  f"{(msg.get('assunto') or '')[:55]}")
+        return 0
+
     if args.acao == "conhecimento":
         resposta = requests.get(
             f"{args.api}/fiscal/conhecimento/{args.id}",
@@ -257,6 +274,13 @@ def main() -> int:
             texto = json.dumps(resposta, ensure_ascii=False)
             if "utilizadas em conhecimentos anteriores" in texto:
                 print(f"{posicao:>3} ...{chave[-12:]} ja tem CT-e")
+                continue
+            # Pendencia e caso de decisao humana (endereco ambiguo, cadastro
+            # faltando). Numa varredura de teste vale seguir pra proxima em
+            # vez de parar, pra achar uma nota que resolva sozinha.
+            if isinstance(resposta.get("detail"), dict) and resposta["detail"].get("pendencias"):
+                motivo = "; ".join(resposta["detail"]["pendencias"])[:90]
+                print(f"{posicao:>3} ...{chave[-12:]} pendencia: {motivo}")
                 continue
             print(f"\n=== parou na chave {chave} ===")
             print(json.dumps(resposta, ensure_ascii=False, indent=1)[:2500])
