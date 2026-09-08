@@ -139,11 +139,12 @@ def mostrar_espelho(dados: dict) -> None:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("acao", choices=["espelho", "emitir", "agendamentos", "configuracoes",
-                                    "nfes", "baixar-nfe", "varrer", "conhecimentos"])
+                                    "nfes", "baixar-nfe", "varrer", "conhecimentos", "conhecimento"])
     p.add_argument("--cadastro", default="", help="filtra a acao configuracoes")
     p.add_argument("--de", default="", help="dataInicio (AAAA-MM-DD) da acao nfes")
     p.add_argument("--ate", default="", help="dataFim da acao nfes, no maximo 3 meses depois")
     p.add_argument("--chave", default="", help="chave da NF-e da acao baixar-nfe")
+    p.add_argument("--id", default="", help="id do CT-e da acao conhecimento")
     p.add_argument("--saida", default="", help="arquivo onde gravar o XML baixado")
     p.add_argument("--limite", type=int, default=12,
                    help="quantas notas tentar na acao varrer")
@@ -202,6 +203,21 @@ def main() -> int:
         xml = dados["xml"][0]["xml"]["autorizacao"]
         Path(args.saida).write_text(xml, encoding="utf-8")
         print(f"XML gravado em {args.saida} ({len(xml)} caracteres)")
+        return 0
+
+    if args.acao == "conhecimento":
+        resposta = requests.get(
+            f"{args.api}/fiscal/conhecimento/{args.id}",
+            headers={"Authorization": f"Bearer {obter_token(args)}"},
+            timeout=args.timeout,
+        )
+        dados = resposta.json()
+        vazios = sorted(k for k, v in dados.items() if v in ("", None, "0", "0.00"))
+        print("campos vazios ou zerados:", len(vazios))
+        print(", ".join(vazios))
+        print("\n== preenchidos ==")
+        print(json.dumps({k: v for k, v in dados.items() if k not in vazios},
+                         ensure_ascii=False, indent=1)[:2500])
         return 0
 
     if args.acao == "conhecimentos":

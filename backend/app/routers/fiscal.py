@@ -450,6 +450,19 @@ async def emitir_conhecimento(
     return {"operacao": _to_dict(operacao), "rascunho": not confirmar_emissao_real}
 
 
+@router.get("/conhecimento/{conhecimento_id}")
+async def ler_conhecimento(conhecimento_id: str):
+    """LEITURA. Registro do CT-e como o Bsoft gravou.
+
+    Serve pra conferir o que chegou la de verdade, campo a campo, em vez de
+    inferir pela tela.
+    """
+    try:
+        return await run_in_threadpool(bsoft_fiscal.obter_conhecimento, conhecimento_id)
+    except BsoftError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @router.get("/nfes-recebidas")
 async def listar_nfes_recebidas(data_inicio: str, data_fim: str, ator: str = "TRA"):
     """LEITURA. Chaves das NF-e recebidas no periodo (maximo 3 meses).
