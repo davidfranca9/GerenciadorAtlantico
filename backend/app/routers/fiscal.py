@@ -183,6 +183,7 @@ async def espelho_do_cte(
     placa_cavalo: str = Form(""),
     placa_carreta1: str = Form(""),
     placa_carreta2: str = Form(""),
+    placa_quarto: str = Form(""),
     agendamento_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
@@ -282,7 +283,7 @@ def _resolver_apolice() -> dict:
 
 CAMPOS_ESCOLHA = (
     "motorista_id", "motorista_cpf", "placa_cavalo",
-    "placa_carreta1", "placa_carreta2",
+    "placa_carreta1", "placa_carreta2", "placa_quarto",
 )
 
 
@@ -304,6 +305,9 @@ def _resolver_veiculos(agendamento, escolhas: dict | None = None) -> dict:
         "veiculo_id": escolhas.get("placa_cavalo") or getattr(agendamento, "plate_cavalo", ""),
         "carreta_id": escolhas.get("placa_carreta1") or getattr(agendamento, "plate_carreta1", ""),
         "semireboque_id": escolhas.get("placa_carreta2") or getattr(agendamento, "plate_carreta2", ""),
+        # A API exige os quatro slots com id real; um rebocador comum so
+        # usa dois, entao este costuma vir da tela.
+        "quarto_veiculo_id": escolhas.get("placa_quarto", ""),
     }
     encontrados = {"procurou": dict(placas, motorista_cpf=cpf)}
 
@@ -337,6 +341,7 @@ async def emitir_conhecimento(
     placa_cavalo: str = Form(""),
     placa_carreta1: str = Form(""),
     placa_carreta2: str = Form(""),
+    placa_quarto: str = Form(""),
     confirmar_emissao_real: bool = Form(False),
     db: Session = Depends(get_db),
     usuario: User = Depends(get_current_user),
