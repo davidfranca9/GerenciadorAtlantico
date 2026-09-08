@@ -368,10 +368,21 @@ def resolver_parte(
         {"id": e.get("id"), "descricao": _descrever(e)} for e in (candidatos or disponiveis)
     ]
 
-    # Escolha feita na tela vence a automatica.
+    # Escolha feita na tela vence a automatica, mas so entre os enderecos
+    # DESTA pessoa. Um id de outra empresa passava direto e o CT-e saia com
+    # remetente de um e endereco de outro - foi o que aconteceu no rascunho
+    # 5072, que ficou com o endereco da Fertimaxi numa nota de outro
+    # emitente.
     if endereco_id:
-        resultado["endereco_id"] = str(endereco_id)
-        resultado["aviso"] = ""
+        proprios = {str(e.get("id")) for e in disponiveis}
+        if str(endereco_id) in proprios:
+            resultado["endereco_id"] = str(endereco_id)
+            resultado["aviso"] = ""
+        else:
+            resultado["aviso"] = (
+                f"O endereco {endereco_id} nao pertence a este cadastro "
+                f"({resultado['nome'] or documento}). Escolha um da lista."
+            )
         return resultado
 
     if endereco:

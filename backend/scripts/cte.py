@@ -139,7 +139,7 @@ def mostrar_espelho(dados: dict) -> None:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("acao", choices=["espelho", "emitir", "agendamentos", "configuracoes",
-                                    "nfes", "baixar-nfe", "varrer"])
+                                    "nfes", "baixar-nfe", "varrer", "conhecimentos"])
     p.add_argument("--cadastro", default="", help="filtra a acao configuracoes")
     p.add_argument("--de", default="", help="dataInicio (AAAA-MM-DD) da acao nfes")
     p.add_argument("--ate", default="", help="dataFim da acao nfes, no maximo 3 meses depois")
@@ -202,6 +202,16 @@ def main() -> int:
         xml = dados["xml"][0]["xml"]["autorizacao"]
         Path(args.saida).write_text(xml, encoding="utf-8")
         print(f"XML gravado em {args.saida} ({len(xml)} caracteres)")
+        return 0
+
+    if args.acao == "conhecimentos":
+        # Confere no Bsoft que o CT-e existe mesmo, em vez de confiar so no
+        # status que o nosso banco gravou.
+        resposta = requests.get(
+            f"{args.api}/bsoft/documentos-fiscais", headers={"Authorization": f"Bearer {obter_token(args)}"},
+            params={"dias": 1}, timeout=args.timeout,
+        )
+        print(json.dumps(resposta.json(), ensure_ascii=False, indent=1)[:2500])
         return 0
 
     if args.acao == "varrer":

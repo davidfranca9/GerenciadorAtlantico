@@ -198,3 +198,32 @@ def test_enderecos_diferentes_continuam_pedindo_escolha():
     )
     assert resultado["endereco_id"] is None
     assert "escolha qual" in resultado["aviso"]
+
+
+def test_endereco_de_outra_pessoa_e_recusado():
+    """Escolha manual so vale entre os enderecos da propria pessoa.
+
+    Sem essa checagem, um id de outra empresa passava direto: foi assim que
+    o rascunho 5072 saiu com o endereco da Fertimaxi numa nota de outro
+    emitente - remetente de um, endereco de outro.
+    """
+    resultado = resolver_parte(
+        "08068476000176", "2908507",
+        buscar_pessoa=busca_fixa(FERTIMAXI),
+        listar_enderecos=enderecos_fixos(END_JACUIPE),
+        endereco_id="99999",
+    )
+    assert resultado["endereco_id"] is None
+    assert "nao pertence a este cadastro" in resultado["aviso"]
+
+
+def test_endereco_da_propria_pessoa_continua_valendo():
+    outro = {"id": "9004", "codIBGE": "2908507", "logradouro": "OUTRA RUA"}
+    resultado = resolver_parte(
+        "08068476000176", "2908507",
+        buscar_pessoa=busca_fixa(FERTIMAXI),
+        listar_enderecos=enderecos_fixos(END_JACUIPE, outro),
+        endereco_id="9004",
+    )
+    assert resultado["endereco_id"] == "9004"
+    assert resultado["aviso"] == ""
