@@ -573,10 +573,20 @@ def montar_payload_conhecimento(
     for campo in CAMPOS_PRESENTES_VAZIOS:
         corpo.setdefault(campo, "")
 
-    # Este a API cobra de verdade: vazio nao passa, ela repete o
-    # "nao especificado". E o conjunto cadastrado no Bsoft que junta
-    # motorista, cavalo e carretas.
-    corpo["conjuntoVeiculos_id"] = str(conjunto_veiculos_id or "")
+    # A API aceita DOIS caminhos e nao admite mistura:
+    #
+    #   conjunto  -> manda conjuntoVeiculos_id e NENHUM campo de veiculo
+    #   avulso    -> manda os cinco campos de veiculo e nenhum conjunto
+    #
+    # Misturar os dois faz ela cobrar um veiculo por vez ("Atributo
+    # obrigatorio [carreta_id]", depois [semireboque_id]...) ou reclamar que
+    # "quando declarado conjuntoVeiculos_id nao e necessario declarar as
+    # informacoes dos veiculos".
+    if conjunto_veiculos_id:
+        corpo["conjuntoVeiculos_id"] = str(conjunto_veiculos_id)
+        return corpo
+
+    corpo["conjuntoVeiculos_id"] = ""
 
     # A cadeia de veiculos vai inteira, mesmo com id desconhecido: a API
     # cobra a presenca da chave. Omitir o campo fazia o Bsoft recusar um por

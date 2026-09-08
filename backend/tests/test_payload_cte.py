@@ -235,3 +235,25 @@ def test_mercadoria_leva_o_produto_predominante_e_a_marca():
     assert linha["natureza"] == "UREIA PRILL MICROGRANULADA 46% N Emb.: SACO DE 50"
     assert linha["marca"] == "Fertimaxi"
     assert linha["naturezaCarga"] == "4"
+
+
+def test_com_conjunto_nao_manda_veiculo_nenhum():
+    """A API nao admite os dois caminhos ao mesmo tempo.
+
+    Com conjuntoVeiculos_id preenchido ela responde "quando declarado
+    conjuntoVeiculos_id nao e necessario declarar as informacoes dos
+    veiculos"; misturando, cobra um veiculo por vez.
+    """
+    corpo = payload(conjunto_veiculos_id="1")
+    assert corpo["conjuntoVeiculos_id"] == "1"
+    for campo in ("motorista_id", "veiculos_id", "carreta_id",
+                  "semireboque_id", "quartoVeiculo_id"):
+        assert campo not in corpo, campo
+
+
+def test_sem_conjunto_manda_os_cinco_veiculos():
+    corpo = payload()
+    assert corpo["conjuntoVeiculos_id"] == ""
+    for campo in ("motorista_id", "veiculos_id", "carreta_id",
+                  "semireboque_id", "quartoVeiculo_id"):
+        assert campo in corpo, campo
