@@ -312,6 +312,14 @@ def _escolher_endereco(enderecos: list, ibge: str, cep: str = "") -> tuple:
         preferenciais = [e for e in candidatos if str(e.get("enderecoPreferencial")).upper() == "S"]
         if len(preferenciais) == 1:
             return preferenciais[0], "", candidatos
+
+        # Candidatos identicos nao sao ambiguidade, sao duplicata de
+        # cadastro: mesma rua, mesmo numero, mesmo CEP. Escolher entre
+        # iguais nao muda o documento, entao nao vale travar a emissao.
+        descricoes = {_descrever(e) for e in candidatos}
+        if len(descricoes) == 1:
+            return candidatos[0], "", candidatos
+
         return None, (
             f"{len(candidatos)} enderecos possiveis no municipio da NF-e: "
             "escolha qual o CT-e deve usar."

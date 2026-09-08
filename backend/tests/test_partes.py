@@ -167,3 +167,34 @@ def test_uma_parte_faltando_deixa_incompleto():
     )
     assert resultado["completo"] is False
     assert any(p.startswith("Destinatario:") for p in resultado["pendencias"])
+
+
+def test_enderecos_identicos_nao_travam_a_emissao():
+    """Duplicata de cadastro nao e ambiguidade.
+
+    O cadastro da Fertimaxi tem quatro enderecos iguais no mesmo municipio,
+    com a mesma rua e o mesmo CEP. Escolher entre iguais nao muda o
+    documento, entao pedir escolha ali so travava a emissao a toa.
+    """
+    a = {"id": "1775", "codIBGE": "2908507", "logradouro": "BR 324", "numero": "KM 537", "cep": "44245000"}
+    b = {"id": "1422", "codIBGE": "2908507", "logradouro": "BR 324", "numero": "KM 537", "cep": "44245000"}
+    resultado = resolver_parte(
+        "08068476000176", "2908507",
+        buscar_pessoa=busca_fixa(FERTIMAXI),
+        listar_enderecos=enderecos_fixos(a, b),
+    )
+    assert resultado["endereco_id"] == "1775"
+    assert resultado["aviso"] == ""
+
+
+def test_enderecos_diferentes_continuam_pedindo_escolha():
+    # Aqui a escolha muda o documento, entao continua bloqueando.
+    a = {"id": "1", "codIBGE": "2908507", "logradouro": "BR 324", "cep": "44245000"}
+    b = {"id": "2", "codIBGE": "2908507", "logradouro": "RUA OUTRA", "cep": "44245000"}
+    resultado = resolver_parte(
+        "08068476000176", "2908507",
+        buscar_pessoa=busca_fixa(FERTIMAXI),
+        listar_enderecos=enderecos_fixos(a, b),
+    )
+    assert resultado["endereco_id"] is None
+    assert "escolha qual" in resultado["aviso"]

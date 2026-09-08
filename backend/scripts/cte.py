@@ -139,12 +139,14 @@ def mostrar_espelho(dados: dict) -> None:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("acao", choices=["espelho", "emitir", "agendamentos", "configuracoes",
-                                    "nfes", "baixar-nfe"])
+                                    "nfes", "baixar-nfe", "varrer"])
     p.add_argument("--cadastro", default="", help="filtra a acao configuracoes")
     p.add_argument("--de", default="", help="dataInicio (AAAA-MM-DD) da acao nfes")
     p.add_argument("--ate", default="", help="dataFim da acao nfes, no maximo 3 meses depois")
     p.add_argument("--chave", default="", help="chave da NF-e da acao baixar-nfe")
     p.add_argument("--saida", default="", help="arquivo onde gravar o XML baixado")
+    p.add_argument("--limite", type=int, default=12,
+                   help="quantas notas tentar na acao varrer")
     p.add_argument("--xml", default="", help="XML da NF-e")
     p.add_argument("--token-file", required=True, help="arquivo com o token da sessao")
     p.add_argument("--credenciais", default="",
@@ -200,6 +202,41 @@ def main() -> int:
         xml = dados["xml"][0]["xml"]["autorizacao"]
         Path(args.saida).write_text(xml, encoding="utf-8")
         print(f"XML gravado em {args.saida} ({len(xml)} caracteres)")
+        return 0
+
+    if args.acao == "varrer":
+        # Percorre as NF-e do periodo e para na primeira que ainda nao tem
+        # CT-e. Existe porque a maioria das notas recentes ja foi faturada,
+        # e testar uma por uma na mao e lento.
+        token = obter_token(args)
+        cabecalho = {"Authorization": f"Bearer {token}"}
+        lista = requests.get(
+            f"{args.api}/fiscal/nfes-recebidas", headers=cabecalho,
+            params={"data_inicio": args.de, "data_fim": args.ate}, timeout=args.timeout,
+        ).json().get("chaves") or []
+
+        temporario = Path(args.saida or "candidata.xml")
+        for posicao, chave in enumerate(lista[: args.limite], start=1):
+            baixado = requests.get(
+                f"{args.api}/fiscal/nfe-xml", headers=cabecalho,
+                params={"chave": chave}, timeout=args.timeout,
+            ).json()
+            if "xml" not in baixado:
+                continue
+            temporario.write_text(baixado["xml"][0]["xml"]["autorizacao"], encoding="utf-8")
+
+            args.xml = str(temporario)
+            resposta = chamar(args, "/fiscal/emitir",
+                              {"confirmar_emissao_real": "true"} if args.definitivo else {})
+            texto = json.dumps(resposta, ensure_ascii=False)
+            if "utilizadas em conhecimentos anteriores" in texto:
+                print(f"{posicao:>3} ...{chave[-12:]} ja tem CT-e")
+                continue
+            print(f"\n=== parou na chave {chave} ===")
+            print(json.dumps(resposta, ensure_ascii=False, indent=1)[:2500])
+            return 0
+
+        print("todas as notas do periodo ja tem CT-e")
         return 0
 
     if args.acao == "configuracoes":
