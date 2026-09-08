@@ -223,3 +223,15 @@ def test_componentes_ausentes_no_dacte_vao_zerados():
     for campo in ("valorISS", "valoresOutros", "valorSeguroAduaneiro",
                   "valorPedagioConhecimento", "valorSeguro", "diaria", "Gris"):
         assert corpo[campo] == "0.00", campo
+
+
+def test_mercadoria_leva_o_produto_predominante_e_a_marca():
+    """No rascunho 5072 o produto predominante saiu vazio.
+
+    A descricao da carga vai no campo "natureza" da mercadoria; eu mandava
+    so o id (naturezaCarga), que classifica mas nao descreve.
+    """
+    linha = payload()["mercadorias"][0]
+    assert linha["natureza"] == "UREIA PRILL MICROGRANULADA 46% N Emb.: SACO DE 50"
+    assert linha["marca"] == "Fertimaxi"
+    assert linha["naturezaCarga"] == "4"

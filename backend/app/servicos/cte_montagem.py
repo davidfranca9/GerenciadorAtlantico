@@ -608,6 +608,11 @@ def _linha_mercadoria(espelho: dict, mercadoria: dict, natureza_carga_id) -> dic
         "tipoNF": mercadoria.get("tipoNF", ""),
         "especie": str(espelho.get("especie", {}).get("especie_id") or ""),
         "naturezaCarga": str(natureza),
+        # "natureza" e a descricao da carga - o produto predominante que o
+        # DACTE imprime. Eu mandava so o id da natureza (naturezaCarga) e o
+        # campo saia vazio no rascunho 5072.
+        "natureza": espelho.get("produto_predominante", ""),
+        "marca": mercadoria.get("marca", ""),
         "quant": mercadoria.get("quant", ""),
         "quantKg": espelho.get("peso_kg", ""),
         "valor": mercadoria.get("valor", ""),
