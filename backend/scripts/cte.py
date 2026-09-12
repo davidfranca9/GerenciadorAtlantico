@@ -44,6 +44,8 @@ def montar_campos(args) -> dict:
         campos["endereco_destinatario_id"] = args.endereco_destinatario
     if args.motorista:
         campos["motorista_id"] = args.motorista
+    if args.motorista_cpf:
+        campos["motorista_cpf"] = args.motorista_cpf
     if args.conjunto:
         campos["conjunto_veiculos_id"] = args.conjunto
     for nome, valor in (("placa_cavalo", args.placa_cavalo),
@@ -138,7 +140,7 @@ def mostrar_espelho(dados: dict) -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("acao", choices=["espelho", "emitir", "agendamentos", "configuracoes",
+    p.add_argument("acao", choices=["motoristas", "veiculos", "espelho", "emitir", "agendamentos", "configuracoes",
                                     "nfes", "baixar-nfe", "varrer", "conhecimentos", "conhecimento", "emails"])
     p.add_argument("--cadastro", default="", help="filtra a acao configuracoes")
     p.add_argument("--busca", default="has:attachment newer_than:3d",
@@ -164,7 +166,9 @@ def main() -> int:
     p.add_argument("--forma-pagamento", dest="forma_pagamento", default="1")
     p.add_argument("--endereco-remetente", default="")
     p.add_argument("--endereco-destinatario", default="")
-    p.add_argument("--motorista", default="")
+    p.add_argument("--motorista", default="", help="id do motorista no Bsoft")
+    p.add_argument("--motorista-cpf", dest="motorista_cpf", default="",
+                   help="CPF do motorista, quando o agendamento nao tem")
     p.add_argument("--placa-cavalo", dest="placa_cavalo", default="")
     p.add_argument("--placa-carreta1", dest="placa_carreta1", default="")
     p.add_argument("--placa-carreta2", dest="placa_carreta2", default="")
@@ -303,6 +307,23 @@ def main() -> int:
                 continue
             print(f"\n== {nome} ==")
             print(json.dumps(conteudo, ensure_ascii=False, indent=1)[:2500])
+        return 0
+
+    if args.acao in ("motoristas", "veiculos"):
+        # As lupas da tela, pela linha de comando: acham o id do motorista
+        # pelo nome e mostram categoria e motorista de cada placa.
+        caminho = "/fiscal/motoristas?nome=" if args.acao == "motoristas" else "/fiscal/veiculos?placa="
+        resposta = requests.get(
+            f"{args.api}{caminho}{requests.utils.quote(args.busca)}",
+            headers={"Authorization": f"Bearer {obter_token(args)}"},
+            timeout=args.timeout,
+        )
+        dados = resposta.json()
+        print(f"HTTP {resposta.status_code}", file=sys.stderr)
+        for item in dados.get("resultados") or []:
+            print(json.dumps(item, ensure_ascii=False))
+        if dados.get("aviso") or dados.get("detail"):
+            print(dados.get("aviso") or dados.get("detail"))
         return 0
 
     if args.acao == "agendamentos":

@@ -249,28 +249,44 @@ VALIDADE_CACHE_SEGUNDOS = 300
 PAGINAS_SIMULTANEAS = 8
 
 
+def _pagina(caminho: str, offset: int) -> list:
+    """LEITURA. Uma pagina da listagem, no formato documentado.
+
+    A paginacao do Bsoft e `?limit=offset,quantidade` (ou `ini`/`fim`).
+    O codigo mandava `inicio`, que a API ignora em silencio: toda pagina
+    voltava sendo a primeira, e o sistema so enxergava os 100 primeiros
+    veiculos e pessoas - "placa nao encontrada" pra quem estava depois.
+    """
+    _, dados = chamar("GET", caminho, params={"limit": f"{offset},{TAMANHO_PAGINA}"})
+    if dados is None:
+        return []
+    return dados if isinstance(dados, list) else [dados]
+
+
 def _paginar(caminho: str) -> list:
     """LEITURA. Le uma listagem inteira, em ondas de paginas paralelas.
 
-    'fim' e QUANTOS registros voltam (maximo 100), nao a posicao final:
-    somar inicio + TAMANHO_PAGINA mandava fim=200 na segunda pagina e a API
-    respondia 400 "Limite invalido, valor maximo aceitavel: 100".
+    Para quando uma pagina vem incompleta (acabou) ou repetida (a API nao
+    andou) - a segunda protecao existe porque foi exatamente o que passou
+    despercebido: 50 paginas iguais, 25 copias do mesmo cadastro na tela.
     """
     todos: list = []
+    vistos: set = set()
     pagina = 0
     while pagina < MAX_PAGINAS_VEICULOS:
         faixa = range(pagina, min(pagina + PAGINAS_SIMULTANEAS, MAX_PAGINAS_VEICULOS))
         with ThreadPoolExecutor(max_workers=PAGINAS_SIMULTANEAS) as executor:
-            ondas = list(executor.map(
-                lambda p: listar(caminho, {"inicio": p * TAMANHO_PAGINA, "fim": TAMANHO_PAGINA}),
-                faixa,
-            ))
+            ondas = list(executor.map(lambda p: _pagina(caminho, p * TAMANHO_PAGINA), faixa))
 
         chegou_ao_fim = False
         for lote in ondas:
-            todos.extend(lote)
-            # Pagina incompleta significa que o cadastro acabou.
-            if len(lote) < TAMANHO_PAGINA:
+            novos = [item for item in lote if str(item.get("id")) not in vistos]
+            for item in novos:
+                vistos.add(str(item.get("id")))
+            todos.extend(novos)
+            # Pagina incompleta: o cadastro acabou. Pagina sem nada novo: a
+            # API nao paginou - continuar so repetiria o mesmo.
+            if len(lote) < TAMANHO_PAGINA or not novos:
                 chegou_ao_fim = True
         if chegou_ao_fim:
             break
@@ -300,6 +316,20 @@ def buscar_veiculo_por_placa(placa: str) -> dict | None:
     alvo = _so_alfanumerico(placa)
     if not alvo:
         return None
+
+    # O GET /veiculos aceita `placa` como filtro (documentado). O cadastro
+    # pode guardar com ou sem hifen, entao as duas formas sao tentadas
+    # antes de cair na varredura completa.
+    for forma in {placa.strip().upper(), alvo, f"{alvo[:3]}-{alvo[3:]}"}:
+        if not forma:
+            continue
+        try:
+            for veiculo in listar("/transporte/v1/veiculos", {"placa": forma}):
+                if _so_alfanumerico(str(veiculo.get("placa", ""))) == alvo:
+                    return veiculo
+        except BsoftError:
+            break
+
     for veiculo in _todos_os_veiculos():
         if _so_alfanumerico(str(veiculo.get("placa", ""))) == alvo:
             return veiculo
@@ -474,8 +504,17 @@ def buscar_pessoas_por_nome(termo: str, limite: int = 25) -> list:
     if len(alvo) < 3:
         return []
 
+    # `descricao` e o filtro documentado de pessoas fisicas: resolve no
+    # servidor, sem depender de ter o cadastro inteiro em memoria.
+    try:
+        candidatas = listar("/pessoas/v1/pessoas/fisicas", {"descricao": termo.strip()})
+    except BsoftError:
+        candidatas = []
+    if not candidatas:
+        candidatas = _todas_as_pessoas_fisicas()
+
     achadas = []
-    for pessoa in _todas_as_pessoas_fisicas():
+    for pessoa in candidatas:
         nome = _nome_da_pessoa(pessoa)
         if alvo in nome.upper():
             achadas.append({
