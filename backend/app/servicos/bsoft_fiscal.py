@@ -558,37 +558,147 @@ def _todas_as_pessoas_fisicas() -> list:
     return todas
 
 
-def buscar_pessoas_por_nome(termo: str, limite: int = 25) -> list:
+# Uma pessoa no Bsoft e UM cadastro que pertence a varios grupos. Nao
+# existe "cadastro de motorista" separado do "cadastro de pessoa": existe a
+# pessoa, e a lista de grupos dela diz o que ela pode ser. Os que importam
+# aqui (de GET /pessoas/v1/pessoas/grupos/geral):
+#
+#   motoristas            pode dirigir - e o unico aceito em motorista_id
+#   proprietariosVeiculos dono do caminhao (exige RNTRC no cadastro)
+#   favorecidos           quem recebe o frete (favorecido_id do CT-e)
+#   transportadoras       empresa que executa o transporte
+#
+# Sao independentes: o dono do caminhao pode nao dirigir, o motorista pode
+# nao ser dono, e uma pessoa cadastrada como cliente nao serve pra nenhum
+# dos dois. Procurar sem olhar o grupo achava a pessoa certa e mandava um
+# id que o campo de motorista nao aceita.
+GRUPO_MOTORISTAS = "motoristas"
+GRUPO_PROPRIETARIOS = "proprietariosVeiculos"
+GRUPO_FAVORECIDOS = "favorecidos"
+
+
+def _resumo_pessoa(pessoa: dict, grupos: list | None = None) -> dict:
+    return {
+        "id": pessoa.get("id"),
+        "nome": _nome_da_pessoa(pessoa),
+        "cpf": pessoa.get("cpf", ""),
+        "grupos": grupos or [],
+    }
+
+
+def buscar_pessoas_por_nome(termo: str, limite: int = 25, grupo: str = "") -> list:
     """LEITURA. Pessoas fisicas cujo nome contem o termo.
 
-    E a lupa da tela: quando o CPF do agendamento nao acha ninguem, da pra
-    procurar o motorista pelo nome.
+    Com `grupo`, so as que pertencem a ele - `grupo` e filtro documentado
+    do endpoint, entao quem responde e o servidor. Sem grupo, procura em
+    todo mundo.
     """
     alvo = (termo or "").strip().upper()
     if len(alvo) < 3:
         return []
 
-    # `descricao` e o filtro documentado de pessoas fisicas: resolve no
-    # servidor, sem depender de ter o cadastro inteiro em memoria.
+    # `descricao` e o filtro documentado de busca parcial.
+    consulta = {"descricao": termo.strip()}
+    if grupo:
+        consulta["grupo"] = grupo
     try:
-        candidatas = listar("/pessoas/v1/pessoas/fisicas", {"descricao": termo.strip()})
+        candidatas = listar("/pessoas/v1/pessoas/fisicas", consulta)
     except BsoftError:
         candidatas = []
-    if not candidatas:
+    if not candidatas and not grupo:
         candidatas = _todas_as_pessoas_fisicas()
 
     achadas = []
     for pessoa in candidatas:
         nome = _nome_da_pessoa(pessoa)
         if alvo in nome.upper():
-            achadas.append({
-                "id": pessoa.get("id"),
-                "nome": nome,
-                "cpf": pessoa.get("cpf", ""),
-            })
+            achadas.append(_resumo_pessoa(pessoa, [grupo] if grupo else []))
             if len(achadas) >= limite:
                 break
     return achadas
+
+
+def procurar_motoristas(termo: str, limite: int = 25) -> dict:
+    """LEITURA. A lupa de motorista da tela.
+
+    Procura primeiro no grupo de motoristas, que e o unico que o campo
+    motorista_id do CT-e aceita. Se nao achar, procura na base inteira e
+    marca o que encontrou como fora do grupo - assim a tela pode dizer
+    "essa pessoa existe, mas nao esta cadastrada como motorista" em vez de
+    devolver um id que o Bsoft vai recusar depois.
+    """
+    motoristas = buscar_pessoas_por_nome(termo, limite, grupo=GRUPO_MOTORISTAS)
+    if motoristas:
+        return {"resultados": motoristas, "aviso": ""}
+
+    outras = buscar_pessoas_por_nome(termo, limite)
+    if not outras:
+        return {"resultados": [], "aviso": "Ninguem com esse nome no cadastro do Bsoft."}
+    for pessoa in outras:
+        pessoa["fora_do_grupo"] = True
+    nomes = ", ".join(p["nome"] for p in outras[:3])
+    return {
+        "resultados": outras,
+        "aviso": (
+            f"Encontrei no cadastro ({nomes}), mas nao no grupo de motoristas. "
+            "No Bsoft, a mesma pessoa pode ser cliente, dono de veiculo ou motorista - "
+            "sao grupos diferentes. Pra usar no CT-e, o grupo 'motoristas' precisa estar "
+            "marcado no cadastro dela."
+        ),
+    }
+
+
+def buscar_conjunto_por_cpf(cpf: str) -> dict | None:
+    """LEITURA. O conjunto de veiculos vinculado a este motorista.
+
+    E o caminho que a API prefere: com conjuntoVeiculos_id ela nao pede
+    nenhum campo de veiculo. Sem ele, cobra a cadeia inteira - motorista,
+    cavalo, carreta, semireboque e quarto veiculo, um erro por vez.
+
+    `cpf` e filtro documentado do GET /conjuntoVeiculos.
+    """
+    limpo = "".join(filter(str.isdigit, cpf or ""))
+    if len(limpo) != 11:
+        return None
+    try:
+        achados = listar("/transporte/v1/conjuntoVeiculos", {"cpf": limpo})
+    except BsoftError:
+        return None
+    if not achados:
+        return None
+    item = achados[0]
+    placas = [item.get(c) for c in ("veiculo", "central", "carreta", "quartoVeiculo")]
+    placas = [p for p in placas if p]
+    return {
+        "id": item.get("id"),
+        "motorista": (item.get("motorista") or "").strip(),
+        "placas": placas,
+        "descricao": " · ".join([(item.get("motorista") or "sem motorista").strip()] + placas),
+    }
+
+
+def criar_conjunto_veiculos(motorista_id: str, placas: dict) -> dict:
+    """ESCRITA no cadastro do Bsoft (nao e documento fiscal).
+
+    Cria o vinculo motorista + veiculos, que e o que o CT-e pede num campo
+    so. Recebe PLACAS, nao ids - e assim que a API deste endpoint trabalha.
+
+    removerVinculacoes fica em "N" de proposito: "S" apagaria os outros
+    vinculos do motorista, e isso e decisao de quem cuida do cadastro.
+    """
+    corpo = {
+        "motoristaId": str(motorista_id),
+        "removerVinculacoes": "N",
+    }
+    for campo, chave in (("veiculo", "placa_cavalo"), ("carreta", "placa_carreta1"),
+                         ("central", "placa_carreta2"), ("quartoVeiculo", "placa_quarto")):
+        if placas.get(chave):
+            corpo[campo] = placas[chave]
+    if "veiculo" not in corpo:
+        raise ValueError("Informe ao menos a placa do cavalo pra criar o conjunto")
+
+    _, resposta = chamar("POST", "/transporte/v1/conjuntoVeiculos", json_body=corpo)
+    return resposta if isinstance(resposta, dict) else {"resposta": resposta}
 
 
 def listar_chaves_nfes_recebidas(data_inicio: str, data_fim: str, ator: str = "TRA") -> list:

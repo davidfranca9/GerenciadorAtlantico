@@ -402,6 +402,10 @@ export function fiscalListarConjuntos() {
   return request("/fiscal/conjuntos");
 }
 
+export function fiscalCriarConjunto(dados) {
+  return request("/fiscal/conjuntos", { method: "POST", body: dados });
+}
+
 export function fiscalProcurarMotoristas(nome) {
   return request(`/fiscal/motoristas?nome=${encodeURIComponent(nome)}`);
 }

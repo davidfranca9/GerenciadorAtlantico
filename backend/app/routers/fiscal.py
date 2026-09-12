@@ -525,16 +525,43 @@ async def listar_conjuntos():
 async def procurar_motoristas(nome: str = ""):
     """LEITURA. Busca motorista pelo nome no cadastro do Bsoft.
 
-    E a lupa da tela: quando o CPF do agendamento nao acha ninguem, da pra
-    achar a pessoa pelo nome e usar o id dela.
+    Procura no grupo de motoristas, que e o unico que o campo motorista_id
+    do CT-e aceita. Achando so fora do grupo, devolve assim mesmo - com o
+    aviso - porque quem opera precisa saber que a pessoa existe mas esta
+    cadastrada como outra coisa (cliente, dono de veiculo).
     """
     if len((nome or "").strip()) < 3:
         return {"resultados": [], "aviso": "Digite ao menos 3 letras do nome."}
     try:
-        resultados = await run_in_threadpool(bsoft_fiscal.buscar_pessoas_por_nome, nome)
+        return await run_in_threadpool(bsoft_fiscal.procurar_motoristas, nome)
     except BsoftError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
-    return {"resultados": resultados}
+
+
+class ConjuntoIn(BaseModel):
+    motorista_id: str
+    placa_cavalo: str
+    placa_carreta1: str = ""
+    placa_carreta2: str = ""
+    placa_quarto: str = ""
+
+
+@router.post("/conjuntos")
+async def criar_conjunto(payload: ConjuntoIn):
+    """ESCRITA no cadastro de veiculos do Bsoft (nao e documento fiscal).
+
+    Vincula motorista e placas num conjunto. Com ele, o CT-e precisa de um
+    campo so - sem ele, a API cobra os cinco, um erro por vez.
+    """
+    try:
+        resposta = await run_in_threadpool(
+            bsoft_fiscal.criar_conjunto_veiculos, payload.motorista_id, payload.model_dump()
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except BsoftError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {"criado": resposta}
 
 
 @router.get("/veiculos")

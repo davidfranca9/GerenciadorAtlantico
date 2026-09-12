@@ -562,6 +562,29 @@ function EmitirCte() {
     }
   }
 
+  // Cria o conjunto no cadastro do Bsoft com o motorista e as placas da
+  // tela, e refaz a conferencia: com conjunto, a cadeia de veiculos some.
+  async function handleCriarConjunto() {
+    const v = espelho?.veiculos || {};
+    const p = v.procurou || {};
+    setOcupado(true);
+    setErro("");
+    try {
+      await api.fiscalCriarConjunto({
+        motorista_id: String(v.motorista_id),
+        placa_cavalo: escolhas.placa_cavalo || p.veiculo_id || "",
+        placa_carreta1: escolhas.placa_carreta1 || p.carreta_id || "",
+        placa_carreta2: escolhas.placa_carreta2 || p.semireboque_id || "",
+        placa_quarto: escolhas.placa_quarto || p.quarto_veiculo_id || "",
+      });
+      await handleConferir();
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
   async function handleEmitir() {
     setOcupado(true);
     setErro("");
@@ -912,7 +935,24 @@ function EmitirCte() {
                   <Campo rotulo="Cavalo" valor={e.veiculos?.veiculo_id ? `cadastro ${e.veiculos.veiculo_id}` : "não encontrado"} />
                   <Campo rotulo="Carreta" valor={e.veiculos?.carreta_id ? `cadastro ${e.veiculos.carreta_id}` : "—"} />
                   <Campo rotulo="Segunda carreta" valor={e.veiculos?.semireboque_id ? `cadastro ${e.veiculos.semireboque_id}` : "—"} />
+                  <Campo rotulo="Quarto veículo" valor={e.veiculos?.quarto_veiculo_id ? `cadastro ${e.veiculos.quarto_veiculo_id}` : "—"} />
                 </Linha>
+                {/* Com conjunto, o Bsoft nao pede nenhum campo de veiculo. Sem
+                    conjunto, pede os quatro - um erro por vez. Por isso o
+                    conjunto e a primeira coisa que a tela mostra. */}
+                {e.veiculos?.conjunto ? (
+                  <div className="inline-alert info" style={{ fontSize: 12 }}>
+                    Conjunto do motorista no Bsoft: <strong>{e.veiculos.conjunto.descricao}</strong>.
+                    O CT-e vai usar esse conjunto — as placas abaixo não são necessárias.
+                  </div>
+                ) : e.veiculos && (
+                  <div className="inline-alert warning" style={{ fontSize: 12 }}>
+                    Esse motorista não tem conjunto de veículos no Bsoft. Sem conjunto, o Bsoft exige
+                    os <strong>quatro</strong> veículos (cavalo, carreta, semi-reboque e quarto veículo).
+                    Preencha as placas e clique em <strong>Criar conjunto no Bsoft</strong> — daí o CT-e
+                    precisa de um campo só.
+                  </div>
+                )}
                 {e.veiculos?.procurou && (
                   <>
                     <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
@@ -938,7 +978,7 @@ function EmitirCte() {
                         rotulo="Ou procure o motorista pelo nome"
                         placeholder="nome do motorista"
                         procurar={api.fiscalProcurarMotoristas}
-                        rotular={(r) => `${r.nome}${r.cpf ? " · " + r.cpf : ""}`}
+                        rotular={(r) => `${r.nome}${r.cpf ? " · " + formatarCpf(r.cpf) : ""}${r.fora_do_grupo ? " · NÃO É MOTORISTA no Bsoft" : ""}`}
                         escolhido={escolhas.motorista_nome}
                         /* Traz o CPF junto para o campo ao lado: quem escolheu
                            pelo nome quer conferir de quem se trata. O envio
@@ -988,10 +1028,29 @@ function EmitirCte() {
                         aoMudar={(v) => setEscolhas((x) => ({ ...x, placa_carreta2: v }))}
                       />
                     </Linha>
-                    <div>
+                    <Linha>
+                      <Corrigir
+                        rotulo="Quarto veículo"
+                        valor={escolhas.placa_quarto}
+                        placeholder="ABC1D23"
+                        formatar={formatarPlaca}
+                        aoMudar={(v) => setEscolhas((x) => ({ ...x, placa_quarto: v }))}
+                      />
+                    </Linha>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                       <button className="btn-secondary" disabled={ocupado} onClick={handleConferir}>
                         Buscar de novo
                       </button>
+                      {!e.veiculos?.conjunto && e.veiculos?.motorista_id && (
+                        <button
+                          className="btn-secondary"
+                          disabled={ocupado || !(escolhas.placa_cavalo || e.veiculos.procurou?.veiculo_id)}
+                          onClick={handleCriarConjunto}
+                          title="Grava no cadastro do Bsoft o vínculo motorista + placas. Não é documento fiscal."
+                        >
+                          Criar conjunto no Bsoft
+                        </button>
+                      )}
                     </div>
                   </>
                 )}

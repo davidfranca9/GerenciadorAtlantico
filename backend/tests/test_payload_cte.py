@@ -21,7 +21,7 @@ PARTES_OK = {
     "remetente": {"pessoa_id": "101", "endereco_id": "9001"},
     "destinatario": {"pessoa_id": "202", "endereco_id": "9002"},
 }
-VEICULOS_OK = {"motorista_id": "652", "veiculo_id": "28", "carreta_id": "29"}
+VEICULOS_OK = {"motorista_id": "652", "veiculo_id": "28", "carreta_id": "29", "semireboque_id": "30", "quarto_veiculo_id": "31"}
 
 
 def payload(**kwargs):

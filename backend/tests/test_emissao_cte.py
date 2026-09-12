@@ -33,7 +33,7 @@ def listar_enderecos(pessoa_id):
 
 
 def veiculos_ok(agendamento, escolhas):
-    return {"motorista_id": "2282", "veiculo_id": "1644", "carreta_id": "1700", "semireboque_id": None, "quarto_veiculo_id": None}
+    return {"motorista_id": "2282", "veiculo_id": "1644", "carreta_id": "1700", "semireboque_id": "1701", "quarto_veiculo_id": "1702"}
 
 
 def seguro_ok():
@@ -72,7 +72,7 @@ def test_montar_aponta_carreta_faltando():
     def sem_carreta(agendamento, escolhas):
         return {**veiculos_ok(agendamento, escolhas), "carreta_id": None}
     m = montar(resolver_veiculos_fn=sem_carreta)
-    assert any("carreta_id" in p for p in m["pendencias"])
+    assert any("Carreta" in p for p in m["pendencias"])
 
 
 def test_montar_definitivo_quando_pedido():

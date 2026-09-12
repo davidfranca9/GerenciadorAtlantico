@@ -144,11 +144,17 @@ def resolver_veiculos(agendamento, escolhas: dict | None = None) -> dict:
                     placas_do_motorista[campo] = achado[slot]
                     placas_fonte = placas_fonte or nome_fonte
 
+    # O conjunto do motorista, quando existe, e o caminho curto: a API nao
+    # pede nenhum campo de veiculo junto dele. Sem conjunto ela cobra os
+    # cinco, um erro por vez.
+    conjunto = bsoft_fiscal.buscar_conjunto_por_cpf(cpf) if cpf else None
+
     encontrados = {
         "procurou": dict(placas, motorista_cpf=cpf, motorista_nome=nome_motorista),
         "placas_do_motorista": placas_do_motorista,
         "placas_fonte": placas_fonte,
         "motorista_id": motorista_id,
+        "conjunto": conjunto,
     }
     for campo, placa in placas.items():
         veiculo = bsoft_fiscal.buscar_veiculo_por_placa(placa) if placa else None
@@ -194,6 +200,9 @@ def montar(
         seguro = resolver_apolice_fn()
     except BsoftError as exc:
         raise FalhaCadastros(f"Falha ao consultar cadastros: {exc}") from exc
+
+    # Conjunto escolhido na tela vence; senao, o do proprio motorista.
+    conjunto_veiculos_id = conjunto_veiculos_id or str((veiculos.get("conjunto") or {}).get("id") or "")
 
     cte_montagem.completar_percurso(espelho, partes)
     cfops_id = escolher_cfops_id(espelho.get("uf_origem", ""), espelho.get("uf_destino", ""))

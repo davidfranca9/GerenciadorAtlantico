@@ -91,7 +91,7 @@ def test_categoria_com_ordinal_e_acento():
 def test_carreta_vazia_vira_pendencia():
     corpo = payload()
     corpo["carreta_id"] = ""
-    assert any("carreta_id" in p for p in cte_montagem.conferir_payload(corpo))
+    assert any("Carreta" in p for p in cte_montagem.conferir_payload(corpo))
 
 
 def test_com_conjunto_a_cadeia_de_veiculos_nao_e_cobrada():

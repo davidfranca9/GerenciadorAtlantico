@@ -823,16 +823,21 @@ def conferir_payload(corpo: dict) -> list[str]:
         if not corpo.get(campo):
             faltando.append(mensagem)
 
-    # Sem conjunto, a API cobra a cadeia de veiculos. O que ela exige com
-    # valor e motorista, cavalo e CARRETA: o rascunho 5072 passou com
-    # semi-reboque e quarto veiculo vazios, mas a carreta em branco volta
-    # "Atributo obrigatorio [carreta_id] nao especificado" - e a tela dizia
-    # "tudo conferido" antes de mandar.
+    # Sem conjunto, a API cobra a CADEIA INTEIRA de veiculos, e cobra um
+    # campo por vez: recusa por carreta_id, a gente preenche, ela recusa
+    # por semireboque_id, e assim por diante. Conferir os quatro aqui faz
+    # a tela mostrar tudo que falta de uma vez, em vez de uma viagem ao
+    # Bsoft por campo.
+    #
+    # O caminho curto e o conjunto de veiculos: com conjuntoVeiculos_id a
+    # API nao pede nenhum destes.
     if not corpo.get("conjuntoVeiculos_id"):
         for campo, mensagem in (
-            ("motorista_id", "Motorista nao encontrado no cadastro do Bsoft."),
-            ("veiculos_id", "Cavalo nao encontrado no cadastro do Bsoft (placa do cavalo)."),
-            ("carreta_id", "Carreta nao informada: o Bsoft recusa o CT-e sem ela (carreta_id)."),
+            ("motorista_id", "Motorista nao encontrado no grupo de motoristas do Bsoft."),
+            ("veiculos_id", "Cavalo nao encontrado no cadastro de veiculos (placa do cavalo)."),
+            ("carreta_id", "Carreta nao encontrada no cadastro de veiculos."),
+            ("semireboque_id", "Semi-reboque nao informado: sem conjunto de veiculos, o Bsoft exige os quatro."),
+            ("quartoVeiculo_id", "Quarto veiculo nao informado: sem conjunto de veiculos, o Bsoft exige os quatro."),
         ):
             if not corpo.get(campo):
                 faltando.append(mensagem)
