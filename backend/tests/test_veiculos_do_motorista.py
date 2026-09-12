@@ -100,3 +100,36 @@ def test_com_conjunto_a_cadeia_de_veiculos_nao_e_cobrada():
     corpo["carreta_id"] = ""
     corpo["veiculos_id"] = ""
     assert not any("carreta_id" in p or "Cavalo" in p for p in cte_montagem.conferir_payload(corpo))
+
+
+# --------------------------------------------------------------------------
+# Segunda fonte: o ultimo CT-e com o mesmo cavalo ou motorista
+# --------------------------------------------------------------------------
+
+CTES = [
+    {"nro": "5089", "dtEmissao": "2026-09-11 21:02:00", "dados_motorista": {"motorista": "EDELSON FERREIRA BARROS", "veiculo": "KPM-4G46", "carreta": "MCY-2I23"}},
+    {"nro": "5041", "dtEmissao": "2026-09-05 09:21:00", "dados_motorista": {"motorista": "ISMAEL LUCIANO NUNES ", "veiculo": "HIA-2E45", "carreta": "CUB-2C04"}},
+    {"nro": "5010", "dtEmissao": "2026-08-20 10:00:00", "dados_motorista": {"motorista": "ISMAEL LUCIANO NUNES ", "veiculo": "HIA-2E45", "carreta": "VEL-0H00", "semiReboque": "SEG-0N00"}},
+]
+
+
+def test_ultimo_cte_do_cavalo_traz_a_carreta():
+    achado = bsoft_fiscal.placas_do_ultimo_cte(placa_cavalo="hia2e45", ctes=CTES)
+    assert achado["placa_carreta1"] == "CUB-2C04"      # o de 05/09, nao o de 20/08
+    assert achado["fonte"].startswith("CT-e 5041")
+
+
+def test_cavalo_vale_mais_que_motorista():
+    # Motorista do 5089 dirigindo o cavalo do 5041: a carreta segue o cavalo.
+    achado = bsoft_fiscal.placas_do_ultimo_cte(placa_cavalo="HIA-2E45", motorista_nome="EDELSON FERREIRA BARROS", ctes=CTES)
+    assert achado["placa_carreta1"] == "CUB-2C04"
+
+
+def test_sem_o_cavalo_no_historico_cai_no_motorista():
+    achado = bsoft_fiscal.placas_do_ultimo_cte(placa_cavalo="ZZZ-0Z00", motorista_nome="Ismael Luciano Nunes", ctes=CTES)
+    assert achado["placa_cavalo"] == "HIA-2E45" and achado["placa_carreta1"] == "CUB-2C04"
+
+
+def test_ninguem_no_historico_devolve_vazio():
+    achado = bsoft_fiscal.placas_do_ultimo_cte(placa_cavalo="PFJ-2I64", motorista_nome="CARLOS ALBERTO", ctes=CTES)
+    assert achado["fonte"] == "" and achado["placa_carreta1"] == ""

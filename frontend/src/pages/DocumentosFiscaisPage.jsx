@@ -915,7 +915,7 @@ function EmitirCte() {
                     </div>
                     {Object.keys(e.veiculos.placas_do_motorista || {}).length > 0 && (
                       <div className="inline-alert info" style={{ fontSize: 12 }}>
-                        Placas puxadas do cadastro do motorista no Bsoft:{" "}
+                        Placas puxadas de {e.veiculos.placas_fonte || "cadastro do Bsoft"}:{" "}
                         {Object.values(e.veiculos.placas_do_motorista).join(", ")}.
                       </div>
                     )}

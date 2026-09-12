@@ -437,6 +437,70 @@ def veiculos_do_motorista(cpf: str = "", nome: str = "") -> dict:
     return slots
 
 
+# Segunda fonte de placas: o ultimo CT-e emitido com o mesmo cavalo ou o
+# mesmo motorista. O cadastro de veiculo so conhece o motorista habitual
+# (o PFJ-2I64 e da Soraia, mesmo quando o Carlos dirige); o CT-e anterior
+# sabe qual carreta andou atras de qual cavalo de verdade.
+_CACHE_CTES: dict = {"quando": 0.0, "lista": []}
+DIAS_DE_HISTORICO = 90  # o filtro por data aceita no maximo 3 meses
+
+
+def _ctes_recentes() -> list:
+    """LEITURA. CT-es dos ultimos meses, com cache curto."""
+    from datetime import date, timedelta
+
+    agora = time.time()
+    if _CACHE_CTES["lista"] and agora - _CACHE_CTES["quando"] < VALIDADE_CACHE_SEGUNDOS:
+        return _CACHE_CTES["lista"]
+    hoje = date.today()
+    lista = consultar_conhecimentos({
+        "dataInicio": (hoje - timedelta(days=DIAS_DE_HISTORICO)).strftime("%Y-%m-%d"),
+        "dataFim": hoje.strftime("%Y-%m-%d"),
+    })
+    _CACHE_CTES.update({"quando": agora, "lista": lista})
+    return lista
+
+
+def placas_do_ultimo_cte(placa_cavalo: str = "", motorista_nome: str = "", ctes: list | None = None) -> dict:
+    """Placas do CT-e mais recente com este cavalo (ou, senao, este motorista).
+
+    O cavalo vale mais que o motorista: a carreta anda atras do cavalo,
+    nao atras da pessoa.
+    """
+    vazio = {"placa_cavalo": "", "placa_carreta1": "", "placa_carreta2": "", "fonte": ""}
+    alvo_placa = _so_alfanumerico(placa_cavalo)
+    alvo_nome = _sem_acento(motorista_nome).upper().strip()
+    if not (alvo_placa or alvo_nome):
+        return vazio
+
+    lista = ctes if ctes is not None else _ctes_recentes()
+    ordenada = sorted(lista, key=lambda c: str(c.get("dtEmissao") or ""), reverse=True)
+
+    def _escolher(criterio):
+        for cte in ordenada:
+            dados = cte.get("dados_motorista") or {}
+            if criterio(dados):
+                numero = cte.get("nro")
+                quando = str(cte.get("dtEmissao") or "")[:10]
+                return {
+                    "placa_cavalo": str(dados.get("veiculo") or "").strip(),
+                    "placa_carreta1": str(dados.get("carreta") or "").strip(),
+                    "placa_carreta2": str(dados.get("semiReboque") or "").strip(),
+                    "fonte": f"CT-e {numero} de {quando}",
+                }
+        return None
+
+    if alvo_placa:
+        achado = _escolher(lambda d: _so_alfanumerico(str(d.get("veiculo") or "")) == alvo_placa)
+        if achado:
+            return achado
+    if alvo_nome:
+        achado = _escolher(lambda d: alvo_nome in _sem_acento(d.get("motorista") or "").upper())
+        if achado:
+            return achado
+    return vazio
+
+
 # Nomes possiveis do campo de numero na apolice. O cadastro nao esta
 # documentado campo a campo, entao a busca tenta os nomes plausiveis em vez
 # de fixar um so e falhar em silencio.

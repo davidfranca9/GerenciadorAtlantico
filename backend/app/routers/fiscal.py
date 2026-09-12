@@ -443,20 +443,30 @@ def _resolver_veiculos(agendamento, escolhas: dict | None = None) -> dict:
     # deixava a carreta em branco, e o Bsoft recusa CT-e sem carreta_id.
     # O que veio do agendamento ou da tela continua valendo mais.
     placas_do_motorista = {}
-    if encontrados_id and not all(placas[c] for c in ("veiculo_id", "carreta_id")):
-        do_cadastro = bsoft_fiscal.veiculos_do_motorista(cpf=cpf, nome=nome_motorista)
-        for campo, slot in (
-            ("veiculo_id", "placa_cavalo"),
-            ("carreta_id", "placa_carreta1"),
-            ("semireboque_id", "placa_carreta2"),
-        ):
-            if not placas[campo] and do_cadastro.get(slot):
-                placas[campo] = do_cadastro[slot]
-                placas_do_motorista[campo] = do_cadastro[slot]
+    placas_fonte = ""
+    slots = (("veiculo_id", "placa_cavalo"), ("carreta_id", "placa_carreta1"), ("semireboque_id", "placa_carreta2"))
+    if not all(placas[c] for c in ("veiculo_id", "carreta_id")):
+        # Duas fontes, nesta ordem: o cadastro do motorista (quem e o dono
+        # habitual do veiculo) e, se ele nao souber, o ultimo CT-e com o
+        # mesmo cavalo ou o mesmo motorista - que sabe qual carreta andou
+        # atras de qual cavalo de verdade.
+        fontes = []
+        if encontrados_id:
+            fontes.append(("cadastro do motorista", bsoft_fiscal.veiculos_do_motorista(cpf=cpf, nome=nome_motorista)))
+        historico = bsoft_fiscal.placas_do_ultimo_cte(placa_cavalo=placas["veiculo_id"], motorista_nome=nome_motorista)
+        if historico.get("fonte"):
+            fontes.append((historico["fonte"], historico))
+        for nome_fonte, achado in fontes:
+            for campo, slot in slots:
+                if not placas[campo] and achado.get(slot):
+                    placas[campo] = achado[slot]
+                    placas_do_motorista[campo] = achado[slot]
+                    placas_fonte = placas_fonte or nome_fonte
 
     encontrados = {
         "procurou": dict(placas, motorista_cpf=cpf, motorista_nome=nome_motorista),
         "placas_do_motorista": placas_do_motorista,
+        "placas_fonte": placas_fonte,
         "motorista_id": encontrados_id,
     }
 
