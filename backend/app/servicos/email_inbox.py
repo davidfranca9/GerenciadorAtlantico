@@ -312,3 +312,31 @@ def contar_desde(epoch: int) -> int:
         if status != "OK" or not resultado or not resultado[0]:
             return 0
         return len(resultado[0].split())
+
+
+def anexos_xml_recentes(dias: int = 7, limite_mensagens: int = 20) -> list[str]:
+    """Conteudo dos anexos .xml das mensagens recentes.
+
+    E o caminho rapido pra pegar a NF-e: quando o fornecedor manda o
+    arquivo, ele chega aqui antes de aparecer na esteira da SEFAZ.
+    """
+    encontrados: list[str] = []
+    listagem = listar_mensagens(1, limite_mensagens, f"has:attachment newer_than:{dias}d")
+
+    for resumo in listagem.get("mensagens", []):
+        with _lock:
+            conexao = _obter_conexao()
+            if conexao.select("INBOX")[0] != "OK":
+                continue
+            status, dados = conexao.fetch(str(resumo["id"]).encode(), "(BODY[])")
+        if status != "OK" or not dados or not isinstance(dados[0], tuple):
+            continue
+
+        for anexo in _partes_anexas(email.message_from_bytes(dados[0][1])):
+            if not anexo["nome"].lower().endswith(".xml"):
+                continue
+            try:
+                encontrados.append(anexo["conteudo"].decode("utf-8", errors="replace"))
+            except Exception:
+                continue
+    return encontrados

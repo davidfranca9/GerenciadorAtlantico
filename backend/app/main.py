@@ -49,6 +49,9 @@ app.include_router(fiscal_router)
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    # Coleta as NF-e sozinho: e-mail a cada 10 min, SEFAZ a cada hora.
+    from .servicos import coleta_automatica
+    coleta_automatica.iniciar()
     try:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS observacoes VARCHAR(2000) DEFAULT ''"))

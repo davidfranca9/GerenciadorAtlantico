@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Float, ForeignKey, Integer, LargeBinary, String, DateTime, Boolean, UniqueConstraint
+from sqlalchemy import Float, ForeignKey, Integer, LargeBinary, String, Text, DateTime, Boolean, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -269,3 +269,32 @@ class EstadoSefaz(Base):
     ultima_consulta: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     ultimo_status: Mapped[str] = mapped_column(String(200), default="")
     documentos_baixados: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class NotaFiscalRecebida(Base):
+    """NF-e disponivel pra virar CT-e, venha de onde vier.
+
+    Duas fontes alimentam esta tabela: o anexo do e-mail do fornecedor
+    (chega na hora, quando ele manda) e a esteira da SEFAZ (de hora em
+    hora, pega o que ninguem mandou). A chave e unica, entao a mesma nota
+    chegando pelos dois caminhos nao duplica.
+    """
+
+    __tablename__ = "notas_fiscais_recebidas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chave: Mapped[str] = mapped_column(String(44), unique=True, index=True)
+    origem: Mapped[str] = mapped_column(String(20), default="sefaz")  # sefaz | email
+    numero: Mapped[str] = mapped_column(String(20), default="")
+    serie: Mapped[str] = mapped_column(String(10), default="")
+    emissao: Mapped[str] = mapped_column(String(10), default="")
+    emitente_nome: Mapped[str] = mapped_column(String(255), default="")
+    destinatario_nome: Mapped[str] = mapped_column(String(255), default="")
+    municipio_destino: Mapped[str] = mapped_column(String(120), default="")
+    uf_destino: Mapped[str] = mapped_column(String(2), default="")
+    valor_nota: Mapped[str] = mapped_column(String(20), default="")
+    peso_bruto: Mapped[str] = mapped_column(String(20), default="")
+    xml: Mapped[str] = mapped_column(Text, default="")
+    tem_cte: Mapped[bool] = mapped_column(Boolean, default=False)
+    cte_numero: Mapped[str] = mapped_column(String(20), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -30,8 +30,8 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..config import settings
 from ..database import get_db
-from ..models import Agendamento, EstadoSefaz, OperacaoFiscal, User
-from ..servicos import bsoft_fiscal, cte_montagem, nfe_xml, sefaz_nfe
+from ..models import Agendamento, EstadoSefaz, NotaFiscalRecebida, OperacaoFiscal, User
+from ..servicos import bsoft_fiscal, cte_montagem, nfe_xml, notas_recebidas, sefaz_nfe
 from ..servicos.bsoft_client import BsoftEmissaoBloqueada, BsoftError, sanitizar
 
 logger = logging.getLogger(__name__)
@@ -787,6 +787,11 @@ async def sincronizar_sefaz(db: Session = Depends(get_db)):
     estado.documentos_baixados = (estado.documentos_baixados or 0) + len(resultado["completas"])
     db.commit()
 
+    guardadas = 0
+    for nota in resultado["completas"]:
+        if notas_recebidas.guardar(db, nota["xml"], "sefaz") is not None:
+            guardadas += 1
+
     return {
         "status": resultado["status"],
         "motivo": resultado["motivo"],
@@ -794,6 +799,50 @@ async def sincronizar_sefaz(db: Session = Depends(get_db)):
         "maximo_nsu": estado.maximo_nsu,
         "resumos_recebidos": resultado["resumos"],
         "notas_completas": len(resultado["completas"]),
+        "guardadas": guardadas,
         "chaves": [c["chave"] for c in resultado["completas"]],
         "falhas": resultado["falhas"],
+    }
+
+
+@router.post("/email/sincronizar")
+async def sincronizar_email(dias: int = 7, db: Session = Depends(get_db)):
+    """Guarda as NF-e que chegaram anexadas no e-mail.
+
+    Caminho rapido: quando o fornecedor manda o arquivo, a nota fica
+    disponivel na hora, sem esperar a esteira da SEFAZ.
+    """
+    from ..servicos import email_inbox
+    try:
+        xmls = await run_in_threadpool(email_inbox.anexos_xml_recentes, dias)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao ler a caixa: {exc}")
+
+    guardadas = [n for n in (notas_recebidas.guardar(db, x, "email") for x in xmls) if n]
+    return {
+        "anexos_xml": len(xmls),
+        "notas": len(guardadas),
+        "chaves": [n.chave for n in guardadas],
+    }
+
+
+@router.get("/notas")
+def listar_notas(db: Session = Depends(get_db)):
+    """NF-e disponiveis pra virar CT-e, de qualquer fonte."""
+    return {
+        "notas": [
+            {
+                "chave": n.chave,
+                "origem": n.origem,
+                "numero": n.numero,
+                "serie": n.serie,
+                "emissao": n.emissao,
+                "emitente": n.emitente_nome,
+                "destinatario": n.destinatario_nome,
+                "destino": f"{n.municipio_destino} - {n.uf_destino}",
+                "valor": n.valor_nota,
+                "peso": n.peso_bruto,
+            }
+            for n in notas_recebidas.pendentes(db)
+        ]
     }
