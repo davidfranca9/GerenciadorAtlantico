@@ -249,3 +249,23 @@ class CartaFreteEnviada(Base):
     destinatarios: Mapped[str] = mapped_column(String(500), default="")
     status: Mapped[str] = mapped_column(String(20), default="")  # "enviada" | "erro"
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class EstadoSefaz(Base):
+    """Onde a leitura da SEFAZ parou.
+
+    O servico de distribuicao entrega documentos por NSU, um contador
+    sequencial. Pedir desde o zero e recusado como "consumo indevido" e
+    ainda bloqueia por uma hora, entao onde paramos precisa sobreviver a
+    reinicio e a deploy - dai estar no banco e nao em memoria.
+    """
+
+    __tablename__ = "estado_sefaz"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cnpj: Mapped[str] = mapped_column(String(14), unique=True)
+    ultimo_nsu: Mapped[str] = mapped_column(String(15), default="0")
+    maximo_nsu: Mapped[str] = mapped_column(String(15), default="0")
+    ultima_consulta: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    ultimo_status: Mapped[str] = mapped_column(String(200), default="")
+    documentos_baixados: Mapped[int] = mapped_column(Integer, default=0)

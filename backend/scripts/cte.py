@@ -312,7 +312,13 @@ def main() -> int:
             headers={"Authorization": f"Bearer {obter_token(args)}"},
             timeout=args.timeout,
         )
-        for item in (resposta.json() or [])[:15]:
+        dados = resposta.json()
+        if not isinstance(dados, list):
+            # Erro (token vencido, por exemplo) vem como objeto, e fatiar
+            # um dicionario quebrava com TypeError em vez de explicar.
+            print(json.dumps(dados, ensure_ascii=False)[:300])
+            return 1
+        for item in dados[:15]:
             data = item.get("data_agendada") or item.get("loading_date") or "sem data"
             print(f"#{item.get('id')} {data} {item.get('driver_name') or 'sem motorista'} "
                   f"{item.get('plate_cavalo') or ''} {item.get('status') or ''}")

@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     # Pra desligar sem deploy: BSOFT_EMISSAO_HABILITADA=false.
     bsoft_emissao_habilitada: bool = True
 
+    # Certificado A1 da empresa, usado pra baixar XML de NF-e direto da
+    # SEFAZ. O arquivo fica FORA do repositorio e o caminho vem por
+    # variavel de ambiente; a senha idem.
+    certificado_pfx_path: str = ""
+    certificado_senha: str = ""
+    certificado_cnpj: str = "08187322000101"
+    sefaz_timeout_segundos: int = 60
+
     gemini_api_key: str = ""
 
     whatsapp_verify_token: str = ""

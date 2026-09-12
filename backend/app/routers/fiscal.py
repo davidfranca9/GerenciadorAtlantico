@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from xml.etree import ElementTree
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
@@ -29,8 +30,8 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..config import settings
 from ..database import get_db
-from ..models import Agendamento, OperacaoFiscal, User
-from ..servicos import bsoft_fiscal, cte_montagem, nfe_xml
+from ..models import Agendamento, EstadoSefaz, OperacaoFiscal, User
+from ..servicos import bsoft_fiscal, cte_montagem, nfe_xml, sefaz_nfe
 from ..servicos.bsoft_client import BsoftEmissaoBloqueada, BsoftError, sanitizar
 
 logger = logging.getLogger(__name__)
@@ -749,3 +750,55 @@ async def consultar_status(operacao_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(operacao)
     return {**_to_dict(operacao), "bsoft": dados}
+
+
+@router.post("/sefaz/sincronizar")
+async def sincronizar_sefaz(db: Session = Depends(get_db)):
+    """LEITURA na SEFAZ. Baixa os XML de NF-e novos com o certificado A1.
+
+    Continua de onde parou: o servico entrega por NSU, e pedir desde o zero
+    e recusado como "consumo indevido" com uma hora de bloqueio. Por isso o
+    ponteiro fica no banco, nao em memoria.
+    """
+    estado = (
+        db.query(EstadoSefaz)
+        .filter(EstadoSefaz.cnpj == settings.certificado_cnpj)
+        .one_or_none()
+    )
+    if estado is None:
+        estado = EstadoSefaz(cnpj=settings.certificado_cnpj, ultimo_nsu="0")
+        db.add(estado)
+
+    try:
+        resultado = await run_in_threadpool(sefaz_nfe.consultar_documentos, estado.ultimo_nsu)
+    except sefaz_nfe.CertificadoAusente as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except sefaz_nfe.SefazIndisponivel as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    # A SEFAZ devolve o ponteiro dela mesmo quando recusa a consulta: vale
+    # guardar, senao a proxima tentativa repete o erro.
+    if resultado.get("ultimo_nsu"):
+        estado.ultimo_nsu = resultado["ultimo_nsu"]
+    if resultado.get("maximo_nsu"):
+        estado.maximo_nsu = resultado["maximo_nsu"]
+    estado.ultima_consulta = datetime.utcnow()
+    estado.ultimo_status = f"{resultado.get('status')} {resultado.get('motivo')}"[:200]
+    estado.documentos_baixados = (estado.documentos_baixados or 0) + len(resultado["documentos"])
+    db.commit()
+
+    # As notas completas (procNFe) sao as que servem pra emitir CT-e; os
+    # resumos (resNFe) so avisam que a nota existe.
+    completas = [d for d in resultado["documentos"] if "procNFe" in d["schema"]]
+    return {
+        "status": resultado["status"],
+        "motivo": resultado["motivo"],
+        "ultimo_nsu": estado.ultimo_nsu,
+        "maximo_nsu": estado.maximo_nsu,
+        "documentos": len(resultado["documentos"]),
+        "notas_completas": len(completas),
+        "chaves": [
+            "".join(filter(str.isdigit, d["xml"].split('Id="NFe')[1][:44]))
+            for d in completas if 'Id="NFe' in d["xml"]
+        ][:50],
+    }
