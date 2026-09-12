@@ -263,6 +263,13 @@ function NotasRecebidas({ notas, carregando, chave, aoEscolher, aoRecarregar }) 
             : `Sem agendamento: ${escolhida.casamento}.`}
         </div>
       )}
+      {escolhida?.rascunho_resultado && (
+        <div className={escolhida.rascunho_resultado.startsWith("rascunho ") ? "inline-alert info" : "inline-alert warning"} style={{ fontSize: 12 }}>
+          {escolhida.rascunho_resultado.startsWith("rascunho ")
+            ? `Preparado sozinho: ${escolhida.rascunho_resultado}. Confira e emita o definitivo no Bsoft — ou apague o rascunho lá para emitir daqui.`
+            : `O sistema tentou preparar o CT-e sozinho e ${escolhida.rascunho_resultado}.`}
+        </div>
+      )}
       {!carregando && !notas.length && (
         <div style={{ fontSize: 12, color: "var(--muted)" }}>
           Nenhuma nota coletada ainda. Você também pode colar a chave de uma NF-e abaixo — ela é

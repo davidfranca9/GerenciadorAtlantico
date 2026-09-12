@@ -31,7 +31,7 @@ from ..auth import get_current_user
 from ..config import settings
 from ..database import get_db
 from ..models import Agendamento, EstadoSefaz, NotaFiscalRecebida, OperacaoFiscal, User
-from ..servicos import bsoft_fiscal, cte_montagem, nfe_xml, notas_recebidas, sefaz_nfe
+from ..servicos import bsoft_fiscal, cte_montagem, emissao_cte, nfe_xml, notas_recebidas, sefaz_nfe
 from ..servicos.bsoft_client import BsoftEmissaoBloqueada, BsoftError, sanitizar
 
 logger = logging.getLogger(__name__)
@@ -92,15 +92,9 @@ def montar_payload_cte(
     return corpo
 
 
-def escolher_cfops_id(uf_origem: str, uf_destino: str) -> int:
-    """Natureza da operacao (cfops_id no Bsoft): CFOP 5352 quando a prestacao
-    fica dentro do estado, 6352 quando cruza a divisa. Sem as duas UFs, cai
-    no interestadual, que e o caso mais comum da operacao."""
-    origem = (uf_origem or "").strip().upper()
-    destino = (uf_destino or "").strip().upper()
-    if origem and destino and origem == destino:
-        return settings.bsoft_cfops_id_estadual
-    return settings.bsoft_cfops_id_interestadual
+# A regra do CFOP (5352 dentro do estado, 6352 fora) mora no servico de
+# emissao, que a tela e o rascunho automatico compartilham.
+escolher_cfops_id = emissao_cte.escolher_cfops_id
 
 
 class SimularIn(BaseModel):
@@ -343,8 +337,8 @@ async def espelho_do_cte(
             endereco_remetente_id=endereco_remetente_id or None,
             endereco_destinatario_id=endereco_destinatario_id or None,
         )
-        veiculos = await run_in_threadpool(_resolver_veiculos, agendamento, _escolhas(locals()))
-        seguro = await run_in_threadpool(_resolver_apolice)
+        veiculos = await run_in_threadpool(emissao_cte.resolver_veiculos, agendamento, emissao_cte.escolhas_de(locals()))
+        seguro = await run_in_threadpool(emissao_cte.resolver_apolice)
     except BsoftError as exc:
         resultado["partes"] = {"erro": str(exc)}
         resultado["pendencias"] = resultado["pendencias"] + [
@@ -378,102 +372,6 @@ async def espelho_do_cte(
         resultado["pendencias"] + partes["pendencias"] + cte_montagem.conferir_payload(corpo)
     )
     return resultado
-
-
-def _resolver_apolice() -> dict:
-    """Ids do seguro. Configurado por variavel vence; senao, busca pelo numero.
-
-    O numero da apolice ja e conhecido (202511, conferido no DACTE 5053),
-    entao nao faz sentido pedir o id na mao: a consulta resolve.
-    """
-    if settings.bsoft_seguradora_id:
-        return {
-            "seguradora_id": settings.bsoft_seguradora_id,
-            "apolice_id": settings.bsoft_apolice_id,
-        }
-    achada = bsoft_fiscal.buscar_apolice(settings.bsoft_numero_apolice)
-    if not achada:
-        return {"seguradora_id": "", "apolice_id": ""}
-    return {
-        "seguradora_id": str(achada.get("seguradora_id") or ""),
-        "apolice_id": str(achada.get("apolice_id") or ""),
-    }
-
-
-CAMPOS_ESCOLHA = (
-    "motorista_id", "motorista_cpf", "placa_cavalo",
-    "placa_carreta1", "placa_carreta2", "placa_quarto",
-)
-
-
-def _escolhas(valores: dict) -> dict:
-    """Junta o que foi escolhido na tela, ignorando os campos vazios."""
-    return {nome: valores[nome] for nome in CAMPOS_ESCOLHA if valores.get(nome)}
-
-
-def _resolver_veiculos(agendamento, escolhas: dict | None = None) -> dict:
-    """Traduz motorista e placas em ids do Bsoft.
-
-    O que vier da tela vence o agendamento: quando o cadastro nao e achado
-    pela placa ou pelo CPF, quem opera corrige ali em vez de ficar travado.
-    Devolve tambem o que foi procurado, pra tela poder explicar a falha.
-    """
-    escolhas = escolhas or {}
-    cpf = escolhas.get("motorista_cpf") or getattr(agendamento, "driver_cpf", "")
-    placas = {
-        "veiculo_id": escolhas.get("placa_cavalo") or getattr(agendamento, "plate_cavalo", ""),
-        "carreta_id": escolhas.get("placa_carreta1") or getattr(agendamento, "plate_carreta1", ""),
-        "semireboque_id": escolhas.get("placa_carreta2") or getattr(agendamento, "plate_carreta2", ""),
-        # A API exige os quatro slots com id real; um rebocador comum so
-        # usa dois, entao este costuma vir da tela.
-        "quarto_veiculo_id": escolhas.get("placa_quarto", ""),
-    }
-    nome_motorista = ""
-    if escolhas.get("motorista_id"):
-        encontrados_id = escolhas["motorista_id"]
-        nome_motorista = bsoft_fiscal.nome_da_pessoa_por_id(encontrados_id)
-    else:
-        motorista = bsoft_fiscal.buscar_pessoa(cpf) if cpf else None
-        encontrados_id = motorista.get("id") if motorista else None
-        if motorista:
-            nome_motorista = motorista.get("nome") or motorista.get("razaoSocial") or ""
-
-    # Slot vazio e preenchido com o veiculo que o cadastro do Bsoft liga a
-    # este motorista. Era o que faltava: escolher o motorista pela lupa
-    # deixava a carreta em branco, e o Bsoft recusa CT-e sem carreta_id.
-    # O que veio do agendamento ou da tela continua valendo mais.
-    placas_do_motorista = {}
-    placas_fonte = ""
-    slots = (("veiculo_id", "placa_cavalo"), ("carreta_id", "placa_carreta1"), ("semireboque_id", "placa_carreta2"))
-    if not all(placas[c] for c in ("veiculo_id", "carreta_id")):
-        # Duas fontes, nesta ordem: o cadastro do motorista (quem e o dono
-        # habitual do veiculo) e, se ele nao souber, o ultimo CT-e com o
-        # mesmo cavalo ou o mesmo motorista - que sabe qual carreta andou
-        # atras de qual cavalo de verdade.
-        fontes = []
-        if encontrados_id:
-            fontes.append(("cadastro do motorista", bsoft_fiscal.veiculos_do_motorista(cpf=cpf, nome=nome_motorista)))
-        historico = bsoft_fiscal.placas_do_ultimo_cte(placa_cavalo=placas["veiculo_id"], motorista_nome=nome_motorista)
-        if historico.get("fonte"):
-            fontes.append((historico["fonte"], historico))
-        for nome_fonte, achado in fontes:
-            for campo, slot in slots:
-                if not placas[campo] and achado.get(slot):
-                    placas[campo] = achado[slot]
-                    placas_do_motorista[campo] = achado[slot]
-                    placas_fonte = placas_fonte or nome_fonte
-
-    encontrados = {
-        "procurou": dict(placas, motorista_cpf=cpf, motorista_nome=nome_motorista),
-        "placas_do_motorista": placas_do_motorista,
-        "placas_fonte": placas_fonte,
-        "motorista_id": encontrados_id,
-    }
-
-    for campo, placa in placas.items():
-        veiculo = bsoft_fiscal.buscar_veiculo_por_placa(placa) if placa else None
-        encontrados[campo] = veiculo.get("id") if veiculo else None
-    return encontrados
 
 
 @router.post("/emitir")
@@ -525,83 +423,44 @@ async def emitir_conhecimento(
     )
 
     chave = espelho["chaves_nfe"][0]
-    # Protecao contra emissao duplicada: o indice unico
-    # (agendamento_id, chave_nfe) garante uma operacao por carga.
-    operacao = (
-        db.query(OperacaoFiscal)
-        .filter(OperacaoFiscal.agendamento_id == agendamento_id, OperacaoFiscal.chave_nfe == chave)
-        .one_or_none()
-    )
-    if operacao and operacao.cod_conhecimento_bsoft:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Essa NF-e ja gerou o CT-e {operacao.cod_conhecimento_bsoft}. Nao sera emitido de novo.",
-        )
-    if operacao is None:
-        operacao = OperacaoFiscal(agendamento_id=agendamento_id, chave_nfe=chave, status="RASCUNHO")
-        db.add(operacao)
-
     try:
-        partes = await run_in_threadpool(
-            cte_montagem.resolver_partes,
-            espelho,
-            buscar_pessoa=bsoft_fiscal.buscar_pessoa,
-            listar_enderecos=bsoft_fiscal.listar_enderecos,
-            endereco_remetente_id=endereco_remetente_id or None,
-            endereco_destinatario_id=endereco_destinatario_id or None,
+        montado = await run_in_threadpool(
+            emissao_cte.montar,
+            espelho, agendamento,
+            escolhas=emissao_cte.escolhas_de(locals()),
+            aliquota_icms=aliquota_icms,
+            km=km,
+            forma_pagamento=forma_pagamento,
+            conjunto_veiculos_id=conjunto_veiculos_id,
+            endereco_remetente_id=endereco_remetente_id,
+            endereco_destinatario_id=endereco_destinatario_id,
+            rascunho=not confirmar_emissao_real,
         )
-        veiculos = await run_in_threadpool(_resolver_veiculos, agendamento, _escolhas(locals()))
-        seguro = await run_in_threadpool(_resolver_apolice)
-    except BsoftError as exc:
-        raise HTTPException(status_code=502, detail=f"Falha ao consultar cadastros: {exc}")
-
-    cte_montagem.completar_percurso(espelho, partes)
-    corpo = cte_montagem.montar_payload_conhecimento(
-        espelho,
-        partes=partes,
-        veiculos=veiculos,
-        aliquota_icms=aliquota_icms,
-        rascunho=not confirmar_emissao_real,
-        cfops_id=escolher_cfops_id(espelho["uf_origem"], espelho["uf_destino"]),
-        km=km,
-        forma_pagamento=forma_pagamento,
-        conjunto_veiculos_id=conjunto_veiculos_id,
-        **seguro,
-    )
+    except emissao_cte.FalhaCadastros as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
     # Payload incompleto nao vai pra frente: melhor recusar aqui do que
     # deixar o Bsoft criar um documento torto.
-    pendencias = partes["pendencias"] + cte_montagem.conferir_payload(corpo)
-    if pendencias:
-        raise HTTPException(status_code=400, detail={"pendencias": pendencias})
-
-    operacao.ultimo_payload = json.dumps(sanitizar(corpo))[:4000]
-    operacao.tentativas = (operacao.tentativas or 0) + 1
-    operacao.solicitado_por = usuario.email
-    operacao.status = "ENVIANDO_CTE"
-    db.commit()
+    if montado["pendencias"]:
+        raise HTTPException(status_code=400, detail={"pendencias": montado["pendencias"]})
 
     try:
-        resposta = await run_in_threadpool(bsoft_fiscal.criar_conhecimento, corpo)
-    except BsoftEmissaoBloqueada as exc:
-        operacao.status = "RASCUNHO"
-        operacao.erro = str(exc)[:1000]
-        db.commit()
+        operacao = await run_in_threadpool(
+            emissao_cte.emitir, db,
+            corpo=montado["corpo"],
+            chave=chave,
+            agendamento_id=agendamento_id,
+            solicitado_por=usuario.email,
+            rascunho=not confirmar_emissao_real,
+        )
+    except emissao_cte.JaEmitido as exc:
+        # Inclui o rascunho criado sozinho: a API nao promove rascunho a
+        # definitivo, e um segundo POST criaria outro documento.
         raise HTTPException(status_code=409, detail=str(exc))
-    except BsoftError as exc:
-        # Sem retry automatico: pode ter criado do outro lado.
-        operacao.status = "CTE_REJEITADO"
-        operacao.erro = str(exc)[:1000]
-        db.commit()
-        logger.warning("Falha ao criar CT-e do agendamento %s: %s", agendamento_id, exc)
+    except BsoftEmissaoBloqueada as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except emissao_cte.FalhaBsoft as exc:
         raise HTTPException(status_code=502, detail=str(exc))
-
-    operacao.cod_conhecimento_bsoft = str(resposta.get("codConhecimentos", ""))
-    operacao.ultima_resposta = json.dumps(sanitizar(resposta))[:4000]
-    operacao.status = "CTE_CRIADO"
-    operacao.erro = ""
-    db.commit()
-    db.refresh(operacao)
     return {"operacao": _to_dict(operacao), "rascunho": not confirmar_emissao_real}
 
 

@@ -94,6 +94,14 @@ async def _coletar_da_sefaz() -> int:
     return len(guardadas)
 
 
+async def _preparar_rascunhos() -> int:
+    """Nota casada + tarifa da cotacao -> rascunho no Bsoft, sem clique."""
+    from . import rascunho_automatico
+
+    with SessionLocal() as db:
+        return await asyncio.to_thread(rascunho_automatico.preparar_pendentes, db)
+
+
 async def _acompanhar_ctes() -> int:
     """Pergunta ao Bsoft o que houve com cada CT-e ainda em aberto."""
     from . import acompanhamento_cte
@@ -141,6 +149,10 @@ def iniciar() -> None:
     asyncio.create_task(_repetir("e-mail", _coletar_do_email, INTERVALO_EMAIL_SEGUNDOS))
     asyncio.create_task(_repetir("casamento", _casar_notas_soltas, INTERVALO_EMAIL_SEGUNDOS))
     asyncio.create_task(_repetir("CT-e", _acompanhar_ctes, INTERVALO_ACOMPANHAMENTO_SEGUNDOS))
+    if settings.rascunho_automatico:
+        asyncio.create_task(_repetir("rascunho", _preparar_rascunhos, INTERVALO_ACOMPANHAMENTO_SEGUNDOS))
+    else:
+        logger.info("rascunho automatico desligado (RASCUNHO_AUTOMATICO=false)")
     if settings.certificado_pfx_path:
         asyncio.create_task(_repetir("SEFAZ", _coletar_da_sefaz, INTERVALO_SEFAZ_SEGUNDOS))
     else:

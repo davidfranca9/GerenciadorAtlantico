@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # explicita do responsavel, que cancela o CT-e no Bsoft se sair errado.
     # Pra desligar sem deploy: BSOFT_EMISSAO_HABILITADA=false.
     bsoft_emissao_habilitada: bool = True
+    # Quando a nota chega ja casada com o agendamento e com tarifa da
+    # cotacao, o sistema monta o CT-e e cria o RASCUNHO no Bsoft sozinho.
+    # Nunca o definitivo. Pra desligar sem deploy: RASCUNHO_AUTOMATICO=false.
+    rascunho_automatico: bool = True
 
     # Certificado A1 da empresa, usado pra baixar XML de NF-e direto da
     # SEFAZ. O arquivo fica FORA do repositorio e o caminho vem por
