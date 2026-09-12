@@ -306,6 +306,107 @@ def buscar_veiculo_por_placa(placa: str) -> dict | None:
     return None
 
 
+# O cadastro de veiculo do Bsoft guarda o motorista habitual, como texto:
+# "042.xxx.xxx-39 - Joao" (CPF parcialmente mascarado, depois o nome). E o
+# que permite escolher o motorista e trazer as placas dele junto, sem
+# depender de conjunto cadastrado - so tres existem no tenant.
+#
+# As categorias sao as do GET /transporte/v1/categoriasVeiculos. Cada slot
+# do CT-e recebe uma familia delas.
+CATEGORIAS_CAVALO = ("CAVALO", "CAVALO SOZINHO", "TRUCK", "TOCO", "VAN", "VEICULO LIVRE")
+CATEGORIAS_CARRETA = ("CARRETA", "CARRETA LIVRE", "BR13-CENTRAL")
+CATEGORIAS_SEGUNDA_CARRETA = ("2 CARRETA", "DOLLY")
+
+
+def _sem_acento(texto: str) -> str:
+    import unicodedata
+    limpo = unicodedata.normalize("NFKD", str(texto or ""))
+    return "".join(c for c in limpo if not unicodedata.combining(c))
+
+
+def _normalizar_categoria(categoria: str) -> str:
+    """'2º CARRETA' -> '2 CARRETA', 'VEÍCULO LIVRE' -> 'VEICULO LIVRE'."""
+    # O ordinal sai ANTES de tirar acento: o NFKD transforma "º" em "o", e
+    # "2º CARRETA" viraria "2O CARRETA".
+    sem_ordinal = str(categoria or "").replace("º", "").replace("ª", "").replace("°", "")
+    return " ".join(_sem_acento(sem_ordinal).upper().split())
+
+
+def _mesmo_motorista(texto_do_veiculo: str, cpf: str, nome: str) -> bool:
+    """Diz se o motorista gravado no veiculo e este.
+
+    O texto vem como "042.xxx.xxx-39 - Joao": o CPF pode estar mascarado,
+    entao a comparacao aceita 'x' como coringa, digito a digito. Se o CPF
+    nao decidir, vale o nome - sem acento, sem caixa.
+    """
+    texto = str(texto_do_veiculo or "").strip()
+    if not texto:
+        return False
+    doc_parte, _, nome_parte = texto.partition(" - ")
+
+    alvo = "".join(c for c in str(cpf or "") if c.isdigit())
+    visiveis = "".join(c for c in doc_parte.lower() if c.isdigit() or c == "x")
+    if len(alvo) == 11 and len(visiveis) == 11:
+        if all(v == "x" or v == a for v, a in zip(visiveis, alvo)):
+            return True
+        return False  # CPF completo e diferente: nao e a mesma pessoa
+
+    nome_alvo = _sem_acento(nome).upper().strip()
+    nome_veiculo = _sem_acento(nome_parte or texto).upper().strip()
+    if nome_alvo and nome_veiculo:
+        return nome_alvo in nome_veiculo or nome_veiculo in nome_alvo
+    return False
+
+
+def nome_da_pessoa_por_id(pessoa_id) -> str:
+    """LEITURA. Nome de uma pessoa fisica do cache, pelo id."""
+    alvo = str(pessoa_id or "")
+    for pessoa in _todas_as_pessoas_fisicas():
+        if str(pessoa.get("id")) == alvo:
+            return _nome_da_pessoa(pessoa)
+    return ""
+
+
+def veiculos_do_motorista(cpf: str = "", nome: str = "") -> dict:
+    """LEITURA. Placas ligadas a um motorista no cadastro de veiculos.
+
+    Devolve uma placa por slot do CT-e (cavalo, carreta, segunda carreta),
+    escolhendo a atualizada mais recentemente quando ha mais de uma na
+    mesma categoria - e a que esta em uso.
+    """
+    if not (cpf or nome):
+        return {"placa_cavalo": "", "placa_carreta1": "", "placa_carreta2": "", "veiculos": []}
+
+    achados = [
+        v for v in _todos_os_veiculos()
+        if _mesmo_motorista(v.get("motorista", ""), cpf, nome)
+    ]
+    achados.sort(key=lambda v: str(v.get("atualizacao") or ""), reverse=True)
+
+    slots = {"placa_cavalo": "", "placa_carreta1": "", "placa_carreta2": ""}
+    for veiculo in achados:
+        categoria = _normalizar_categoria(veiculo.get("categoria", ""))
+        placa = str(veiculo.get("placa") or "").strip()
+        if not placa:
+            continue
+        if categoria in CATEGORIAS_CAVALO:
+            slot = "placa_cavalo"
+        elif categoria in CATEGORIAS_CARRETA:
+            slot = "placa_carreta1"
+        elif categoria in CATEGORIAS_SEGUNDA_CARRETA:
+            slot = "placa_carreta2"
+        else:
+            continue
+        if not slots[slot]:
+            slots[slot] = placa
+
+    slots["veiculos"] = [
+        {"id": v.get("id"), "placa": v.get("placa"), "categoria": v.get("categoria", "")}
+        for v in achados
+    ]
+    return slots
+
+
 # Nomes possiveis do campo de numero na apolice. O cadastro nao esta
 # documentado campo a campo, entao a busca tenta os nomes plausiveis em vez
 # de fixar um so e falhar em silencio.

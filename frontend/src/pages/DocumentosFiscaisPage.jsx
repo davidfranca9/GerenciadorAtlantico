@@ -801,6 +801,12 @@ function EmitirCte() {
                       {[e.veiculos.procurou.veiculo_id, e.veiculos.procurou.carreta_id, e.veiculos.procurou.semireboque_id]
                         .filter(Boolean).join(", ") || "(nenhuma)"}. Corrija abaixo se estiver diferente do cadastro do Bsoft.
                     </div>
+                    {Object.keys(e.veiculos.placas_do_motorista || {}).length > 0 && (
+                      <div className="inline-alert info" style={{ fontSize: 12 }}>
+                        Placas puxadas do cadastro do motorista no Bsoft:{" "}
+                        {Object.values(e.veiculos.placas_do_motorista).join(", ")}.
+                      </div>
+                    )}
                     <Linha>
                       <Corrigir
                         rotulo="CPF do motorista"
@@ -842,7 +848,7 @@ function EmitirCte() {
                         rotulo="Ou procure a placa"
                         placeholder="parte da placa"
                         procurar={api.fiscalProcurarVeiculos}
-                        rotular={(r) => r.placa}
+                        rotular={(r) => [r.placa, r.categoria, r.motorista].filter(Boolean).join(" · ")}
                         escolhido={escolhas.placa_cavalo_nome}
                         aoEscolher={(r) => setEscolhas((x) => ({
                           ...x, placa_cavalo: formatarPlaca(r.placa || ""), placa_cavalo_nome: r.placa,

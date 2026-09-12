@@ -428,13 +428,37 @@ def _resolver_veiculos(agendamento, escolhas: dict | None = None) -> dict:
         # usa dois, entao este costuma vir da tela.
         "quarto_veiculo_id": escolhas.get("placa_quarto", ""),
     }
-    encontrados = {"procurou": dict(placas, motorista_cpf=cpf)}
-
+    nome_motorista = ""
     if escolhas.get("motorista_id"):
-        encontrados["motorista_id"] = escolhas["motorista_id"]
+        encontrados_id = escolhas["motorista_id"]
+        nome_motorista = bsoft_fiscal.nome_da_pessoa_por_id(encontrados_id)
     else:
         motorista = bsoft_fiscal.buscar_pessoa(cpf) if cpf else None
-        encontrados["motorista_id"] = motorista.get("id") if motorista else None
+        encontrados_id = motorista.get("id") if motorista else None
+        if motorista:
+            nome_motorista = motorista.get("nome") or motorista.get("razaoSocial") or ""
+
+    # Slot vazio e preenchido com o veiculo que o cadastro do Bsoft liga a
+    # este motorista. Era o que faltava: escolher o motorista pela lupa
+    # deixava a carreta em branco, e o Bsoft recusa CT-e sem carreta_id.
+    # O que veio do agendamento ou da tela continua valendo mais.
+    placas_do_motorista = {}
+    if encontrados_id and not all(placas[c] for c in ("veiculo_id", "carreta_id")):
+        do_cadastro = bsoft_fiscal.veiculos_do_motorista(cpf=cpf, nome=nome_motorista)
+        for campo, slot in (
+            ("veiculo_id", "placa_cavalo"),
+            ("carreta_id", "placa_carreta1"),
+            ("semireboque_id", "placa_carreta2"),
+        ):
+            if not placas[campo] and do_cadastro.get(slot):
+                placas[campo] = do_cadastro[slot]
+                placas_do_motorista[campo] = do_cadastro[slot]
+
+    encontrados = {
+        "procurou": dict(placas, motorista_cpf=cpf, motorista_nome=nome_motorista),
+        "placas_do_motorista": placas_do_motorista,
+        "motorista_id": encontrados_id,
+    }
 
     for campo, placa in placas.items():
         veiculo = bsoft_fiscal.buscar_veiculo_por_placa(placa) if placa else None
@@ -655,7 +679,10 @@ async def procurar_veiculos(placa: str = ""):
     except BsoftError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     resultados = [
-        {"id": v.get("id"), "placa": v.get("placa")}
+        {
+            "id": v.get("id"), "placa": v.get("placa"),
+            "categoria": v.get("categoria", ""), "motorista": v.get("motorista", ""),
+        }
         for v in todos
         if alvo in "".join(c for c in str(v.get("placa", "")).upper() if c.isalnum())
     ][:25]
