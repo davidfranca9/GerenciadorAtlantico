@@ -156,7 +156,29 @@ def derivar(
     """
     dados = nfe_xml.extrair_dados(xml_bytes)
     mercadoria = nfe_xml.extrair_mercadoria(xml_bytes)
+    return montar_espelho(
+        dados, mercadoria,
+        tarifa_por_tonelada=tarifa_por_tonelada,
+        embalagem=embalagem,
+        especie_id=especie_id,
+    )
 
+
+def montar_espelho(
+    dados: dict,
+    mercadoria: dict,
+    *,
+    tarifa_por_tonelada: str | None = None,
+    embalagem: str = "",
+    especie_id=None,
+) -> dict:
+    """Monta o espelho a partir dos dados ja extraidos da nota.
+
+    Separado de derivar() porque nem toda nota chega como XML: quando a
+    fabrica nao manda e a SEFAZ ainda nao liberou, os mesmos campos sao
+    digitados na tela. Dai pra frente o caminho e um so - o mesmo payload,
+    as mesmas conferencias.
+    """
     modalidade = dados.get("modalidade_frete") or ""
     tomador = TOMADOR_POR_MODALIDADE.get(modalidade, "")
 
@@ -202,6 +224,128 @@ def derivar(
 
     espelho["pendencias"] = _pendencias(espelho, mercadoria, tarifa_por_tonelada)
     espelho["avisos"] = _avisos(espelho, mercadoria)
+    return espelho
+
+
+# O que precisa ser digitado quando a nota entra na mao. O resto ou sai da
+# chave de acesso ou vem do cadastro do Bsoft.
+CAMPOS_MANUAIS_OBRIGATORIOS = {
+    "chave": "a chave de acesso da NF-e",
+    "destinatario_doc": "o CNPJ ou CPF do destinatario",
+    "produto": "a descricao do produto",
+    "peso_kg": "o peso da carga em kg",
+    "valor_nota": "o valor total da nota",
+    "modalidade_frete": "a modalidade do frete (quem paga)",
+}
+
+
+def derivar_manual(
+    campos: dict,
+    *,
+    tarifa_por_tonelada: str | None = None,
+    embalagem: str = "",
+    especie_id=None,
+) -> dict:
+    """Monta o espelho com a nota digitada, sem XML.
+
+    Existe porque a nota nem sempre chega: tem fabrica que nao manda o
+    arquivo e tem hora que a SEFAZ ainda nao liberou o documento pra
+    transportadora. Sem este caminho, o CT-e ficaria parado esperando um
+    arquivo - com ele, quem opera transcreve o DANFE que ja esta na mao.
+
+    Metade dos campos sai da propria chave de acesso (emitente, serie,
+    numero, UF de origem), entao o que se digita e so o que a chave nao
+    carrega. Municipios e enderecos vem do cadastro do Bsoft, depois que as
+    partes sao resolvidas - ver completar_percurso().
+    """
+    faltando = [
+        nome for campo, nome in CAMPOS_MANUAIS_OBRIGATORIOS.items()
+        if not str(campos.get(campo) or "").strip()
+    ]
+    if faltando:
+        raise DadosInsuficientes("Para digitar a nota na mao, informe " + ", ".join(faltando) + ".")
+
+    da_chave = nfe_xml.dados_da_chave(campos["chave"])
+    documento_destino = _so_digitos(campos["destinatario_doc"])
+
+    dados = {
+        "chave": da_chave["chave"],
+        "numero": campos.get("numero") or da_chave["numero"],
+        "serie": campos.get("serie") or da_chave["serie"],
+        "emissao": campos.get("emissao", ""),
+        "emitente_cnpj": da_chave["emitente_cnpj"],
+        "emitente_nome": campos.get("remetente_nome", ""),
+        "municipio_origem": campos.get("municipio_origem", ""),
+        "ibge_origem": _so_digitos(campos.get("ibge_origem")),
+        "cep_origem": _so_digitos(campos.get("cep_origem")),
+        "uf_origem": campos.get("uf_origem") or da_chave["uf"],
+        "destinatario_doc": documento_destino,
+        "destinatario_tipo": "fisica" if len(documento_destino) == 11 else "juridica",
+        "destinatario_nome": campos.get("destinatario_nome", ""),
+        "municipio_destino": campos.get("municipio_destino", ""),
+        "ibge_destino": _so_digitos(campos.get("ibge_destino")),
+        "cep_destino": _so_digitos(campos.get("cep_destino")),
+        "uf_destino": campos.get("uf_destino", ""),
+        "modalidade_frete": str(campos.get("modalidade_frete") or ""),
+    }
+
+    # O peso digitado ja vem em kg: a duvida de unidade que existe no XML
+    # (ERP que manda tonelada no campo de quilo) nao existe aqui.
+    mercadoria = {
+        "chaveNFe": da_chave["chave"],
+        "notaFiscal": dados["numero"],
+        "serieNotaFiscal": dados["serie"],
+        "dtFiscal": dados["emissao"],
+        "tipoNF": "S",
+        "nCFOP": campos.get("cfop", ""),
+        "NCM": campos.get("ncm", ""),
+        "CST": "",
+        "quant": campos.get("quantidade", ""),
+        "especie": "",
+        "marca": campos.get("marca", ""),
+        "vProd": campos.get("valor_produtos") or campos["valor_nota"],
+        "vBC": campos.get("base_icms", ""),
+        "vICMS": campos.get("valor_icms", ""),
+        "vBCST": campos.get("base_icms_st", ""),
+        "vST": campos.get("valor_icms_st", ""),
+        "valor": campos["valor_nota"],
+        "descricao_produto": campos["produto"],
+        "peso_declarado": str(campos["peso_kg"]).replace(",", "."),
+        "unidade_produto": "KG",
+        "peso_provavelmente_em_tonelada": False,
+        "peso_kg_equivalente": "",
+        "modalidade_frete": dados["modalidade_frete"],
+    }
+
+    espelho = montar_espelho(
+        dados, mercadoria,
+        tarifa_por_tonelada=tarifa_por_tonelada,
+        embalagem=embalagem,
+        especie_id=especie_id,
+    )
+    espelho["digitada_na_mao"] = True
+    espelho["avisos"] = espelho["avisos"] + [
+        "Nota digitada na mao: os valores nao foram conferidos contra nenhum XML."
+    ]
+    return espelho
+
+
+def completar_percurso(espelho: dict, partes: dict) -> dict:
+    """Preenche municipio e UF do trecho com o endereco escolhido no Bsoft.
+
+    Numa nota digitada nao existe codigo IBGE pra digitar - ninguem sabe de
+    cabeca que Luis Eduardo Magalhaes e 2919926. Mas o endereco escolhido no
+    cadastro sabe, e e justamente o endereco que o CT-e vai usar. Entao o
+    trecho sai de la, e nao de um campo a mais no formulario.
+    """
+    for lado, prefixo in (("remetente", "origem"), ("destinatario", "destino")):
+        endereco = (partes.get(lado) or {}).get("endereco") or {}
+        if not espelho.get(f"ibge_{prefixo}") and endereco.get("codIBGE"):
+            espelho[f"ibge_{prefixo}"] = endereco["codIBGE"]
+        if not espelho.get(f"uf_{prefixo}") and endereco.get("uf"):
+            espelho[f"uf_{prefixo}"] = endereco["uf"]
+        if not espelho.get(f"municipio_{prefixo}") and endereco.get("cidade"):
+            espelho[f"municipio_{prefixo}"] = endereco["cidade"]
     return espelho
 
 
@@ -275,6 +419,19 @@ def _descrever(endereco: dict) -> str:
     return f"{linha} - CEP {cep}" if cep else linha or f"endereco {endereco.get('id')}"
 
 
+def _resumo_endereco(endereco: dict) -> dict:
+    """O que a tela e o percurso precisam saber do endereco escolhido."""
+    ibge = _so_digitos(endereco.get("codIBGE"))
+    return {
+        "id": endereco.get("id"),
+        "codIBGE": ibge,
+        "cidade": endereco.get("cidade") or "",
+        "uf": endereco.get("uf") or nfe_xml.uf_do_ibge(ibge),
+        "cep": _cep_do_endereco(endereco),
+        "descricao": _descrever(endereco),
+    }
+
+
 def _escolher_endereco(enderecos: list, ibge: str, cep: str = "") -> tuple:
     """Escolhe o endereco que corresponde ao da NF-e.
 
@@ -291,7 +448,12 @@ def _escolher_endereco(enderecos: list, ibge: str, cep: str = "") -> tuple:
 
     ibge = (ibge or "").strip()
     if not ibge:
-        return None, "NF-e sem codigo IBGE do municipio: nao da pra escolher o endereco.", []
+        # Sem municipio na nota - o caso da nota digitada na mao, onde
+        # ninguem sabe o codigo IBGE de cabeca. Com um endereco so nao ha o
+        # que decidir; com varios, quem opera escolhe na tela.
+        if len(enderecos) == 1:
+            return enderecos[0], "", enderecos
+        return None, "Escolha o endereco que o CT-e deve usar.", enderecos
 
     candidatos = [e for e in enderecos if str(e.get("codIBGE") or "").strip() == ibge]
     if not candidatos:
@@ -349,6 +511,7 @@ def resolver_parte(
         "nome": "",
         "aviso": "",
         "enderecos": [],
+        "endereco": {},
     }
     if not documento:
         resultado["aviso"] = "Documento nao informado na NF-e."
@@ -374,9 +537,10 @@ def resolver_parte(
     # 5072, que ficou com o endereco da Fertimaxi numa nota de outro
     # emitente.
     if endereco_id:
-        proprios = {str(e.get("id")) for e in disponiveis}
+        proprios = {str(e.get("id")): e for e in disponiveis}
         if str(endereco_id) in proprios:
             resultado["endereco_id"] = str(endereco_id)
+            resultado["endereco"] = _resumo_endereco(proprios[str(endereco_id)])
             resultado["aviso"] = ""
         else:
             resultado["aviso"] = (
@@ -387,6 +551,7 @@ def resolver_parte(
 
     if endereco:
         resultado["endereco_id"] = endereco.get("id")
+        resultado["endereco"] = _resumo_endereco(endereco)
     resultado["aviso"] = aviso
     return resultado
 

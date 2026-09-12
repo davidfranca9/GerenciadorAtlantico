@@ -35,6 +35,51 @@ def _decimal(valor: str):
         return None
 
 
+# Codigo de UF da chave de acesso (dois primeiros digitos) -> sigla. E a
+# tabela do IBGE, a mesma que abre o codigo de municipio.
+UF_POR_CODIGO = {
+    "11": "RO", "12": "AC", "13": "AM", "14": "RR", "15": "PA", "16": "AP",
+    "17": "TO", "21": "MA", "22": "PI", "23": "CE", "24": "RN", "25": "PB",
+    "26": "PE", "27": "AL", "28": "SE", "29": "BA", "31": "MG", "32": "ES",
+    "33": "RJ", "35": "SP", "41": "PR", "42": "SC", "43": "RS", "50": "MS",
+    "51": "MT", "52": "GO", "53": "DF",
+}
+
+
+def uf_do_ibge(codigo) -> str:
+    """Sigla do estado a partir de um codigo IBGE (de municipio ou de UF)."""
+    return UF_POR_CODIGO.get(re.sub(r"\D", "", str(codigo or ""))[:2], "")
+
+
+def dados_da_chave(chave: str) -> dict:
+    """Abre a chave de acesso nos dados que ela carrega.
+
+    A chave nao e um numero opaco: o layout da NF-e reserva posicoes fixas
+    pra UF, ano/mes, CNPJ do emitente, serie e numero. Quem digita a nota na
+    mao le esses 44 digitos do DANFE, entao metade do formulario ja vem
+    preenchida daqui em vez de ser redigitada - e sem risco de divergir do
+    documento, porque sai da propria chave.
+
+        00-01 UF   02-05 AAMM   06-19 CNPJ   20-21 modelo
+        22-24 serie   25-33 numero   34 tpEmis   35-42 codigo   43 DV
+    """
+    limpa = re.sub(r"\D", "", chave or "")
+    if len(limpa) != 44:
+        raise NFeInvalida("A chave de acesso da NF-e tem 44 digitos")
+    if not chave_valida(limpa):
+        raise NFeInvalida("Chave de acesso da NF-e invalida (digito verificador nao confere)")
+    return {
+        "chave": limpa,
+        "uf": uf_do_ibge(limpa[:2]),
+        "ano": f"20{limpa[2:4]}",
+        "mes": limpa[4:6],
+        "emitente_cnpj": limpa[6:20],
+        "modelo": limpa[20:22],
+        "serie": limpa[22:25].lstrip("0") or "0",
+        "numero": limpa[25:34].lstrip("0") or "0",
+    }
+
+
 def chave_valida(chave: str) -> bool:
     """Valida os 44 digitos pelo digito verificador (modulo 11), o mesmo
     calculo da SEFAZ. Evita aceitar chave digitada errada."""

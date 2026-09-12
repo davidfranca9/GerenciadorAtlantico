@@ -362,7 +362,8 @@ export async function fiscalImportarNfe(agendamentoId, arquivo) {
 async function enviarFormularioFiscal(caminho, campos, arquivo, mensagemErro) {
   const token = getToken();
   const formData = new FormData();
-  formData.append("arquivo", arquivo);
+  // Sem arquivo quando a nota vem da fila de recebidas ou e digitada na mao.
+  if (arquivo) formData.append("arquivo", arquivo);
   Object.entries(campos).forEach(([chave, valor]) => {
     if (valor !== undefined && valor !== null && valor !== "") formData.append(chave, valor);
   });
@@ -378,6 +379,10 @@ async function enviarFormularioFiscal(caminho, campos, arquivo, mensagemErro) {
     throw new Error(data.detail || mensagemErro);
   }
   return res.json();
+}
+
+export function fiscalListarNotas() {
+  return request("/fiscal/notas");
 }
 
 export function fiscalListarConjuntos() {

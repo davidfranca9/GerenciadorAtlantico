@@ -32,6 +32,52 @@ const ESPECIES = [
   [11, "SACO DE 25 KG"], [12, "SC X 25 KG"], [13, "Tonelada"], [14, "SACOS 50 KG"],
 ];
 
+// De onde a NF-e vem. Sao tres porque a nota chega de tres jeitos: o
+// arquivo que a fabrica mandou, a nota que o sistema ja coletou sozinho, e
+// o DANFE na mao quando nao veio arquivo nenhum.
+const ORIGENS = [
+  { id: "xml", rotulo: "Enviar XML", dica: "O arquivo que a fábrica mandou" },
+  { id: "recebida", rotulo: "Nota já recebida", dica: "Coletada do e-mail ou da SEFAZ" },
+  { id: "manual", rotulo: "Digitar na mão", dica: "Quando não veio arquivo nenhum" },
+];
+
+// modFrete da NF-e: e o que define o tomador e quem paga o frete.
+const MODALIDADES_FRETE = [
+  ["0", "Por conta do remetente (CIF)"],
+  ["1", "Por conta do destinatário (FOB)"],
+  ["3", "Transporte próprio, conta do remetente"],
+  ["4", "Transporte próprio, conta do destinatário"],
+];
+
+const UF_POR_CODIGO = {
+  11: "RO", 12: "AC", 13: "AM", 14: "RR", 15: "PA", 16: "AP", 17: "TO",
+  21: "MA", 22: "PI", 23: "CE", 24: "RN", 25: "PB", 26: "PE", 27: "AL",
+  28: "SE", 29: "BA", 31: "MG", 32: "ES", 33: "RJ", 35: "SP", 41: "PR",
+  42: "SC", 43: "RS", 50: "MS", 51: "MT", 52: "GO", 53: "DF",
+};
+
+// A chave de acesso nao e um numero opaco: o layout da NF-e reserva
+// posicoes fixas pra UF, ano/mes, CNPJ do emitente, serie e numero. Abrir
+// ela aqui mostra na hora se os 44 digitos foram copiados certo - e evita
+// pedir de novo o que o proprio documento ja diz.
+function abrirChave(texto) {
+  const d = String(texto || "").replace(/\D/g, "");
+  if (d.length !== 44) return null;
+  return {
+    uf: UF_POR_CODIGO[Number(d.slice(0, 2))] || "?",
+    emitente: d.slice(6, 20),
+    serie: d.slice(22, 25).replace(/^0+/, "") || "0",
+    numero: d.slice(25, 34).replace(/^0+/, "") || "0",
+    emissao: `${d.slice(4, 6)}/20${d.slice(2, 4)}`,
+  };
+}
+
+function formatarCnpjCpf(texto) {
+  const d = String(texto || "").replace(/\D/g, "").slice(0, 14);
+  if (d.length <= 11) return formatarCpf(d);
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+}
+
 function Secao({ titulo, children }) {
   return (
     <fieldset
@@ -169,11 +215,137 @@ function Corrigir({ rotulo, valor, placeholder, aoMudar, formatar }) {
   );
 }
 
+// Campo de digitacao simples, pra nota que entra na mao.
+function CampoManual({ rotulo, campo, valores, aoMudar, placeholder, formatar, largura = 1, tipo = "text" }) {
+  return (
+    <div style={{ flex: largura, minWidth: 130 }}>
+      <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--muted)" }}>{rotulo}</div>
+      <input
+        type={tipo}
+        value={valores[campo] || ""}
+        placeholder={placeholder}
+        onChange={(ev) => aoMudar(campo, formatar ? formatar(ev.target.value) : ev.target.value)}
+        style={{ width: "100%", marginTop: 2 }}
+      />
+    </div>
+  );
+}
+
+// A fila do que o sistema ja coletou sozinho, por e-mail ou pela SEFAZ.
+// Quem opera so escolhe: a nota inteira ja esta guardada aqui.
+function NotasRecebidas({ notas, carregando, chave, aoEscolher, aoRecarregar }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--muted)" }}>
+            Notas recebidas e ainda sem CT-e
+          </div>
+          <select value={chave} onChange={(ev) => aoEscolher(ev.target.value)} style={{ width: "100%", marginTop: 2 }}>
+            <option value="">{carregando ? "Carregando..." : "Selecione a nota"}</option>
+            {notas.map((n) => (
+              <option key={n.chave} value={n.chave}>
+                NF {n.numero}/{n.serie} · {n.emitente} → {n.destino} · {formatarValor(n.valor)} · {n.origem}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button className="btn-secondary" type="button" onClick={aoRecarregar} title="Buscar de novo">
+          ↻
+        </button>
+      </div>
+      {!carregando && !notas.length && (
+        <div style={{ fontSize: 12, color: "var(--muted)" }}>
+          Nenhuma nota coletada ainda. Você também pode colar a chave de uma NF-e abaixo — ela é
+          buscada na SEFAZ na hora.
+        </div>
+      )}
+      <input
+        value={chave}
+        placeholder="Ou cole a chave de acesso (44 dígitos)"
+        onChange={(ev) => aoEscolher(ev.target.value.replace(/\D/g, "").slice(0, 44))}
+        style={{ width: "100%" }}
+      />
+    </div>
+  );
+}
+
+// O DANFE transcrito. So entra aqui o que a chave de acesso nao carrega:
+// emitente, serie e numero saem dela, e o municipio sai do endereco
+// escolhido no cadastro do Bsoft.
+function NotaManual({ valores, aoMudar }) {
+  const daChave = abrirChave(valores.chave);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <Linha>
+        <CampoManual
+          rotulo="Chave de acesso da NF-e" campo="chave" valores={valores} aoMudar={aoMudar}
+          largura={3} placeholder="44 dígitos do DANFE"
+          formatar={(t) => t.replace(/\D/g, "").slice(0, 44)}
+        />
+        <CampoManual rotulo="Emissão da nota" campo="emissao" valores={valores} aoMudar={aoMudar} tipo="date" />
+      </Linha>
+
+      {valores.chave && (
+        <div className={daChave ? "inline-alert info" : "inline-alert warning"} style={{ fontSize: 12.5 }}>
+          {daChave
+            ? `A chave diz: NF ${daChave.numero}, série ${daChave.serie}, emitente ${formatarCnpjCpf(daChave.emitente)}, ${daChave.uf}, ${daChave.emissao}.`
+            : `${valores.chave.length} de 44 dígitos.`}
+        </div>
+      )}
+
+      <Linha>
+        <CampoManual
+          rotulo="CNPJ/CPF do destinatário" campo="destinatario_doc" valores={valores}
+          aoMudar={aoMudar} largura={2} formatar={formatarCnpjCpf} placeholder="00.000.000/0000-00"
+        />
+        <div style={{ flex: 2, minWidth: 200 }}>
+          <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--muted)" }}>
+            Modalidade do frete
+          </div>
+          <select
+            value={valores.modalidade_frete || ""}
+            onChange={(ev) => aoMudar("modalidade_frete", ev.target.value)}
+            style={{ width: "100%", marginTop: 2 }}
+          >
+            <option value="">Selecione</option>
+            {MODALIDADES_FRETE.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
+          </select>
+        </div>
+      </Linha>
+
+      <Linha>
+        <CampoManual rotulo="Produto" campo="produto" valores={valores} aoMudar={aoMudar} largura={3} placeholder="UREIA PRILL 46% N" />
+        <CampoManual rotulo="Peso (kg)" campo="peso_kg" valores={valores} aoMudar={aoMudar} placeholder="27000" />
+        <CampoManual rotulo="Valor da nota" campo="valor_nota" valores={valores} aoMudar={aoMudar} placeholder="68850,00" />
+        <CampoManual rotulo="Volumes" campo="quantidade" valores={valores} aoMudar={aoMudar} placeholder="540" />
+      </Linha>
+
+      <details>
+        <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted)" }}>
+          Valores fiscais da nota (saem impressos no DACTE)
+        </summary>
+        <Linha>
+          <CampoManual rotulo="CFOP" campo="cfop" valores={valores} aoMudar={aoMudar} placeholder="6101" />
+          <CampoManual rotulo="Base do ICMS" campo="base_icms" valores={valores} aoMudar={aoMudar} placeholder="22950,00" />
+          <CampoManual rotulo="Valor do ICMS" campo="valor_icms" valores={valores} aoMudar={aoMudar} placeholder="2754,00" />
+          <CampoManual rotulo="Marca" campo="marca" valores={valores} aoMudar={aoMudar} placeholder="Fertimaxi" />
+        </Linha>
+      </details>
+    </div>
+  );
+}
+
 function EmitirCte() {
   const [aberto, setAberto] = useState(false);
   const [agendamentos, setAgendamentos] = useState([]);
   const [agendamentoId, setAgendamentoId] = useState("");
+  const [origemNota, setOrigemNota] = useState("xml");
   const [arquivo, setArquivo] = useState(null);
+  const [chaveNfe, setChaveNfe] = useState("");
+  const [notas, setNotas] = useState([]);
+  const [carregandoNotas, setCarregandoNotas] = useState(false);
+  const [manual, setManual] = useState({ modalidade_frete: "1" });
   const [tarifa, setTarifa] = useState("");
   const [aliquota, setAliquota] = useState("12");
   const [km, setKm] = useState("");
@@ -196,7 +368,39 @@ function EmitirCte() {
       .catch(() => {});
   }, [aberto, agendamentos.length]);
 
+  function carregarNotas() {
+    setCarregandoNotas(true);
+    api.fiscalListarNotas()
+      .then((d) => setNotas(d.notas || []))
+      .catch(() => {})
+      .finally(() => setCarregandoNotas(false));
+  }
+
+  useEffect(() => {
+    if (origemNota === "recebida" && !notas.length && !carregandoNotas) carregarNotas();
+  }, [origemNota]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Trocar de origem zera o espelho: ele foi montado com a nota anterior.
+  function trocarOrigem(id) {
+    setOrigemNota(id);
+    setEspelho(null);
+    setResultado(null);
+    setErro("");
+  }
+
+  // A nota so esta pronta pra conferencia quando a origem escolhida tem o
+  // que precisa. Sem isso o botao ficava habilitado e o erro so aparecia
+  // depois da viagem ao servidor.
+  const notaPronta =
+    origemNota === "xml" ? !!arquivo
+      : origemNota === "recebida" ? chaveNfe.replace(/\D/g, "").length === 44
+      : Boolean(abrirChave(manual.chave) && manual.destinatario_doc && manual.produto
+                && manual.peso_kg && manual.valor_nota && manual.modalidade_frete);
+
   const campos = (recentes) => ({
+    origem_nota: origemNota,
+    chave_nfe: origemNota === "recebida" ? chaveNfe : "",
+    nota_manual: origemNota === "manual" ? JSON.stringify(manual) : "",
     agendamento_id: agendamentoId,
     tarifa_por_tonelada: String(tarifa).replace(",", "."),
     aliquota_icms: String(aliquota).replace(",", "."),
@@ -209,8 +413,12 @@ function EmitirCte() {
   });
 
   async function handleConferir(recentes) {
-    if (!arquivo) {
-      setErro("Envie o XML da NF-e primeiro.");
+    if (!notaPronta) {
+      setErro(
+        origemNota === "xml" ? "Envie o XML da NF-e primeiro."
+          : origemNota === "recebida" ? "Escolha a nota ou cole a chave de acesso."
+          : "Preencha a chave, o destinatário, o produto, o peso, o valor e a modalidade do frete."
+      );
       return;
     }
     setOcupado(true);
@@ -316,9 +524,28 @@ function EmitirCte() {
                 </select>
               </div>
             </div>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <label className="btn-secondary" style={{ cursor: "pointer" }}>
-                {arquivo ? "XML: " + arquivo.name : "Enviar XML da NF-e"}
+          </Secao>
+
+          <Secao titulo="De onde vem a nota">
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {ORIGENS.map((op) => (
+                <button
+                  key={op.id}
+                  type="button"
+                  className={origemNota === op.id ? "btn-primary" : "btn-secondary"}
+                  onClick={() => trocarOrigem(op.id)}
+                  title={op.dica}
+                  style={{ flex: "1 1 160px", flexDirection: "column", lineHeight: 1.3 }}
+                >
+                  <div>{op.rotulo}</div>
+                  <div style={{ fontSize: 10.5, opacity: 0.75, fontWeight: 400 }}>{op.dica}</div>
+                </button>
+              ))}
+            </div>
+
+            {origemNota === "xml" && (
+              <label className="btn-secondary" style={{ cursor: "pointer", alignSelf: "flex-start" }}>
+                {arquivo ? "XML: " + arquivo.name : "Escolher o arquivo XML"}
                 <input
                   type="file"
                   accept=".xml"
@@ -326,9 +553,34 @@ function EmitirCte() {
                   style={{ display: "none" }}
                 />
               </label>
-              <button className="btn-primary" disabled={ocupado || !agendamentoId || !arquivo || !tarifa || !km} onClick={handleConferir}>
+            )}
+
+            {origemNota === "recebida" && (
+              <NotasRecebidas
+                notas={notas}
+                carregando={carregandoNotas}
+                chave={chaveNfe}
+                aoEscolher={(valor) => { setChaveNfe(valor); setEspelho(null); }}
+                aoRecarregar={carregarNotas}
+              />
+            )}
+
+            {origemNota === "manual" && (
+              <NotaManual
+                valores={manual}
+                aoMudar={(campo, valor) => { setManual((m) => ({ ...m, [campo]: valor })); setEspelho(null); }}
+              />
+            )}
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                className="btn-primary"
+                disabled={ocupado || !agendamentoId || !notaPronta || !tarifa || !km}
+                onClick={handleConferir}
+              >
                 {ocupado ? "Processando..." : "Conferir"}
               </button>
+              {!agendamentoId && <span style={{ fontSize: 12, color: "var(--muted)" }}>Escolha o agendamento acima.</span>}
             </div>
           </Secao>
 

@@ -166,9 +166,122 @@ def simular(payload: SimularIn, db: Session = Depends(get_db)):
     }
 
 
+# --------------------------------------------------------------------------
+# De onde vem a NF-e
+#
+# Sao tres caminhos, porque a nota chega de tres jeitos na pratica:
+#
+#   xml       - o arquivo que a fabrica mandou, enviado na tela
+#   recebida  - uma das notas que o sistema ja coletou sozinho (e-mail ou
+#               SEFAZ); a tela lista e quem opera so escolhe
+#   manual    - nenhum arquivo: o DANFE e transcrito na mao, pra quando a
+#               fabrica nao manda e a SEFAZ ainda nao liberou
+#
+# Os tres desembocam no mesmo espelho. Dali pra frente - partes, veiculos,
+# payload, conferencias - o caminho e unico.
+# --------------------------------------------------------------------------
+ORIGENS_DA_NOTA = ("xml", "recebida", "manual")
+
+
+async def _xml_da_nota_recebida(db: Session, chave: str) -> bytes:
+    """XML de uma nota ja coletada. Se ainda nao foi, busca na SEFAZ.
+
+    A consulta por chave nao mexe na esteira por NSU nem esbarra na regra de
+    uma hora, entao da pra fazer na hora em que a tela pede.
+    """
+    limpa = "".join(filter(str.isdigit, chave or ""))
+    if len(limpa) != 44:
+        raise HTTPException(status_code=400, detail="Informe a chave da NF-e (44 digitos)")
+
+    nota = (
+        db.query(NotaFiscalRecebida)
+        .filter(NotaFiscalRecebida.chave == limpa)
+        .one_or_none()
+    )
+    if nota is not None and nota.xml:
+        return nota.xml.encode()
+
+    try:
+        resposta = await run_in_threadpool(sefaz_nfe.consultar_por_chave, limpa)
+    except sefaz_nfe.SefazIndisponivel as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Nota {limpa} nao esta guardada e a SEFAZ nao devolveu: {exc}",
+        )
+    completos = [d for d in resposta["documentos"] if "procNFe" in d["schema"]]
+    if not completos:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"A SEFAZ nao devolveu o XML da nota {limpa} "
+                f"({resposta.get('status')} {resposta.get('motivo')}). "
+                "Envie o arquivo ou digite a nota na mao."
+            ),
+        )
+    notas_recebidas.guardar(db, completos[0]["xml"], "sefaz")
+    return completos[0]["xml"].encode()
+
+
+async def _espelho_da_nota(
+    db: Session,
+    *,
+    origem: str,
+    arquivo: UploadFile | None,
+    chave_nfe: str,
+    nota_manual: str,
+    tarifa_por_tonelada: str | None,
+    embalagem: str,
+    especie_id: str | None,
+) -> dict:
+    """Monta o espelho a partir da origem escolhida na tela."""
+    origem = (origem or "xml").strip().lower()
+    if origem not in ORIGENS_DA_NOTA:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Origem da nota desconhecida: {origem}. Use {', '.join(ORIGENS_DA_NOTA)}.",
+        )
+
+    if origem == "manual":
+        try:
+            campos = json.loads(nota_manual or "{}")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"Dados da nota ilegiveis: {exc}")
+        try:
+            return cte_montagem.derivar_manual(
+                campos,
+                tarifa_por_tonelada=tarifa_por_tonelada or None,
+                embalagem=embalagem,
+                especie_id=especie_id or None,
+            )
+        except (cte_montagem.DadosInsuficientes, nfe_xml.NFeInvalida) as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    if origem == "recebida":
+        conteudo = await _xml_da_nota_recebida(db, chave_nfe)
+    elif arquivo is not None:
+        conteudo = await arquivo.read()
+    else:
+        raise HTTPException(status_code=400, detail="Envie o XML da NF-e ou escolha outra origem.")
+
+    try:
+        return cte_montagem.derivar(
+            conteudo,
+            tarifa_por_tonelada=tarifa_por_tonelada or None,
+            embalagem=embalagem,
+            especie_id=especie_id or None,
+        )
+    except nfe_xml.NFeInvalida as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ElementTree.ParseError as exc:
+        raise HTTPException(status_code=400, detail=f"XML ilegivel: {exc}")
+
+
 @router.post("/espelho")
 async def espelho_do_cte(
-    arquivo: UploadFile,
+    arquivo: UploadFile | None = None,
+    origem_nota: str = Form("xml"),
+    chave_nfe: str = Form(""),
+    nota_manual: str = Form(""),
     tarifa_por_tonelada: str = Form(""),
     embalagem: str = Form(""),
     buscar_partes: bool = Form(False),
@@ -199,18 +312,16 @@ async def espelho_do_cte(
     payload sai como rascunho.
     """
     agendamento = db.get(Agendamento, agendamento_id) if agendamento_id else None
-    conteudo = await arquivo.read()
-    try:
-        resultado = cte_montagem.derivar(
-            conteudo,
-            tarifa_por_tonelada=tarifa_por_tonelada or None,
-            embalagem=embalagem,
-            especie_id=especie_id or None,
-        )
-    except nfe_xml.NFeInvalida as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except ElementTree.ParseError as exc:
-        raise HTTPException(status_code=400, detail=f"XML ilegivel: {exc}")
+    resultado = await _espelho_da_nota(
+        db,
+        origem=origem_nota,
+        arquivo=arquivo,
+        chave_nfe=chave_nfe,
+        nota_manual=nota_manual,
+        tarifa_por_tonelada=tarifa_por_tonelada,
+        embalagem=embalagem,
+        especie_id=especie_id,
+    )
 
     cfops_id = escolher_cfops_id(resultado["uf_origem"], resultado["uf_destino"])
     resultado["cfops_id"] = cfops_id
@@ -243,6 +354,13 @@ async def espelho_do_cte(
 
     resultado["partes"] = partes
     resultado["veiculos"] = veiculos
+    # Numa nota digitada o municipio do trecho nao foi informado; quem sabe
+    # dele e o endereco escolhido no cadastro. Pra nota com XML isso nao
+    # muda nada, porque os campos ja vieram preenchidos.
+    cte_montagem.completar_percurso(resultado, partes)
+    cfops_id = escolher_cfops_id(resultado["uf_origem"], resultado["uf_destino"])
+    resultado["cfops_id"] = cfops_id
+    resultado["cfop"] = "5352" if cfops_id == settings.bsoft_cfops_id_estadual else "6352"
     corpo = cte_montagem.montar_payload_conhecimento(
         resultado,
         partes=partes,
@@ -326,7 +444,10 @@ def _resolver_veiculos(agendamento, escolhas: dict | None = None) -> dict:
 
 @router.post("/emitir")
 async def emitir_conhecimento(
-    arquivo: UploadFile,
+    arquivo: UploadFile | None = None,
+    origem_nota: str = Form("xml"),
+    chave_nfe: str = Form(""),
+    nota_manual: str = Form(""),
     agendamento_id: int = Form(...),
     tarifa_por_tonelada: str = Form(...),
     aliquota_icms: str = Form(...),
@@ -358,18 +479,16 @@ async def emitir_conhecimento(
     if agendamento is None:
         raise HTTPException(status_code=404, detail="Agendamento nao encontrado")
 
-    conteudo = await arquivo.read()
-    try:
-        espelho = cte_montagem.derivar(
-            conteudo,
-            tarifa_por_tonelada=tarifa_por_tonelada,
-            embalagem=embalagem,
-            especie_id=especie_id or None,
-        )
-    except nfe_xml.NFeInvalida as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except ElementTree.ParseError as exc:
-        raise HTTPException(status_code=400, detail=f"XML ilegivel: {exc}")
+    espelho = await _espelho_da_nota(
+        db,
+        origem=origem_nota,
+        arquivo=arquivo,
+        chave_nfe=chave_nfe,
+        nota_manual=nota_manual,
+        tarifa_por_tonelada=tarifa_por_tonelada,
+        embalagem=embalagem,
+        especie_id=especie_id,
+    )
 
     chave = espelho["chaves_nfe"][0]
     # Protecao contra emissao duplicada: o indice unico
@@ -402,6 +521,7 @@ async def emitir_conhecimento(
     except BsoftError as exc:
         raise HTTPException(status_code=502, detail=f"Falha ao consultar cadastros: {exc}")
 
+    cte_montagem.completar_percurso(espelho, partes)
     corpo = cte_montagem.montar_payload_conhecimento(
         espelho,
         partes=partes,
