@@ -58,10 +58,19 @@ def guardar(db: Session, xml: str, origem: str) -> NotaFiscalRecebida | None:
         uf_destino=dados["uf_destino"][:2],
         valor_nota=dados["valor_nota"],
         peso_bruto=dados["peso_bruto"],
+        destinatario_doc=dados.get("destinatario_doc", "")[:14],
         xml=xml,
     )
     db.add(nota)
     db.commit()
+
+    # Nota nova: ja tenta ligar ao agendamento que a espera. Falha aqui
+    # nao pode impedir de guardar a nota - o casamento e refeito depois.
+    try:
+        from . import casamento
+        casamento.casar(db, nota)
+    except Exception as exc:
+        logger.warning("casamento da nota %s falhou: %s", nota.chave, str(exc)[:150])
     return nota
 
 

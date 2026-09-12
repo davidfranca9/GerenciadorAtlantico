@@ -294,7 +294,16 @@ class NotaFiscalRecebida(Base):
     uf_destino: Mapped[str] = mapped_column(String(2), default="")
     valor_nota: Mapped[str] = mapped_column(String(20), default="")
     peso_bruto: Mapped[str] = mapped_column(String(20), default="")
+    destinatario_doc: Mapped[str] = mapped_column(String(14), default="")
     xml: Mapped[str] = mapped_column(Text, default="")
     tem_cte: Mapped[bool] = mapped_column(Boolean, default=False)
     cte_numero: Mapped[str] = mapped_column(String(20), default="")
+    # Casamento com o agendamento, feito sozinho quando so um encaixa.
+    # `casamento` guarda o motivo - tanto do sim quanto do nao - pra tela
+    # explicar em vez de so mostrar um campo vazio.
+    agendamento_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    casamento: Mapped[str] = mapped_column(String(300), default="")
+    # O que aconteceu na tentativa de rascunho automatico (ver
+    # servicos/rascunho_automatico.py): vazio = nao tentou.
+    rascunho_resultado: Mapped[str] = mapped_column(String(300), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

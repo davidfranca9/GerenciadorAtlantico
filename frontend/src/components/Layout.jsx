@@ -83,12 +83,40 @@ function useEmailsNovos() {
   return novos;
 }
 
+// Notas fiscais que chegaram e ainda nao viraram CT-e. Diferente do
+// contador de e-mails, nao e "desde a ultima visita": e uma fila de
+// trabalho, e fica visivel enquanto houver algo nela.
+function useNotasSemCte() {
+  const [contagem, setContagem] = useState({ sem_cte: 0, casadas: 0 });
+
+  useEffect(() => {
+    let vivo = true;
+    async function conferir() {
+      try {
+        const dados = await api.fiscalContarNotas();
+        if (vivo) setContagem(dados);
+      } catch {
+        /* contador e informativo */
+      }
+    }
+    conferir();
+    const timer = setInterval(conferir, 60000);
+    return () => {
+      vivo = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  return contagem;
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const emailsNovos = useEmailsNovos();
+  const notas = useNotasSemCte();
   const bloqueadas = user?.role === "admin" ? [] : (user?.paginas_bloqueadas || "").split(",").filter(Boolean);
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
@@ -122,6 +150,18 @@ export default function Layout() {
                   <NavLink key={item.to} to={item.to} className={({ isActive }) => `sidebar-btn${isActive ? " active" : ""}`}>
                     <span className="nav-icon"><Icon name={item.icon} /></span>
                     <span>{item.label}</span>
+                    {item.to === "/documentos-fiscais" && notas.sem_cte > 0 && (
+                      <span
+                        title={`${notas.sem_cte} nota${notas.sem_cte === 1 ? "" : "s"} sem CT-e${notas.casadas ? ` (${notas.casadas} já casada${notas.casadas === 1 ? "" : "s"} com agendamento)` : ""}`}
+                        style={{
+                          marginLeft: "auto", background: "var(--accent, #2f9e6d)", color: "#fff",
+                          borderRadius: 999, fontSize: 11, fontWeight: 700, lineHeight: 1,
+                          padding: "3px 7px", fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {notas.sem_cte > 99 ? "99+" : notas.sem_cte}
+                      </span>
+                    )}
                     {item.to === "/emails" && emailsNovos > 0 && (
                       <span
                         title={`${emailsNovos} e-mail${emailsNovos === 1 ? "" : "s"} desde sua ultima visita`}

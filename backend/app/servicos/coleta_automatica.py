@@ -41,6 +41,18 @@ async def _coletar_do_email() -> int:
     return len(guardadas)
 
 
+async def _casar_notas_soltas() -> int:
+    """Tenta de novo o casamento das notas ainda sem agendamento.
+
+    O agendamento pode ser criado depois da nota chegar - e o casamento
+    feito na hora nao vale mais. Roda junto da varredura de e-mail.
+    """
+    from . import casamento
+
+    with SessionLocal() as db:
+        return await asyncio.to_thread(casamento.casar_pendentes, db)
+
+
 async def _coletar_da_sefaz() -> int:
     from . import sefaz_nfe
 
@@ -114,6 +126,7 @@ def iniciar() -> None:
     """Liga as coletas. So a da SEFAZ depende do certificado."""
     threading.Thread(target=_escutar_email_em_tempo_real, daemon=True).start()
     asyncio.create_task(_repetir("e-mail", _coletar_do_email, INTERVALO_EMAIL_SEGUNDOS))
+    asyncio.create_task(_repetir("casamento", _casar_notas_soltas, INTERVALO_EMAIL_SEGUNDOS))
     if settings.certificado_pfx_path:
         asyncio.create_task(_repetir("SEFAZ", _coletar_da_sefaz, INTERVALO_SEFAZ_SEGUNDOS))
     else:

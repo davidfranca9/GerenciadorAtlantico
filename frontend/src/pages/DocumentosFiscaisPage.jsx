@@ -234,6 +234,7 @@ function CampoManual({ rotulo, campo, valores, aoMudar, placeholder, formatar, l
 // A fila do que o sistema ja coletou sozinho, por e-mail ou pela SEFAZ.
 // Quem opera so escolhe: a nota inteira ja esta guardada aqui.
 function NotasRecebidas({ notas, carregando, chave, aoEscolher, aoRecarregar }) {
+  const escolhida = notas.find((n) => n.chave === chave);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
@@ -246,6 +247,7 @@ function NotasRecebidas({ notas, carregando, chave, aoEscolher, aoRecarregar }) 
             {notas.map((n) => (
               <option key={n.chave} value={n.chave}>
                 NF {n.numero}/{n.serie} · {n.emitente} → {n.destino} · {formatarValor(n.valor)} · {n.origem}
+                {n.agendamento_id ? ` · ag. #${n.agendamento_id}` : ""}
               </option>
             ))}
           </select>
@@ -254,6 +256,13 @@ function NotasRecebidas({ notas, carregando, chave, aoEscolher, aoRecarregar }) 
           ↻
         </button>
       </div>
+      {escolhida?.casamento && (
+        <div className={escolhida.agendamento_id ? "inline-alert info" : "inline-alert warning"} style={{ fontSize: 12 }}>
+          {escolhida.agendamento_id
+            ? `Casada com o agendamento #${escolhida.agendamento_id}: ${escolhida.casamento}.`
+            : `Sem agendamento: ${escolhida.casamento}.`}
+        </div>
+      )}
       {!carregando && !notas.length && (
         <div style={{ fontSize: 12, color: "var(--muted)" }}>
           Nenhuma nota coletada ainda. Você também pode colar a chave de uma NF-e abaixo — ela é
@@ -573,7 +582,14 @@ function EmitirCte() {
                 notas={notas}
                 carregando={carregandoNotas}
                 chave={chaveNfe}
-                aoEscolher={(valor) => { setChaveNfe(valor); setEspelho(null); }}
+                aoEscolher={(valor) => {
+                  setChaveNfe(valor);
+                  setEspelho(null);
+                  // A nota casada traz o agendamento junto. O que ja foi
+                  // escolhido na tela nao e sobrescrito.
+                  const nota = notas.find((n) => n.chave === valor);
+                  if (nota?.agendamento_id && !agendamentoId) setAgendamentoId(String(nota.agendamento_id));
+                }}
                 aoRecarregar={carregarNotas}
               />
             )}

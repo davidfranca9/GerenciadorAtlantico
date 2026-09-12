@@ -68,6 +68,11 @@ def on_startup():
             conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS data_agendada VARCHAR(32) DEFAULT ''"))
             conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS agendamento_confirmado_em TIMESTAMP"))
             conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS agendamento_confirmado_por VARCHAR(255) DEFAULT ''"))
+            # Casamento nota <-> agendamento e rascunho automatico.
+            conn.execute(text("ALTER TABLE notas_fiscais_recebidas ADD COLUMN IF NOT EXISTS destinatario_doc VARCHAR(14) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE notas_fiscais_recebidas ADD COLUMN IF NOT EXISTS agendamento_id INTEGER"))
+            conn.execute(text("ALTER TABLE notas_fiscais_recebidas ADD COLUMN IF NOT EXISTS casamento VARCHAR(300) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE notas_fiscais_recebidas ADD COLUMN IF NOT EXISTS rascunho_resultado VARCHAR(300) DEFAULT ''"))
             # operacoes_fiscais e tabela nova (criada pelo create_all); o indice
             # unico abaixo e a protecao contra emitir dois CT-e pra mesma carga.
             conn.execute(text(

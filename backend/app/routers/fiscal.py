@@ -975,7 +975,8 @@ async def sincronizar_email(dias: int = 7, db: Session = Depends(get_db)):
 
 @router.get("/notas")
 def listar_notas(db: Session = Depends(get_db)):
-    """NF-e disponiveis pra virar CT-e, de qualquer fonte."""
+    """NF-e disponiveis pra virar CT-e, de qualquer fonte, com o agendamento
+    que o sistema casou sozinho (ou o motivo de nao ter casado)."""
     return {
         "notas": [
             {
@@ -986,10 +987,38 @@ def listar_notas(db: Session = Depends(get_db)):
                 "emissao": n.emissao,
                 "emitente": n.emitente_nome,
                 "destinatario": n.destinatario_nome,
+                "destinatario_doc": n.destinatario_doc,
                 "destino": f"{n.municipio_destino} - {n.uf_destino}",
                 "valor": n.valor_nota,
                 "peso": n.peso_bruto,
+                "agendamento_id": n.agendamento_id,
+                "casamento": n.casamento,
+                "rascunho_resultado": n.rascunho_resultado,
             }
             for n in notas_recebidas.pendentes(db)
         ]
     }
+
+
+@router.get("/notas/contagem")
+def contar_notas(db: Session = Depends(get_db)):
+    """Quantas notas esperam CT-e. E o numero da barra lateral."""
+    pendentes = notas_recebidas.pendentes(db, limite=500)
+    return {
+        "sem_cte": len(pendentes),
+        "casadas": sum(1 for n in pendentes if n.agendamento_id),
+    }
+
+
+@router.post("/notas/{chave}/agendamento")
+def ligar_nota_ao_agendamento(chave: str, agendamento_id: int | None = None, db: Session = Depends(get_db)):
+    """Escolha feita na tela vence a automatica: liga (ou solta) a nota."""
+    nota = db.query(NotaFiscalRecebida).filter(NotaFiscalRecebida.chave == chave).one_or_none()
+    if nota is None:
+        raise HTTPException(status_code=404, detail="Nota nao encontrada")
+    if agendamento_id and db.get(Agendamento, agendamento_id) is None:
+        raise HTTPException(status_code=404, detail="Agendamento nao encontrado")
+    nota.agendamento_id = agendamento_id
+    nota.casamento = f"escolhido na tela: #{agendamento_id}" if agendamento_id else "solto na tela"
+    db.commit()
+    return {"chave": nota.chave, "agendamento_id": nota.agendamento_id, "casamento": nota.casamento}
