@@ -239,17 +239,21 @@ def test_mercadoria_leva_o_produto_predominante_e_a_marca():
     assert linha["naturezaCarga"] == "4"
 
 
-def test_com_conjunto_nao_manda_veiculo_nenhum():
-    """A API nao admite os dois caminhos ao mesmo tempo.
+def test_com_conjunto_manda_motorista_e_cavalo_mas_nenhuma_carreta():
+    """Com conjunto, nenhuma carreta vai: misturar as duas coisas fazia a
+    API cobrar um veiculo por vez ("quando declarado conjuntoVeiculos_id
+    nao e necessario declarar as informacoes dos veiculos").
 
-    Com conjuntoVeiculos_id preenchido ela responde "quando declarado
-    conjuntoVeiculos_id nao e necessario declarar as informacoes dos
-    veiculos"; misturando, cobra um veiculo por vez.
+    Motorista e cavalo vao junto do conjunto de proposito: o conjunto
+    sozinho deixou os dois em branco no rascunho 5102 (o Bsoft aproveitou
+    so a carreta). E a hipotese a provar com um rascunho; se a API recusar,
+    este teste muda.
     """
     corpo = payload(conjunto_veiculos_id="1")
     assert corpo["conjuntoVeiculos_id"] == "1"
-    for campo in ("motorista_id", "veiculos_id", "carreta_id",
-                  "semireboque_id", "quartoVeiculo_id"):
+    assert corpo["motorista_id"] == "652"
+    assert corpo["veiculos_id"] == "28"
+    for campo in ("carreta_id", "semireboque_id", "quartoVeiculo_id"):
         assert campo not in corpo, campo
 
 

@@ -749,6 +749,18 @@ def montar_payload_conhecimento(
     # informacoes dos veiculos".
     if conjunto_veiculos_id:
         corpo["conjuntoVeiculos_id"] = str(conjunto_veiculos_id)
+        # O conjunto sozinho saiu incompleto no rascunho 5102: o Bsoft
+        # aproveitou so a carreta e deixou motorista e cavalo em branco.
+        # Mandar os dois junto do conjunto (sem nenhuma carreta) e a
+        # hipotese a provar com um rascunho - se a API recusar com "nao e
+        # necessario declarar as informacoes dos veiculos", volta a mandar
+        # so o conjunto e o problema e do lado deles.
+        for campo, valor_id in (
+            ("motorista_id", veiculos.get("motorista_id")),
+            ("veiculos_id", veiculos.get("veiculo_id")),
+        ):
+            if valor_id:
+                corpo[campo] = str(valor_id)
         return corpo
 
     corpo["conjuntoVeiculos_id"] = ""
