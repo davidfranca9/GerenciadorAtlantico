@@ -116,6 +116,31 @@ def _envelope(cnpj: str, ultimo_nsu: str) -> str:
     )
 
 
+def _envelope_por_chave(cnpj: str, chave: str) -> str:
+    """Monta o SOAP da consulta de UMA nota, pela chave de acesso.
+
+    Diferente da consulta por NSU, esta pode ser feita quando se quiser:
+    nao consome a esteira sequencial nem cai na regra de uma hora.
+    """
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">'
+        "<soap12:Body>"
+        '<nfeDistDFeInteresse xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe">'
+        "<nfeDadosMsg>"
+        f'<distDFeInt xmlns="{NS_NFE}" versao="1.01">'
+        f"<tpAmb>{AMBIENTE_PRODUCAO}</tpAmb>"
+        f"<cUFAutor>{UF_AUTOR}</cUFAutor>"
+        f"<CNPJ>{cnpj}</CNPJ>"
+        f"<consChNFe><chNFe>{chave}</chNFe></consChNFe>"
+        "</distDFeInt>"
+        "</nfeDadosMsg>"
+        "</nfeDistDFeInteresse>"
+        "</soap12:Body>"
+        "</soap12:Envelope>"
+    )
+
+
 def _descompactar(conteudo_base64: str) -> str:
     """Cada documento vem em base64 sobre gzip."""
     return gzip.decompress(base64.b64decode(conteudo_base64)).decode("utf-8", errors="replace")
@@ -132,7 +157,24 @@ def consultar_documentos(ultimo_nsu: str = "0", cnpj: str = "") -> dict:
     if len(cnpj) != 14:
         raise SefazIndisponivel("Informe o CNPJ (14 digitos) do titular do certificado")
 
-    corpo = _envelope(cnpj, str(ultimo_nsu))
+    return _enviar(_envelope(cnpj, str(ultimo_nsu)))
+
+
+def consultar_por_chave(chave: str, cnpj: str = "") -> dict:
+    """LEITURA. Baixa UMA nota pela chave de acesso, a qualquer momento.
+
+    E a consulta sob demanda: nao mexe no ponteiro da esteira por NSU nem
+    esbarra na regra de uma hora. Serve pra quando a chave ja e conhecida -
+    pelo e-mail, pelo agendamento ou pelo proprio Bsoft.
+    """
+    chave = re.sub(r"\D", "", chave or "")
+    if len(chave) != 44:
+        raise SefazIndisponivel("Informe a chave de acesso da NF-e (44 digitos)")
+    cnpj = re.sub(r"\D", "", cnpj or settings.certificado_cnpj or "")
+    return _enviar(_envelope_por_chave(cnpj, chave))
+
+
+def _enviar(corpo: str) -> dict:
     with _certificado_em_pem() as (cert, chave):
         try:
             resposta = requests.post(
