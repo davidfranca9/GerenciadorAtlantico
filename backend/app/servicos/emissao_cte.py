@@ -127,6 +127,16 @@ def resolver_veiculos(agendamento, escolhas: dict | None = None) -> dict:
     if not nome_motorista:
         nome_motorista = getattr(agendamento, "driver_name", "") or ""
 
+    # Existir como pessoa nao basta: motorista_id so vale pra quem esta no
+    # grupo de motoristas. Fora dele o Bsoft aceita o POST e deixa o campo
+    # vazio - e o CT-e sai sem motorista.
+    no_grupo = bsoft_fiscal.pessoa_esta_no_grupo(cpf) if (motorista_id and cpf) else None
+    if no_grupo is False:
+        motorista_fora_do_grupo = motorista_id
+        motorista_id = None
+    else:
+        motorista_fora_do_grupo = None
+
     placas_do_motorista = {}
     placas_fonte = ""
     slots = (("veiculo_id", "placa_cavalo"), ("carreta_id", "placa_carreta1"), ("semireboque_id", "placa_carreta2"))
@@ -154,6 +164,7 @@ def resolver_veiculos(agendamento, escolhas: dict | None = None) -> dict:
         "placas_do_motorista": placas_do_motorista,
         "placas_fonte": placas_fonte,
         "motorista_id": motorista_id,
+        "motorista_fora_do_grupo": motorista_fora_do_grupo,
         "conjunto": conjunto,
     }
     for campo, placa in placas.items():
@@ -219,6 +230,14 @@ def montar(
         **seguro,
     )
     pendencias = partes["pendencias"] + cte_montagem.conferir_payload(corpo)
+    if veiculos.get("motorista_fora_do_grupo"):
+        nome = (veiculos.get("procurou") or {}).get("motorista_nome") or "o motorista"
+        pendencias = [
+            p for p in pendencias if not p.startswith("Motorista nao encontrado")
+        ] + [
+            f"{nome} esta no cadastro do Bsoft, mas nao no grupo de motoristas. "
+            "Abra o cadastro dele no Bsoft e marque o grupo 'motoristas'; sem isso o CT-e sai sem motorista."
+        ]
     return {
         "partes": partes,
         "veiculos": veiculos,

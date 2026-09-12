@@ -648,6 +648,24 @@ def procurar_motoristas(termo: str, limite: int = 25) -> dict:
     }
 
 
+def pessoa_esta_no_grupo(cpf: str, grupo: str = GRUPO_MOTORISTAS) -> bool | None:
+    """LEITURA. A pessoa deste CPF pertence ao grupo?
+
+    `cpf` e `grupo` sao filtros documentados do GET de pessoas fisicas, e a
+    listagem nao devolve os grupos de cada registro - entao a unica forma
+    de saber e perguntar "existe alguem com este CPF NESTE grupo". None
+    quando a consulta falha: ai nao da pra afirmar nem sim nem nao.
+    """
+    limpo = "".join(filter(str.isdigit, cpf or ""))
+    if len(limpo) != 11:
+        return None
+    try:
+        achados = listar("/pessoas/v1/pessoas/fisicas", {"cpf": limpo, "grupo": grupo})
+    except BsoftError:
+        return None
+    return any("".join(filter(str.isdigit, str(p.get("cpf") or ""))) == limpo for p in achados)
+
+
 def buscar_conjunto_por_cpf(cpf: str) -> dict | None:
     """LEITURA. O conjunto de veiculos vinculado a este motorista.
 
@@ -741,6 +759,8 @@ def listar_conjuntos_veiculos() -> list:
             "id": item.get("id"),
             "motorista": (item.get("motorista") or "").strip(),
             "placas": placas,
+            # posicao 1 = veiculo, 2 = central, 3 = carreta, 4 = quartoVeiculo
+            "posicoes": {c: item.get(c) or "" for c in ("veiculo", "central", "carreta", "quartoVeiculo")},
             "descricao": " · ".join([(item.get("motorista") or "sem motorista").strip()] + placas),
         })
     return conjuntos

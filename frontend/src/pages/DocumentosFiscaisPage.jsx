@@ -929,7 +929,9 @@ function EmitirCte() {
                         ? `${escolhas.motorista_nome}${escolhas.motorista_cpf ? ` · ${escolhas.motorista_cpf}` : ""}`
                         : e.veiculos?.motorista_id
                           ? `cadastro ${e.veiculos.motorista_id}`
-                          : "não encontrado"
+                          : e.veiculos?.motorista_fora_do_grupo
+                            ? `cadastro ${e.veiculos.motorista_fora_do_grupo} — NÃO É MOTORISTA no Bsoft`
+                            : "não encontrado"
                     }
                   />
                   <Campo rotulo="Cavalo" valor={e.veiculos?.veiculo_id ? `cadastro ${e.veiculos.veiculo_id}` : "não encontrado"} />

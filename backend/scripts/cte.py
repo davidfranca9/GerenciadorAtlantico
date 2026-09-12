@@ -140,7 +140,7 @@ def mostrar_espelho(dados: dict) -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("acao", choices=["motoristas", "veiculos", "espelho", "emitir", "agendamentos", "configuracoes",
+    p.add_argument("acao", choices=["motoristas", "veiculos", "conjuntos", "espelho", "emitir", "agendamentos", "configuracoes",
                                     "nfes", "baixar-nfe", "varrer", "conhecimentos", "conhecimento", "emails"])
     p.add_argument("--cadastro", default="", help="filtra a acao configuracoes")
     p.add_argument("--busca", default="has:attachment newer_than:3d",
@@ -307,6 +307,13 @@ def main() -> int:
                 continue
             print(f"\n== {nome} ==")
             print(json.dumps(conteudo, ensure_ascii=False, indent=1)[:2500])
+        return 0
+
+    if args.acao == "conjuntos":
+        resposta = requests.get(f"{args.api}/fiscal/conjuntos",
+                                headers={"Authorization": f"Bearer {obter_token(args)}"}, timeout=args.timeout)
+        for item in resposta.json().get("conjuntos") or []:
+            print(json.dumps(item, ensure_ascii=False))
         return 0
 
     if args.acao in ("motoristas", "veiculos"):

@@ -114,3 +114,46 @@ def test_com_conjunto_nenhum_veiculo_e_cobrado():
         corpo[campo] = ""
     faltas = cte_montagem.conferir_payload(corpo)
     assert not any(palavra in f for f in faltas for palavra in ("Motorista", "Cavalo", "Carreta", "Semi-reboque", "Quarto"))
+
+
+# --------------------------------------------------------------------------
+# Achado pelo CPF, mas fora do grupo: o CT-e nao pode sair sem motorista
+# --------------------------------------------------------------------------
+
+
+def test_pessoa_no_grupo_pergunta_cpf_e_grupo_juntos(monkeypatch):
+    consultas = []
+    def listar(caminho, params=None):
+        consultas.append(params)
+        return [TALISSON] if params.get("grupo") == "motoristas" else []
+    monkeypatch.setattr(bsoft_fiscal, "listar", listar)
+    assert bsoft_fiscal.pessoa_esta_no_grupo("121.597.816-22") is True
+    assert consultas == [{"cpf": "12159781622", "grupo": "motoristas"}]
+
+
+def test_pessoa_fora_do_grupo_e_false(monkeypatch):
+    monkeypatch.setattr(bsoft_fiscal, "listar", lambda caminho, params=None: [])
+    assert bsoft_fiscal.pessoa_esta_no_grupo("12159781622") is False
+
+
+def test_consulta_que_falha_nao_afirma_nada(monkeypatch):
+    from app.servicos.bsoft_client import BsoftError
+    def quebra(caminho, params=None):
+        raise BsoftError("502")
+    monkeypatch.setattr(bsoft_fiscal, "listar", quebra)
+    assert bsoft_fiscal.pessoa_esta_no_grupo("12159781622") is None
+
+
+def test_montagem_explica_o_motorista_fora_do_grupo():
+    from app.servicos import emissao_cte
+    from tests.test_emissao_cte import montar
+
+    def talisson_fora_do_grupo(agendamento, escolhas):
+        return {
+            "motorista_id": None, "motorista_fora_do_grupo": "2310",
+            "procurou": {"motorista_nome": "TALISSON JUNIOR GUIMARAES RIBEIRO"},
+            "veiculo_id": "1644", "carreta_id": "1641", "semireboque_id": "1", "quarto_veiculo_id": "2",
+        }
+    m = montar(resolver_veiculos_fn=talisson_fora_do_grupo)
+    assert any("TALISSON" in p and "grupo de motoristas" in p for p in m["pendencias"])
+    assert not any(p.startswith("Motorista nao encontrado") for p in m["pendencias"])
