@@ -397,6 +397,20 @@ function EmitirCte() {
       : Boolean(abrirChave(manual.chave) && manual.destinatario_doc && manual.produto
                 && manual.peso_kg && manual.valor_nota && manual.modalidade_frete);
 
+  // Tudo que ainda impede o "Conferir", de uma vez. Antes o botao ficava
+  // apagado e a tela so citava o agendamento - quem escolhia a nota e
+  // preenchia so ela via o botao morto sem saber por que.
+  const faltando = [
+    !agendamentoId && "o agendamento",
+    !notaPronta && (
+      origemNota === "xml" ? "o arquivo XML"
+        : origemNota === "recebida" ? "a nota (ou a chave de 44 dígitos)"
+        : "os dados da nota"
+    ),
+    !tarifa && "a tarifa por tonelada",
+    !km && "o km do trecho",
+  ].filter(Boolean);
+
   const campos = (recentes) => ({
     origem_nota: origemNota,
     chave_nfe: origemNota === "recebida" ? chaveNfe : "",
@@ -575,12 +589,17 @@ function EmitirCte() {
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
               <button
                 className="btn-primary"
-                disabled={ocupado || !agendamentoId || !notaPronta || !tarifa || !km}
+                disabled={ocupado || faltando.length > 0}
                 onClick={handleConferir}
               >
                 {ocupado ? "Processando..." : "Conferir"}
               </button>
-              {!agendamentoId && <span style={{ fontSize: 12, color: "var(--muted)" }}>Escolha o agendamento acima.</span>}
+              {faltando.length > 0 && (
+                <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                  Falta informar {faltando.length === 1 ? faltando[0]
+                    : faltando.slice(0, -1).join(", ") + " e " + faltando[faltando.length - 1]}.
+                </span>
+              )}
             </div>
           </Secao>
 
