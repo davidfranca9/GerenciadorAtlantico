@@ -408,7 +408,6 @@ function EmitirCte() {
         : "os dados da nota"
     ),
     !tarifa && "a tarifa por tonelada",
-    !km && "o km do trecho",
   ].filter(Boolean);
 
   const campos = (recentes) => ({

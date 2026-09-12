@@ -185,9 +185,11 @@ def test_km_entra_no_payload():
     assert payload(km="850")["km"] == "850"
 
 
-def test_sem_km_vira_pendencia():
-    # A quilometragem nao sai da nota nem do cadastro: e por viagem.
-    assert any("Quilometragem" in p for p in conferir_payload(payload(km="")))
+def test_sem_km_nao_trava_a_emissao():
+    # A quilometragem e informada quando se sabe; o CT-e sai sem ela. Ja
+    # travou a tela uma vez por engano - por isso o teste garante o inverso.
+    assert not any("Quilometragem" in p for p in conferir_payload(payload(km="")))
+    assert payload(km="")["km"] == ""
 
 
 def test_sem_seguradora_vira_pendencia():

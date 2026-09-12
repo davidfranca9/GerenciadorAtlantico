@@ -811,9 +811,9 @@ def conferir_payload(corpo: dict) -> list[str]:
         "valorFrete": "Valor do frete ausente (falta a tarifa).",
         "aliquota": "Aliquota de ICMS nao informada.",
         "pagamentoFrete": "Nao deu pra saber quem paga o frete (modalidade da NF-e nao mapeada).",
-        "km": "Quilometragem do trecho nao informada.",
-        # apolice_id nao entra aqui: a documentacao marca o campo como
-        # opcional. So a seguradora e obrigatoria.
+        # km nao entra aqui: o trecho e informado quando se sabe, e o CT-e
+        # sai do mesmo jeito sem ele. apolice_id tambem nao: a documentacao
+        # marca o campo como opcional. So a seguradora e obrigatoria.
         "seguradora_id": (
             f"Seguradora da apolice {settings.bsoft_numero_apolice} nao encontrada. "
             "Confira se a apolice esta cadastrada no Bsoft."
