@@ -9,6 +9,9 @@ from __future__ import annotations
 import base64
 import email
 import imaplib
+import logging
+import socket
+import time
 import re
 import threading
 from email.header import decode_header
@@ -340,3 +343,62 @@ def anexos_xml_recentes(dias: int = 7, limite_mensagens: int = 20) -> list[str]:
             except Exception:
                 continue
     return encontrados
+
+
+# Tempo maximo de uma sessao IDLE. O servidor derruba por volta de 30
+# minutos, entao renovamos antes disso.
+IDLE_RENOVAR_SEGUNDOS = 25 * 60
+
+
+def escutar_novas_mensagens(ao_chegar, parar=None) -> None:
+    """Fica ouvindo a caixa e avisa quando chega mensagem nova.
+
+    Usa IMAP IDLE: em vez de perguntar de tempos em tempos, o servidor
+    empurra o aviso assim que a mensagem entra. A conexao e exclusiva
+    porque em IDLE ela nao aceita outro comando.
+
+    `ao_chegar` e chamado sem argumentos; quem decide o que fazer com a
+    caixa e quem chamou. `parar` e uma funcao que, devolvendo True,
+    encerra a escuta.
+    """
+    usuario, senha = credenciais_limpas()
+
+    while not (parar and parar()):
+        conexao = None
+        try:
+            conexao = _logar(usuario, senha)
+            conexao.select("INBOX")
+            # imaplib nao expoe IDLE; a conversa e simples o suficiente pra
+            # falar na mao: manda IDLE, espera aviso, manda DONE.
+            etiqueta = conexao._new_tag()
+            conexao.send(b"%s IDLE\r\n" % etiqueta)
+            conexao.readline()  # "+ idling"
+
+            inicio = time.time()
+            conexao.sock.settimeout(60)
+            while not (parar and parar()):
+                try:
+                    linha = conexao.readline()
+                except socket.timeout:
+                    linha = b""
+                # EXISTS e RECENT sao os avisos de mensagem nova.
+                if b"EXISTS" in linha or b"RECENT" in linha:
+                    conexao.send(b"DONE\r\n")
+                    try:
+                        conexao.readline()
+                    except Exception:
+                        pass
+                    ao_chegar()
+                    break
+                if time.time() - inicio > IDLE_RENOVAR_SEGUNDOS:
+                    conexao.send(b"DONE\r\n")
+                    break
+        except Exception as exc:
+            logging.getLogger(__name__).info("escuta de e-mail caiu: %s", str(exc)[:150])
+            time.sleep(30)
+        finally:
+            if conexao is not None:
+                try:
+                    conexao.logout()
+                except Exception:
+                    pass

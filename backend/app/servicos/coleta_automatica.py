@@ -2,8 +2,10 @@
 
 Duas fontes, cadencias diferentes, pelo motivo de cada uma:
 
-    e-mail  - a cada 10 minutos. Quando o fornecedor manda o anexo, a nota
-              fica disponivel quase na hora.
+    e-mail  - em tempo real, por IMAP IDLE: o servidor avisa quando a
+              mensagem chega, em vez de a gente perguntar. Uma varredura
+              a cada 10 minutos fica de rede de seguranca, caso a escuta
+              caia sem avisar.
     SEFAZ   - a cada hora. E o limite que a Receita impoe: consultar a
               esteira sem novidade responde "consumo indevido" e bloqueia
               por uma hora. Cobre justamente as fabricas que nao enviam.
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from datetime import datetime
 
 from ..config import settings
@@ -24,6 +27,7 @@ from . import notas_recebidas
 
 logger = logging.getLogger(__name__)
 
+# A varredura periodica e so rede de seguranca da escuta em tempo real.
 INTERVALO_EMAIL_SEGUNDOS = 600
 INTERVALO_SEFAZ_SEGUNDOS = 3600
 
@@ -88,8 +92,27 @@ async def _repetir(nome: str, tarefa, intervalo: int) -> None:
         await asyncio.sleep(intervalo)
 
 
+def _escutar_email_em_tempo_real() -> None:
+    """Roda a escuta IDLE numa thread, fora do laco do servidor.
+
+    A conexao em IDLE fica bloqueada esperando o aviso, entao nao pode
+    dividir thread com o resto da aplicacao.
+    """
+    from . import email_inbox
+
+    def ao_chegar():
+        # A escuta so avisa QUE chegou algo; quem le os anexos e a coleta.
+        try:
+            asyncio.run(_coletar_do_email())
+        except Exception as exc:
+            logger.warning("coleta apos aviso de e-mail falhou: %s", str(exc)[:150])
+
+    email_inbox.escutar_novas_mensagens(ao_chegar)
+
+
 def iniciar() -> None:
-    """Liga as duas coletas. So a da SEFAZ depende do certificado."""
+    """Liga as coletas. So a da SEFAZ depende do certificado."""
+    threading.Thread(target=_escutar_email_em_tempo_real, daemon=True).start()
     asyncio.create_task(_repetir("e-mail", _coletar_do_email, INTERVALO_EMAIL_SEGUNDOS))
     if settings.certificado_pfx_path:
         asyncio.create_task(_repetir("SEFAZ", _coletar_da_sefaz, INTERVALO_SEFAZ_SEGUNDOS))
