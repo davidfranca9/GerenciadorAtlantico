@@ -770,7 +770,7 @@ async def sincronizar_sefaz(db: Session = Depends(get_db)):
         db.add(estado)
 
     try:
-        resultado = await run_in_threadpool(sefaz_nfe.consultar_documentos, estado.ultimo_nsu)
+        resultado = await run_in_threadpool(sefaz_nfe.sincronizar, estado.ultimo_nsu)
     except sefaz_nfe.CertificadoAusente as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except sefaz_nfe.SefazIndisponivel as exc:
@@ -784,21 +784,16 @@ async def sincronizar_sefaz(db: Session = Depends(get_db)):
         estado.maximo_nsu = resultado["maximo_nsu"]
     estado.ultima_consulta = datetime.utcnow()
     estado.ultimo_status = f"{resultado.get('status')} {resultado.get('motivo')}"[:200]
-    estado.documentos_baixados = (estado.documentos_baixados or 0) + len(resultado["documentos"])
+    estado.documentos_baixados = (estado.documentos_baixados or 0) + len(resultado["completas"])
     db.commit()
 
-    # As notas completas (procNFe) sao as que servem pra emitir CT-e; os
-    # resumos (resNFe) so avisam que a nota existe.
-    completas = [d for d in resultado["documentos"] if "procNFe" in d["schema"]]
     return {
         "status": resultado["status"],
         "motivo": resultado["motivo"],
         "ultimo_nsu": estado.ultimo_nsu,
         "maximo_nsu": estado.maximo_nsu,
-        "documentos": len(resultado["documentos"]),
-        "notas_completas": len(completas),
-        "chaves": [
-            "".join(filter(str.isdigit, d["xml"].split('Id="NFe')[1][:44]))
-            for d in completas if 'Id="NFe' in d["xml"]
-        ][:50],
+        "resumos_recebidos": resultado["resumos"],
+        "notas_completas": len(resultado["completas"]),
+        "chaves": [c["chave"] for c in resultado["completas"]],
+        "falhas": resultado["falhas"],
     }

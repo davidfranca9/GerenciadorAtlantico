@@ -214,3 +214,59 @@ def _enviar(corpo: str) -> dict:
         "maximo_nsu": texto("maxNSU"),
         "documentos": documentos,
     }
+
+
+def chave_do_documento(xml: str) -> str:
+    """Chave de acesso de um documento da esteira.
+
+    Vale tanto pro resumo (resNFe) quanto pra nota completa (procNFe): os
+    dois trazem chNFe, e no procNFe ela tambem esta no atributo Id.
+    """
+    achado = re.search(r"<chNFe>(\d{44})</chNFe>", xml)
+    if achado:
+        return achado.group(1)
+    achado = re.search(r'Id="NFe(\d{44})"', xml)
+    return achado.group(1) if achado else ""
+
+
+def sincronizar(ultimo_nsu: str = "0", limite_completas: int = 20) -> dict:
+    """LEITURA. Descobre notas novas e baixa o XML completo de cada uma.
+
+    A esteira por NSU entrega, pra quem so aparece como transportadora,
+    o RESUMO da nota (resNFe) - que traz a chave mas nao o conteudo. Com a
+    chave em maos, a consulta avulsa traz o documento completo. Juntando as
+    duas, o sistema descobre e baixa sozinho, sem depender de e-mail.
+    """
+    esteira = consultar_documentos(ultimo_nsu)
+
+    completas, resumos, falhas = [], [], []
+    for doc in esteira["documentos"]:
+        chave = chave_do_documento(doc["xml"])
+        if "procNFe" in doc["schema"]:
+            completas.append({"chave": chave, "xml": doc["xml"]})
+        elif chave:
+            resumos.append(chave)
+
+    # Cada resumo vira uma consulta avulsa, ate o limite - so pra nao
+    # disparar dezenas de chamadas numa sincronizacao so.
+    for chave in resumos[:limite_completas]:
+        try:
+            detalhe = consultar_por_chave(chave)
+        except SefazIndisponivel as exc:
+            falhas.append({"chave": chave, "motivo": str(exc)[:120]})
+            continue
+        achados = [d for d in detalhe["documentos"] if "procNFe" in d["schema"]]
+        if achados:
+            completas.append({"chave": chave, "xml": achados[0]["xml"]})
+        else:
+            falhas.append({"chave": chave, "motivo": f"{detalhe['status']} {detalhe['motivo']}"[:120]})
+
+    return {
+        "status": esteira["status"],
+        "motivo": esteira["motivo"],
+        "ultimo_nsu": esteira["ultimo_nsu"],
+        "maximo_nsu": esteira["maximo_nsu"],
+        "resumos": len(resumos),
+        "completas": completas,
+        "falhas": falhas,
+    }
