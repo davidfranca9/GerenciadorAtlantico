@@ -86,7 +86,17 @@ def test_criar_conjunto_manda_placas_e_nao_apaga_vinculos(monkeypatch):
     monkeypatch.setattr(bsoft_fiscal, "chamar", chamar)
     bsoft_fiscal.criar_conjunto_veiculos("3010", {"placa_cavalo": "ABC-1D23", "placa_carreta1": "DEF-4E56", "placa_carreta2": "", "placa_quarto": ""})
     assert enviado["metodo"] == "POST" and enviado["caminho"] == "/transporte/v1/conjuntoVeiculos"
-    assert enviado["corpo"] == {"motoristaId": "3010", "removerVinculacoes": "N", "veiculo": "ABC-1D23", "carreta": "DEF-4E56"}
+    # Cavalo + uma carreta: posicoes 1 e 2 (central), como nos conjuntos reais
+    # do tenant (OVK-8C46 + QOH-9J46 em central; RSC-1A84 + SIZ-8G24 em
+    # central + SIZ-8F82 em carreta no bitrem).
+    assert enviado["corpo"] == {"motoristaId": "3010", "removerVinculacoes": "N", "veiculo": "ABC-1D23", "central": "DEF-4E56"}
+
+
+def test_bitrem_vai_central_e_carreta(monkeypatch):
+    enviado = {}
+    monkeypatch.setattr(bsoft_fiscal, "chamar", lambda m, c, json_body=None, **kw: enviado.update(json_body) or (200, {}))
+    bsoft_fiscal.criar_conjunto_veiculos("1", {"placa_cavalo": "RSC-1A84", "placa_carreta1": "SIZ-8G24", "placa_carreta2": "SIZ-8F82"})
+    assert enviado["central"] == "SIZ-8G24" and enviado["carreta"] == "SIZ-8F82" and "quartoVeiculo" not in enviado
 
 
 def test_criar_conjunto_exige_o_cavalo():

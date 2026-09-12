@@ -703,13 +703,18 @@ def criar_conjunto_veiculos(motorista_id: str, placas: dict) -> dict:
 
     removerVinculacoes fica em "N" de proposito: "S" apagaria os outros
     vinculos do motorista, e isso e decisao de quem cuida do cadastro.
+
+    As posicoes seguem a convencao lida nos conjuntos reais do tenant:
+    cavalo + uma carreta e veiculo (1) + CENTRAL (2); bitrem acrescenta a
+    segunda em carreta (3). A API valida categoria por posicao ("A
+    posicao 1 nao esta liberada para veiculos de categoria CARRETA").
     """
     corpo = {
         "motoristaId": str(motorista_id),
         "removerVinculacoes": "N",
     }
-    for campo, chave in (("veiculo", "placa_cavalo"), ("carreta", "placa_carreta1"),
-                         ("central", "placa_carreta2"), ("quartoVeiculo", "placa_quarto")):
+    for campo, chave in (("veiculo", "placa_cavalo"), ("central", "placa_carreta1"),
+                         ("carreta", "placa_carreta2"), ("quartoVeiculo", "placa_quarto")):
         if placas.get(chave):
             corpo[campo] = placas[chave]
     if "veiculo" not in corpo:
