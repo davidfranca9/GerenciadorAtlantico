@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 # A varredura periodica e so rede de seguranca da escuta em tempo real.
 INTERVALO_EMAIL_SEGUNDOS = 600
 INTERVALO_SEFAZ_SEGUNDOS = 3600
+# Depois de criado, o CT-e e consultado ate a SEFAZ responder.
+INTERVALO_ACOMPANHAMENTO_SEGUNDOS = 300
 
 
 async def _coletar_do_email() -> int:
@@ -92,6 +94,17 @@ async def _coletar_da_sefaz() -> int:
     return len(guardadas)
 
 
+async def _acompanhar_ctes() -> int:
+    """Pergunta ao Bsoft o que houve com cada CT-e ainda em aberto."""
+    from . import acompanhamento_cte
+
+    with SessionLocal() as db:
+        resultado = await asyncio.to_thread(acompanhamento_cte.acompanhar, db)
+    if resultado["consultadas"]:
+        logger.info("acompanhamento de CT-e: %s", resultado)
+    return resultado["autorizadas"]
+
+
 async def _repetir(nome: str, tarefa, intervalo: int) -> None:
     """Roda a tarefa em intervalos, sem deixar erro parar o ciclo."""
     while True:
@@ -127,6 +140,7 @@ def iniciar() -> None:
     threading.Thread(target=_escutar_email_em_tempo_real, daemon=True).start()
     asyncio.create_task(_repetir("e-mail", _coletar_do_email, INTERVALO_EMAIL_SEGUNDOS))
     asyncio.create_task(_repetir("casamento", _casar_notas_soltas, INTERVALO_EMAIL_SEGUNDOS))
+    asyncio.create_task(_repetir("CT-e", _acompanhar_ctes, INTERVALO_ACOMPANHAMENTO_SEGUNDOS))
     if settings.certificado_pfx_path:
         asyncio.create_task(_repetir("SEFAZ", _coletar_da_sefaz, INTERVALO_SEFAZ_SEGUNDOS))
     else:

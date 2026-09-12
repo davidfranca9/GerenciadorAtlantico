@@ -345,6 +345,73 @@ function NotaManual({ valores, aoMudar }) {
   );
 }
 
+const ROTULO_STATUS = {
+  RASCUNHO: ["Rascunho", "#8a8f98"],
+  ENVIANDO_CTE: ["Enviando", "#8a8f98"],
+  CTE_CRIADO: ["Criado no Bsoft", "#2f6fa8"],
+  CTE_PROCESSANDO: ["Aguardando SEFAZ", "#b7791f"],
+  CTE_AUTORIZADO: ["Autorizado", "#2f9e6d"],
+  CTE_REJEITADO: ["Rejeitado", "#c0392b"],
+  CANCELADO: ["Cancelado", "#8a8f98"],
+};
+
+// O que aconteceu com cada CT-e depois do clique. O acompanhamento roda
+// sozinho a cada 5 minutos e atualiza isto; a tela so mostra.
+function OperacoesRecentes() {
+  const [operacoes, setOperacoes] = useState([]);
+
+  useEffect(() => {
+    let vivo = true;
+    function carregar() {
+      api.fiscalListarOperacoes()
+        .then((d) => { if (vivo) setOperacoes((Array.isArray(d) ? d : d.operacoes || []).slice(0, 12)); })
+        .catch(() => {});
+    }
+    carregar();
+    const timer = setInterval(carregar, 60000);
+    return () => { vivo = false; clearInterval(timer); };
+  }, []);
+
+  if (!operacoes.length) return null;
+
+  return (
+    <div className="card" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div>
+        <strong style={{ fontSize: 15 }}>Últimas emissões</strong>
+        <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>
+          Acompanhadas sozinhas: o sistema pergunta ao Bsoft a cada 5 minutos o que a SEFAZ respondeu.
+        </div>
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table className="table" style={{ fontSize: 12.5 }}>
+          <thead>
+            <tr><th>Op.</th><th>Agend.</th><th>CT-e</th><th>Situação</th><th>Chave</th><th>Observação</th></tr>
+          </thead>
+          <tbody>
+            {operacoes.map((op) => {
+              const [rotulo, cor] = ROTULO_STATUS[op.status] || [op.status, "#8a8f98"];
+              return (
+                <tr key={op.id}>
+                  <td>#{op.id}</td>
+                  <td>{op.agendamento_id ? `#${op.agendamento_id}` : "—"}</td>
+                  <td>{op.cte_numero || (op.cod_conhecimento_bsoft ? `id ${op.cod_conhecimento_bsoft}` : "—")}</td>
+                  <td>
+                    <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, color: "#fff", background: cor }}>
+                      {rotulo}
+                    </span>
+                  </td>
+                  <td style={{ fontFamily: "monospace", fontSize: 11 }}>{op.cte_chave ? `…${op.cte_chave.slice(-8)}` : "—"}</td>
+                  <td style={{ maxWidth: 360, whiteSpace: "normal" }}>{op.erro || op.cte_motivo_rejeicao || ""}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function EmitirCte() {
   const [aberto, setAberto] = useState(false);
   const [agendamentos, setAgendamentos] = useState([]);
@@ -364,6 +431,7 @@ function EmitirCte() {
   const [definitivo, setDefinitivo] = useState(false);
   const [escolhas, setEscolhas] = useState({});
   const [conjuntos, setConjuntos] = useState([]);
+  const [sugestao, setSugestao] = useState(null);
   const [espelho, setEspelho] = useState(null);
   const [resultado, setResultado] = useState(null);
   const [ocupado, setOcupado] = useState(false);
@@ -376,6 +444,23 @@ function EmitirCte() {
       .then((d) => setConjuntos(d.conjuntos || []))
       .catch(() => {});
   }, [aberto, agendamentos.length]);
+
+  // O agendamento escolhido traz a tarifa da ultima cotacao do destino e a
+  // embalagem do pedido. Preenche so o que estiver vazio: o que a pessoa
+  // ja digitou nao e sobrescrito.
+  useEffect(() => {
+    if (!agendamentoId) { setSugestao(null); return; }
+    let vivo = true;
+    api.fiscalSugestoes(agendamentoId)
+      .then((d) => {
+        if (!vivo) return;
+        setSugestao(d);
+        if (d.tarifa) setTarifa((t) => t || d.tarifa.replace(".", ","));
+        if (d.embalagem) setEmbalagem((e) => (e === "BIG BAG" || !e ? d.embalagem : e));
+      })
+      .catch(() => { if (vivo) setSugestao(null); });
+    return () => { vivo = false; };
+  }, [agendamentoId]);
 
   function carregarNotas() {
     setCarregandoNotas(true);
@@ -523,6 +608,17 @@ function EmitirCte() {
               <div className="field">
                 <label>Tarifa por tonelada</label>
                 <input value={tarifa} onChange={(e) => setTarifa(e.target.value)} placeholder="300,00" />
+                {sugestao?.cotacao && (
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                    Cotação de {sugestao.cotacao.data} para {sugestao.cotacao.destino}
+                    {sugestao.cotacao.cliente ? ` (${sugestao.cotacao.cliente})` : ""}: R$ {sugestao.tarifa}/t
+                  </span>
+                )}
+                {sugestao && !sugestao.cotacao && sugestao.destino && (
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                    Sem cotação registrada para {sugestao.destino}.
+                  </span>
+                )}
               </div>
               <div className="field">
                 <label>Alíquota de ICMS (%)</label>
@@ -959,6 +1055,8 @@ export default function DocumentosFiscaisPage() {
       </div>
 
       <EmitirCte />
+
+      <OperacoesRecentes />
 
       <div className="card" style={{ display: "flex", gap: 14, alignItems: "end", flexWrap: "wrap" }}>
         <div className="field" style={{ maxWidth: 200 }}>

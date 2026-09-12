@@ -973,6 +973,73 @@ async def sincronizar_email(dias: int = 7, db: Session = Depends(get_db)):
     }
 
 
+# Embalagem do pedido (vocabulario do OCR) -> o que a tela de emissao usa.
+EMBALAGENS_DA_TELA = ("GRANEL", "BIG BAG", "SACARIA")
+
+
+def _embalagem_da_tela(texto: str) -> str:
+    alto = (texto or "").upper()
+    if "GRANEL" in alto:
+        return "GRANEL"
+    if "BIG" in alto:
+        return "BIG BAG"
+    if "SAC" in alto:
+        return "SACARIA"
+    return ""
+
+
+def sugerir_para_agendamento(db: Session, agendamento: Agendamento) -> dict:
+    """O que da pra preencher sozinho a partir do agendamento.
+
+    Tarifa: a ultima cotacao registrada pro destino (e, se houver, pro
+    mesmo cliente). Embalagem: a do item do pedido, lida pelo OCR. Os dois
+    eram digitados toda vez; agora vem preenchidos e a pessoa so corrige.
+    """
+    from ..models import CotacaoFrete
+
+    itens = list(agendamento.itens)
+    primeiro = itens[0] if itens else None
+    destino = (primeiro.cidade if primeiro else "") or ""
+    cliente = (primeiro.cliente if primeiro else "") or ""
+    embalagem = _embalagem_da_tela(primeiro.embalagem if primeiro else "")
+
+    cotacao = None
+    if destino:
+        cidade = destino.split("-")[0].split("/")[0].strip()
+        consulta = db.query(CotacaoFrete).filter(CotacaoFrete.destino.ilike(f"%{cidade}%"))
+        # Do mesmo cliente vale mais; sem cliente, a mais recente do destino.
+        if cliente:
+            cotacao = (
+                consulta.filter(CotacaoFrete.cliente_nome.ilike(f"%{cliente.split()[0]}%"))
+                .order_by(CotacaoFrete.data_cotacao.desc()).first()
+            )
+        if cotacao is None:
+            cotacao = consulta.order_by(CotacaoFrete.data_cotacao.desc()).first()
+
+    return {
+        "agendamento_id": agendamento.id,
+        "destino": destino,
+        "cliente": cliente,
+        "embalagem": embalagem,
+        "tarifa": f"{cotacao.valor_tonelada:.2f}" if cotacao else "",
+        "cotacao": {
+            "data": cotacao.data_cotacao,
+            "destino": cotacao.destino,
+            "cliente": cotacao.cliente_nome,
+            "fabrica": cotacao.fabrica,
+        } if cotacao else None,
+    }
+
+
+@router.get("/sugestoes")
+def sugestoes(agendamento_id: int, db: Session = Depends(get_db)):
+    """LEITURA. Tarifa e embalagem sugeridas pra um agendamento."""
+    agendamento = db.get(Agendamento, agendamento_id)
+    if agendamento is None:
+        raise HTTPException(status_code=404, detail="Agendamento nao encontrado")
+    return sugerir_para_agendamento(db, agendamento)
+
+
 @router.get("/notas")
 def listar_notas(db: Session = Depends(get_db)):
     """NF-e disponiveis pra virar CT-e, de qualquer fonte, com o agendamento

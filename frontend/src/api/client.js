@@ -385,6 +385,10 @@ export function fiscalListarNotas() {
   return request("/fiscal/notas");
 }
 
+export function fiscalSugestoes(agendamentoId) {
+  return request(`/fiscal/sugestoes?agendamento_id=${agendamentoId}`);
+}
+
 export function fiscalContarNotas() {
   return request("/fiscal/notas/contagem");
 }
