@@ -37,21 +37,23 @@ def test_lupa_manda_o_filtro_de_grupo(monkeypatch):
     assert "fora_do_grupo" not in resposta["resultados"][0]
 
 
-def test_lupa_avisa_quando_a_pessoa_existe_mas_nao_e_motorista(monkeypatch):
+def test_quem_nao_e_motorista_nao_entra_na_lista_de_escolha(monkeypatch):
+    # Escolher uma pessoa fora do grupo gera CT-e sem motorista, calado.
+    # Ela aparece so como explicacao do vazio, nunca como opcao clicavel.
     def listar(caminho, params=None):
-        # Existe como pessoa, nao no grupo de motoristas.
         return [] if params.get("grupo") else [TALISSON]
     monkeypatch.setattr(bsoft_fiscal, "listar", listar)
     resposta = bsoft_fiscal.procurar_motoristas("juni")
-    assert resposta["resultados"][0]["fora_do_grupo"] is True
-    assert "nao no grupo de motoristas" in resposta["aviso"]
-    assert "TALISSON" in resposta["aviso"]
+    assert resposta["resultados"] == []
+    assert resposta["fora_do_grupo"][0]["nome"].startswith("TALISSON")
+    assert "fora do grupo de motoristas" in resposta["aviso"]
+    assert "marque o grupo" in resposta["aviso"]
 
 
 def test_lupa_diz_quando_nao_ha_ninguem(monkeypatch):
     monkeypatch.setattr(bsoft_fiscal, "listar", lambda caminho, params=None: [])
     monkeypatch.setattr(bsoft_fiscal, "_todas_as_pessoas_fisicas", lambda: [])
-    assert "Ninguem" in bsoft_fiscal.procurar_motoristas("zzz")["aviso"]
+    assert "Nenhum motorista" in bsoft_fiscal.procurar_motoristas("zzz")["aviso"]
 
 
 # --------------------------------------------------------------------------

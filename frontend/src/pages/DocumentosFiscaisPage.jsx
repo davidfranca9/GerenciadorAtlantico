@@ -980,7 +980,7 @@ function EmitirCte() {
                         rotulo="Ou procure o motorista pelo nome"
                         placeholder="nome do motorista"
                         procurar={api.fiscalProcurarMotoristas}
-                        rotular={(r) => `${r.nome}${r.cpf ? " · " + formatarCpf(r.cpf) : ""}${r.fora_do_grupo ? " · NÃO É MOTORISTA no Bsoft" : ""}`}
+                        rotular={(r) => `${r.nome}${r.cpf ? " · " + formatarCpf(r.cpf) : ""}`}
                         escolhido={escolhas.motorista_nome}
                         /* Traz o CPF junto para o campo ao lado: quem escolheu
                            pelo nome quer conferir de quem se trata. O envio

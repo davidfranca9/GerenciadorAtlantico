@@ -619,31 +619,32 @@ def buscar_pessoas_por_nome(termo: str, limite: int = 25, grupo: str = "") -> li
 
 
 def procurar_motoristas(termo: str, limite: int = 25) -> dict:
-    """LEITURA. A lupa de motorista da tela.
+    """LEITURA. A lupa de motorista da tela: procura SO motoristas.
 
-    Procura primeiro no grupo de motoristas, que e o unico que o campo
-    motorista_id do CT-e aceita. Se nao achar, procura na base inteira e
-    marca o que encontrou como fora do grupo - assim a tela pode dizer
-    "essa pessoa existe, mas nao esta cadastrada como motorista" em vez de
-    devolver um id que o Bsoft vai recusar depois.
+    `resultados` tem apenas gente do grupo de motoristas, porque e o unico
+    grupo que o campo motorista_id do CT-e aceita - escolher outra pessoa
+    gera um CT-e sem motorista, calado (foi o rascunho 5072).
+
+    Quem existe no cadastro fora do grupo vai em `fora_do_grupo`, separado:
+    serve pra explicar o vazio ("o Talisson esta la, mas como pessoa"), nao
+    pra ser escolhido.
     """
     motoristas = buscar_pessoas_por_nome(termo, limite, grupo=GRUPO_MOTORISTAS)
     if motoristas:
-        return {"resultados": motoristas, "aviso": ""}
+        return {"resultados": motoristas, "aviso": "", "fora_do_grupo": []}
 
     outras = buscar_pessoas_por_nome(termo, limite)
     if not outras:
-        return {"resultados": [], "aviso": "Ninguem com esse nome no cadastro do Bsoft."}
-    for pessoa in outras:
-        pessoa["fora_do_grupo"] = True
+        return {"resultados": [], "aviso": "Nenhum motorista com esse nome no Bsoft.", "fora_do_grupo": []}
+
     nomes = ", ".join(p["nome"] for p in outras[:3])
     return {
-        "resultados": outras,
+        "resultados": [],
+        "fora_do_grupo": outras,
         "aviso": (
-            f"Encontrei no cadastro ({nomes}), mas nao no grupo de motoristas. "
-            "No Bsoft, a mesma pessoa pode ser cliente, dono de veiculo ou motorista - "
-            "sao grupos diferentes. Pra usar no CT-e, o grupo 'motoristas' precisa estar "
-            "marcado no cadastro dela."
+            f"Nenhum motorista com esse nome. Existe no cadastro de pessoas ({nomes}), "
+            "mas fora do grupo de motoristas - e so esse grupo serve pro CT-e. "
+            "Pra usar, abra o cadastro dessa pessoa no Bsoft e marque o grupo 'motoristas'."
         ),
     }
 
