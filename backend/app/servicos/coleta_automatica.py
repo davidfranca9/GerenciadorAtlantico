@@ -32,6 +32,8 @@ INTERVALO_EMAIL_SEGUNDOS = 600
 INTERVALO_SEFAZ_SEGUNDOS = 3600
 # Depois de criado, o CT-e e consultado ate a SEFAZ responder.
 INTERVALO_ACOMPANHAMENTO_SEGUNDOS = 300
+# Carta frete agendada: confere a cada minuto se alguma chegou na hora.
+INTERVALO_CARTAS_SEGUNDOS = 60
 
 
 async def _coletar_do_email() -> int:
@@ -102,6 +104,14 @@ async def _preparar_rascunhos() -> int:
         return await asyncio.to_thread(rascunho_automatico.preparar_pendentes, db)
 
 
+async def _enviar_cartas_agendadas() -> int:
+    """Manda as cartas frete cujo horario agendado ja chegou."""
+    from . import carta_frete
+
+    with SessionLocal() as db:
+        return await asyncio.to_thread(carta_frete.enviar_agendadas, db)
+
+
 async def _acompanhar_ctes() -> int:
     """Pergunta ao Bsoft o que houve com cada CT-e ainda em aberto."""
     from . import acompanhamento_cte
@@ -149,6 +159,7 @@ def iniciar() -> None:
     asyncio.create_task(_repetir("e-mail", _coletar_do_email, INTERVALO_EMAIL_SEGUNDOS))
     asyncio.create_task(_repetir("casamento", _casar_notas_soltas, INTERVALO_EMAIL_SEGUNDOS))
     asyncio.create_task(_repetir("CT-e", _acompanhar_ctes, INTERVALO_ACOMPANHAMENTO_SEGUNDOS))
+    asyncio.create_task(_repetir("cartas frete", _enviar_cartas_agendadas, INTERVALO_CARTAS_SEGUNDOS))
     if settings.rascunho_automatico:
         asyncio.create_task(_repetir("rascunho", _preparar_rascunhos, INTERVALO_ACOMPANHAMENTO_SEGUNDOS))
     else:

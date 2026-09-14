@@ -157,6 +157,9 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .pedido-numero svg{color:var(--muted-soft);flex-shrink:0}
 .pedido-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--text);font-size:12.5px;font-weight:600}
 .pedido-meta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pedido-cliente{display:flex;align-items:center;gap:7px;min-width:0}
+.pedido-cliente-nome{min-width:0}
+.pedido-meta .pedido-novo{padding:2px 8px;border-radius:999px;background:var(--success);color:#fff;font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;flex-shrink:0;overflow:visible}
 .pedido-card-summary{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted-soft);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
 .pedido-chevron{flex-shrink:0;transition:transform .18s}
 .pedido-chevron.open{transform:rotate(90deg)}

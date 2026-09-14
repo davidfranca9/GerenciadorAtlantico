@@ -481,7 +481,7 @@ export default function AgendamentosPage() {
                       <option value="">Selecione um pedido</option>
                       {pedidosDisponiveis.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.contrato || "s/nº"} · {p.produto} · {formatTon(p.toneladas_restante)}t restantes
+                          {p.novo ? "NOVO · " : ""}{p.contrato || "s/nº"} · {p.produto} · {formatTon(p.toneladas_restante)}t restantes
                         </option>
                       ))}
                     </select>

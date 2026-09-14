@@ -22,16 +22,20 @@ def imagem_assinatura_inline() -> dict[str, str]:
     return {"assinatura_fertlog": str(ASSINATURA_EMAIL_PATH)}
 
 
-def montar_autorizacao_agendamento(cliente: str, pedido: str, data_carregamento: str) -> tuple[str, str]:
+def montar_autorizacao_agendamento(cliente: str, pedido: str, data_carregamento: str, motorista: str = "") -> tuple[str, str]:
     """Monta (assunto, corpo_html) do pedido de autorizacao de agendamento
     pra fornecedores tipo Fertimaxi - usado tanto no "Novo Agendamento"
     rapido quanto no fluxo de Ordem de Coleta, pra manter o mesmo texto nos
-    dois lugares onde esse e-mail e disparado."""
+    dois lugares onde esse e-mail e disparado.
+
+    O assunto leva o nome do motorista quando ele ja foi definido, e o do
+    cliente enquanto nao foi - a mesma regra do nome do arquivo anexado."""
     partes_data = (data_carregamento or "").split("/")
     data_formatada = f"{partes_data[0]}.{partes_data[1]}" if len(partes_data) == 3 else ""
     prazo = f"para dia {data_formatada} ou para o próximo dia disponível" if data_formatada else "para o próximo dia disponível"
 
-    titulo = f"AUTORIZAÇÃO AGENDAMENTO: {cliente} - Nº {pedido}"
+    nome = (motorista or "").strip() or cliente
+    titulo = f"AUTORIZAÇÃO AGENDAMENTO: {nome} - Nº {pedido}"
     corpo = f"""
         <p>Prezados,</p>
         <p>Solicitamos, por gentileza, o agendamento do pedido {html.escape(prazo)}.</p>

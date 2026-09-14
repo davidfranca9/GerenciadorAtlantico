@@ -229,7 +229,12 @@ export default function PedidosPage() {
                   <span className="pedido-numero"><Icon name="contract" size={13} />Pedido {grupo.contrato || "sem número"}</span>
                 </div>
                 <div className="pedido-meta">
-                  <span>{grupo.cliente || "Cliente não identificado"}</span>
+                  <span className="pedido-cliente">
+                    <span className="pedido-cliente-nome">{grupo.cliente || "Cliente não identificado"}</span>
+                    {grupo.itens.some((p) => p.novo) && (
+                      <span className="pedido-novo" title="Chegou há pouco e ainda não foi usado em nenhuma coleta">Novo</span>
+                    )}
+                  </span>
                   <span>{grupo.cidade || "-"}</span>
                 </div>
                 <div className="pedido-card-summary">

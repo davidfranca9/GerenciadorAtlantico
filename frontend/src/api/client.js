@@ -547,6 +547,14 @@ export function enviarCartaFreteEmail(payload) {
   return request("/cartas-frete/enviar-email", { method: "POST", body: payload });
 }
 
+export function agendarCartaFrete(payload) {
+  return request("/cartas-frete/agendar", { method: "POST", body: payload });
+}
+
+export function cancelarCartaFrete(id) {
+  return request(`/cartas-frete/${id}/cancelar`, { method: "POST" });
+}
+
 export function listarCartasFrete() {
   return request("/cartas-frete");
 }

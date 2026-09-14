@@ -22,6 +22,20 @@ function formatarEnvio(iso) {
   return dataObj.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+// Valor do <input type="datetime-local">: horario local, sem fuso.
+function paraCampoLocal(data) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${data.getFullYear()}-${pad(data.getMonth() + 1)}-${pad(data.getDate())}T${pad(data.getHours())}:${pad(data.getMinutes())}`;
+}
+
+const SITUACAO = {
+  agendada: ["Agendada", "var(--accent)"],
+  enviando: ["Enviando", "var(--muted)"],
+  enviada: ["Enviada", "var(--success)"],
+  erro: ["Falhou", "var(--danger)"],
+  cancelada: ["Cancelada", "var(--muted)"],
+};
+
 export default function CartaFretePage() {
   const [data, setData] = useState(hoje());
   const [condutor, setCondutor] = useState("");
@@ -29,15 +43,15 @@ export default function CartaFretePage() {
   const [placaCavalo, setPlacaCavalo] = useState("");
   const [valorFrete, setValorFrete] = useState("");
   const [autorizacaoNum, setAutorizacaoNum] = useState("");
+  const [enviarEm, setEnviarEm] = useState("");
   const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [acao, setAcao] = useState(""); // "email" | "pdf" | "docx" | "agendar" | "cancelar"
   const [enviadas, setEnviadas] = useState([]);
   const [carregandoLista, setCarregandoLista] = useState(true);
 
   async function carregarEnviadas() {
     try {
-      const dadosLista = await api.listarCartasFrete();
-      setEnviadas(dadosLista);
+      setEnviadas(await api.listarCartasFrete());
     } catch {
       // painel e so consulta - falha aqui nao deve travar a tela de envio
     } finally {
@@ -45,30 +59,76 @@ export default function CartaFretePage() {
     }
   }
 
+  // A lista se atualiza sozinha: e assim que uma carta agendada aparece
+  // como "Enviada" quando chega a hora, sem precisar recarregar a pagina.
   useEffect(() => {
     carregarEnviadas();
+    const timer = setInterval(carregarEnviadas, 60000);
+    return () => clearInterval(timer);
   }, []);
 
-  async function handleEnviar() {
+  function dados() {
+    return {
+      DATA: data,
+      CONDUTOR: condutor,
+      CPF: cpf,
+      PLACA_CAVALO: placaCavalo,
+      VALOR_FRETE: valorFrete,
+      AUTORIZACAO_NUM: autorizacaoNum,
+    };
+  }
+
+  async function executar(nome, tarefa, mensagemSucesso) {
     setStatus("");
-    setLoading(true);
+    setAcao(nome);
     try {
-      await api.enviarCartaFreteEmail({
-        DATA: data,
-        CONDUTOR: condutor,
-        CPF: cpf,
-        PLACA_CAVALO: placaCavalo,
-        VALOR_FRETE: valorFrete,
-        AUTORIZACAO_NUM: autorizacaoNum,
-      });
-      setStatus("E-mail enviado com sucesso.");
-      carregarEnviadas();
+      await tarefa();
+      if (mensagemSucesso) setStatus(mensagemSucesso);
     } catch (err) {
       setStatus(`Erro: ${err.message}`);
     } finally {
-      setLoading(false);
+      setAcao("");
     }
   }
+
+  function handleEnviar() {
+    executar("email", async () => {
+      await api.enviarCartaFreteEmail(dados());
+      carregarEnviadas();
+    }, "E-mail enviado com sucesso.");
+  }
+
+  function handleBaixar(formato) {
+    executar(formato, () => api.gerarCartaFrete({ ...dados(), formato }));
+  }
+
+  function handleAgendar() {
+    if (!enviarEm) {
+      setStatus("Erro: escolha a data e a hora do envio.");
+      return;
+    }
+    const quando = new Date(enviarEm);
+    if (quando <= new Date()) {
+      setStatus("Erro: escolha um horário no futuro.");
+      return;
+    }
+    const rotulo = quando.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    executar("agendar", async () => {
+      await api.agendarCartaFrete({ ...dados(), enviar_em: quando.toISOString() });
+      setEnviarEm("");
+      carregarEnviadas();
+    }, `Envio agendado para ${rotulo}.`);
+  }
+
+  function handleCancelar(carta) {
+    if (!window.confirm(`Cancelar o envio agendado da carta de ${carta.condutor}?`)) return;
+    executar("cancelar", async () => {
+      await api.cancelarCartaFrete(carta.id);
+      carregarEnviadas();
+    }, "Envio cancelado.");
+  }
+
+  const ocupado = Boolean(acao);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -95,46 +155,82 @@ export default function CartaFretePage() {
           <input value={autorizacaoNum} onChange={(e) => setAutorizacaoNum(e.target.value)} />
         </div>
       </div>
-      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <button className="btn-primary" disabled={loading} onClick={handleEnviar}>
-          {loading ? "Enviando..." : "Enviar por e-mail"}
+
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <button className="btn-primary" disabled={ocupado} onClick={handleEnviar}>
+          {acao === "email" ? "Enviando..." : "Enviar por e-mail"}
+        </button>
+        <button className="btn-secondary" disabled={ocupado} onClick={() => handleBaixar("pdf")}>
+          {acao === "pdf" ? "Gerando..." : "Baixar PDF"}
+        </button>
+        <button className="btn-secondary" disabled={ocupado} onClick={() => handleBaixar("docx")}>
+          {acao === "docx" ? "Gerando..." : "Baixar Word"}
         </button>
         {status && <span style={{ fontSize: 13, color: status.startsWith("Erro") ? "var(--danger)" : "var(--success)" }}>{status}</span>}
       </div>
 
+      <div className="card" style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <div className="field" style={{ minWidth: 230 }}>
+          <label>Agendar envio do e-mail para</label>
+          <input type="datetime-local" value={enviarEm} min={paraCampoLocal(new Date())} onChange={(e) => setEnviarEm(e.target.value)} />
+        </div>
+        <button className="btn-secondary" disabled={ocupado} onClick={handleAgendar}>
+          {acao === "agendar" ? "Agendando..." : "Agendar envio"}
+        </button>
+        <span style={{ fontSize: 12, color: "var(--muted)", flex: "1 1 240px" }}>
+          O sistema manda sozinho no horário escolhido, com os dados preenchidos acima. Dá para cancelar enquanto não saiu.
+        </span>
+      </div>
+
       <div className="card">
-        <h2 style={{ margin: "0 0 14px" }}>Cartas Frete Enviadas</h2>
+        <h2 style={{ margin: "0 0 14px" }}>Cartas frete</h2>
         {carregandoLista ? (
           <div className="inline-alert info"><span className="status-dot" />Carregando...</div>
         ) : enviadas.length === 0 ? (
-          <div className="inline-alert warning">Nenhuma carta frete enviada ainda.</div>
+          <div className="inline-alert warning">Nenhuma carta frete enviada ou agendada ainda.</div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Condutor</th>
-                <th>Placa</th>
-                <th>Valor</th>
-                <th>Nº Autorização</th>
-                <th>Enviado em</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {enviadas.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.data}</td>
-                  <td>{c.condutor}</td>
-                  <td>{c.placa_cavalo}</td>
-                  <td>{c.valor_frete}</td>
-                  <td>{c.autorizacao_num}</td>
-                  <td>{formatarEnvio(c.created_at)}</td>
-                  <td>{c.status === "erro" ? <span style={{ color: "var(--danger)" }}>Falhou</span> : "Enviada"}</td>
+          <div style={{ overflowX: "auto" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Condutor</th>
+                  <th>Placa</th>
+                  <th>Valor</th>
+                  <th>Nº Autorização</th>
+                  <th>Envio</th>
+                  <th>Situação</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {enviadas.map((c) => {
+                  const [rotulo, cor] = SITUACAO[c.status] || [c.status || "Enviada", "var(--muted)"];
+                  const programada = c.agendada_para && (c.status === "agendada" || c.status === "cancelada");
+                  return (
+                    <tr key={c.id}>
+                      <td>{c.data}</td>
+                      <td>{c.condutor}</td>
+                      <td>{c.placa_cavalo}</td>
+                      <td>{c.valor_frete}</td>
+                      <td>{c.autorizacao_num}</td>
+                      <td>{programada ? `para ${formatarEnvio(c.agendada_para)}` : formatarEnvio(c.enviada_em || c.created_at)}</td>
+                      <td>
+                        <span style={{ color: cor, fontWeight: 600 }} title={c.erro || ""}>{rotulo}</span>
+                      </td>
+                      <td>
+                        {c.status === "agendada" && (
+                          <button className="btn-secondary" disabled={ocupado} onClick={() => handleCancelar(c)}>
+                            Cancelar
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

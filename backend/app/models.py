@@ -247,7 +247,14 @@ class CartaFreteEnviada(Base):
     valor_frete: Mapped[str] = mapped_column(String(32), default="")
     autorizacao_num: Mapped[str] = mapped_column(String(64), default="")
     destinatarios: Mapped[str] = mapped_column(String(500), default="")
-    status: Mapped[str] = mapped_column(String(20), default="")  # "enviada" | "erro"
+    # agendada | enviando | enviada | erro | cancelada
+    status: Mapped[str] = mapped_column(String(20), default="")
+    # Envio agendado: guarda os DADOS (JSON), nao o arquivo - o documento e
+    # gerado na hora de mandar. Horarios em UTC, como o resto do banco.
+    agendada_para: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    enviada_em: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    dados: Mapped[str] = mapped_column(Text, default="")
+    erro: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

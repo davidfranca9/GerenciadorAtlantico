@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -13,6 +14,17 @@ from ..models import Cidade, Pedido
 from ..servicos import ocr
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"], dependencies=[Depends(get_current_user)])
+
+# Um pedido e "novo" enquanto ninguem tirou carga dele e ele chegou ha pouco.
+# Tres dias cobrem um fim de semana: o que chega na sexta a noite ainda
+# aparece como novo na segunda.
+JANELA_PEDIDO_NOVO = timedelta(days=3)
+
+
+def _eh_novo(p: Pedido, agora: datetime | None = None) -> bool:
+    if not p.created_at or (p.toneladas_usadas or 0) > 0:
+        return False
+    return (agora or datetime.utcnow()) - p.created_at <= JANELA_PEDIDO_NOVO
 
 
 def _to_dict(p: Pedido) -> dict:
@@ -29,6 +41,7 @@ def _to_dict(p: Pedido) -> dict:
         "toneladas_total": p.toneladas_total,
         "toneladas_usadas": p.toneladas_usadas,
         "toneladas_restante": max(0.0, restante),
+        "novo": _eh_novo(p),
     }
 
 

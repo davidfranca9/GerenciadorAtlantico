@@ -81,7 +81,9 @@ def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento) -> None
             continue
         vistos.add((cliente, pedido))
 
-        titulo, corpo = montar_autorizacao_agendamento(cliente, pedido, agendamento.loading_date)
+        titulo, corpo = montar_autorizacao_agendamento(
+            cliente, pedido, agendamento.loading_date, motorista=agendamento.driver_name
+        )
         try:
             send_email_message(
                 RECIPIENTES_AUTORIZACAO_FERTIMAXI,

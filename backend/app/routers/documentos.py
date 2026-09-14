@@ -4,7 +4,7 @@ import html
 import os
 import re
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -17,18 +17,17 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem, CartaFreteEnviada, Pedido
+from ..servicos import carta_frete
 from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
-from ..servicos.documentos import fill_carta_frete_docx, gerar_autorizacao_xlsx
+from ..servicos.documentos import gerar_autorizacao_xlsx
 from ..servicos.oc_html import gerar_oc_pdf_html
 from ..servicos.pdf_convert import docx_to_pdf
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
-RECIPIENTS_CARTA_FRETE = [
-    "davilucassouzaribeiro@gmail.com",
-    "marvidacaixa503@gmail.com",
-    "crispinianocrys@gmail.com",
-]
+# Destinatarios e modelo da carta frete moram no servico, que o envio
+# agendado tambem usa.
+RECIPIENTS_CARTA_FRETE = carta_frete.DESTINATARIOS
 RECIPIENTS_HERINGER = [
     "expedicao.candeias@heringer.com.br",
     "faturamento.candeias@heringer.com.br",
@@ -41,7 +40,7 @@ RECIPIENTS_FERTIMAX = [
 
 DADOS_DIR = Path(__file__).resolve().parents[2] / "dados"
 SUPPLIERS_OC = {"AFL", "HERINGER"}
-TEMPLATE_CF = DADOS_DIR / "CARTA FRETE atlantico (1).docx"
+TEMPLATE_CF = carta_frete.TEMPLATE_CF
 # Modelo da Fertimaxi: cartao vertical, um bloco por pedido. So o sistema web
 # usa este; o app desktop antigo continua com o dados/ da raiz.
 TEMPLATE_AUTORIZACAO = DADOS_DIR / "Autorizacao de Carregamento FERTIMAXI.xlsx"
@@ -94,6 +93,18 @@ class CartaFreteRequest(BaseModel):
     formato: str = "docx"
 
 
+def _nome_do_documento(payload: OrdemColetaRequest, produtos: list) -> str:
+    """Nome que vai no arquivo da autorizacao (e no anexo do e-mail).
+
+    Enquanto o agendamento nao tem motorista, a autorizacao e do cliente;
+    quando o motorista e definido, ela passa a sair no nome dele - e ele que
+    chega na portaria da fabrica.
+    """
+    if (payload.nome or "").strip():
+        return _safe_filename(payload.nome)
+    return _client_name_from_produtos(produtos)
+
+
 def _gerar_autorizacao(payload: OrdemColetaRequest, produtos_dict: list, xlsx_path: str) -> None:
     """Preenche o modelo da Fertimaxi com os dados do motorista e das placas."""
     gerar_autorizacao_xlsx(
@@ -135,8 +146,8 @@ def _gerar_oc_arquivos(payload: OrdemColetaRequest, tmp_dir: str) -> dict:
 
     xlsx_path = None
     if payload.template.upper() != "HERINGER" and TEMPLATE_AUTORIZACAO.exists():
-        cliente_name = _client_name_from_produtos(produtos_dict)
-        xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{cliente_name}.xlsx")
+        nome_documento = _nome_do_documento(payload, produtos_dict)
+        xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{nome_documento}.xlsx")
         _gerar_autorizacao(payload, produtos_dict, xlsx_path)
 
     return {"pdf": pdf_path, "xlsx": xlsx_path, "safe_name": safe_name}
@@ -237,13 +248,13 @@ def gerar_autorizacao_coleta(payload: OrdemColetaRequest, db: Session = Depends(
 
     tmp_dir = tempfile.mkdtemp()
     produtos_dict = [p.model_dump() for p in payload.produtos]
-    cliente_name = _client_name_from_produtos(produtos_dict)
-    xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{cliente_name}.xlsx")
+    nome_documento = _nome_do_documento(payload, produtos_dict)
+    xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{nome_documento}.xlsx")
     _gerar_autorizacao(payload, produtos_dict, xlsx_path)
     agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, {"xlsx": xlsx_path})
     return FileResponse(
         xlsx_path,
-        filename=f"Autorizacao de carregamento_{cliente_name}.xlsx",
+        filename=f"Autorizacao de carregamento_{nome_documento}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"X-Agendamento-Id": str(agendamento.id)},
     )
@@ -263,8 +274,8 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
 
     tmp_dir = tempfile.mkdtemp()
     produtos_dict = [p.model_dump() for p in payload.produtos]
-    cliente_name = _client_name_from_produtos(produtos_dict)
-    xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{cliente_name}.xlsx")
+    nome_documento = _nome_do_documento(payload, produtos_dict)
+    xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{nome_documento}.xlsx")
     _gerar_autorizacao(payload, produtos_dict, xlsx_path)
 
     vistos: set[tuple[str, str]] = set()
@@ -274,7 +285,7 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
         if not cliente or not pedido or (cliente, pedido) in vistos:
             continue
         vistos.add((cliente, pedido))
-        titulo, corpo = montar_autorizacao_agendamento(cliente, pedido, payload.data_carregamento)
+        titulo, corpo = montar_autorizacao_agendamento(cliente, pedido, payload.data_carregamento, motorista=payload.nome)
         try:
             send_email_message(RECIPIENTS_FERTIMAX, titulo, corpo, [xlsx_path], imagens_inline=imagem_assinatura_inline())
         except Exception as exc:
@@ -317,7 +328,7 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
             if not cliente or not pedido or (cliente, pedido) in vistos:
                 continue
             vistos.add((cliente, pedido))
-            titulo, corpo = montar_autorizacao_agendamento(cliente, pedido, payload.data_carregamento)
+            titulo, corpo = montar_autorizacao_agendamento(cliente, pedido, payload.data_carregamento, motorista=payload.nome)
             try:
                 send_email_message(recipients, titulo, corpo, anexos, imagens_inline=imagem_assinatura_inline())
             except Exception as exc:
@@ -369,21 +380,19 @@ def _safe_float(value) -> float:
 
 @router.post("/cartas-frete/gerar")
 def gerar_carta_frete(payload: CartaFreteRequest):
-    if not TEMPLATE_CF.exists():
-        raise HTTPException(status_code=400, detail="Template de Carta Frete nao encontrado")
-
-    doc = Document(str(TEMPLATE_CF))
-    dados = payload.model_dump(exclude={"formato"})
-    fill_carta_frete_docx(doc, dados)
-
-    tmp_dir = tempfile.mkdtemp()
-    docx_path = os.path.join(tmp_dir, "carta_frete.docx")
-    doc.save(docx_path)
+    """Baixar: gera o documento e devolve, sem mandar e-mail nenhum."""
+    dados = carta_frete.dados_de(payload.model_dump())
+    try:
+        docx_path = carta_frete.gerar_docx(dados)
+    except carta_frete.CartaFreteInvalida as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     safe_name = _safe_filename(payload.CONDUTOR)
-
     if payload.formato.lower() == "pdf":
-        pdf_path = docx_to_pdf(docx_path)
+        try:
+            pdf_path = docx_to_pdf(docx_path)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Falha ao gerar o PDF: {exc}")
         return FileResponse(pdf_path, filename=f"Autorizacao Abastecimento_{safe_name}.pdf", media_type="application/pdf")
 
     return FileResponse(
@@ -395,73 +404,67 @@ def gerar_carta_frete(payload: CartaFreteRequest):
 
 @router.post("/cartas-frete/enviar-email")
 def enviar_carta_frete_email(payload: CartaFreteRequest, db: Session = Depends(get_db)):
-    if not TEMPLATE_CF.exists():
-        raise HTTPException(status_code=400, detail="Template de Carta Frete nao encontrado")
-    if not payload.CONDUTOR.strip():
-        raise HTTPException(status_code=400, detail="Nome do condutor e obrigatorio")
-
-    doc = Document(str(TEMPLATE_CF))
-    dados = payload.model_dump(exclude={"formato"})
-    fill_carta_frete_docx(doc, dados)
-
-    tmp_dir = tempfile.mkdtemp()
-    docx_path = os.path.join(tmp_dir, "carta_frete.docx")
-    doc.save(docx_path)
-    pdf_path = docx_to_pdf(docx_path)
-
-    titulo = f"AUTORIZAÇÃO ABASTECIMENTO: {payload.CONDUTOR.strip()} - {payload.PLACA_CAVALO.strip()}"
-    corpo = """
-        <p>Prezados,</p>
-        <p>Segue em anexo a Autorização de Abastecimento emitida.</p>
-        <p>⚠️ <b>Lembrete importante:</b> Autorizar o abastecimento após recebimento da ordem encaminhada via e-mail.</p>
-        <p>Por favor, confirme o recebimento. Em caso de dúvidas, estamos à disposição.</p>
-    """
-
-    status = "enviada"
-    erro_envio: Exception | None = None
     try:
-        send_email_message(RECIPIENTS_CARTA_FRETE, titulo, corpo, [pdf_path])
+        carta_frete.enviar_agora(db, payload.model_dump())
+    except carta_frete.CartaFreteInvalida as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
-        status = "erro"
-        erro_envio = exc
+        raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
+    return {"ok": True, "email_enviado_para": carta_frete.DESTINATARIOS}
 
-    db.add(
-        CartaFreteEnviada(
-            data=payload.DATA,
-            condutor=payload.CONDUTOR.strip(),
-            cpf=payload.CPF.strip(),
-            placa_cavalo=payload.PLACA_CAVALO.strip(),
-            valor_frete=payload.VALOR_FRETE.strip(),
-            autorizacao_num=payload.AUTORIZACAO_NUM.strip(),
-            destinatarios=", ".join(RECIPIENTS_CARTA_FRETE),
-            status=status,
-        )
-    )
-    db.commit()
 
-    if erro_envio:
-        raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {erro_envio}")
-    return {"ok": True, "email_enviado_para": RECIPIENTS_CARTA_FRETE}
+class AgendarCartaFreteRequest(CartaFreteRequest):
+    # Com fuso (o que a tela manda) vira UTC; sem fuso, ja e tratado como UTC.
+    enviar_em: datetime
+
+
+@router.post("/cartas-frete/agendar")
+def agendar_carta_frete(payload: AgendarCartaFreteRequest, db: Session = Depends(get_db)):
+    """Agenda o envio do e-mail: o sistema manda sozinho na hora marcada."""
+    quando = payload.enviar_em
+    if quando.tzinfo is not None:
+        quando = quando.astimezone(timezone.utc).replace(tzinfo=None)
+    try:
+        registro = carta_frete.agendar(db, payload.model_dump(exclude={"enviar_em", "formato"}), quando)
+    except carta_frete.CartaFreteInvalida as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _carta_para_dict(registro)
+
+
+@router.post("/cartas-frete/{carta_id}/cancelar")
+def cancelar_carta_frete(carta_id: int, db: Session = Depends(get_db)):
+    """Cancela um envio agendado que ainda nao saiu."""
+    try:
+        registro = carta_frete.cancelar(db, carta_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Carta frete nao encontrada")
+    except carta_frete.CartaFreteInvalida as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return _carta_para_dict(registro)
+
+
+def _carta_para_dict(r: CartaFreteEnviada) -> dict:
+    return {
+        "id": r.id,
+        "data": r.data,
+        "condutor": r.condutor,
+        "cpf": r.cpf,
+        "placa_cavalo": r.placa_cavalo,
+        "valor_frete": r.valor_frete,
+        "autorizacao_num": r.autorizacao_num,
+        "destinatarios": r.destinatarios,
+        "status": r.status,
+        "created_at": r.created_at,
+        "agendada_para": r.agendada_para,
+        "enviada_em": r.enviada_em,
+        "erro": r.erro,
+    }
 
 
 @router.get("/cartas-frete")
 def listar_cartas_frete(db: Session = Depends(get_db)):
     registros = db.query(CartaFreteEnviada).order_by(CartaFreteEnviada.created_at.desc()).all()
-    return [
-        {
-            "id": r.id,
-            "data": r.data,
-            "condutor": r.condutor,
-            "cpf": r.cpf,
-            "placa_cavalo": r.placa_cavalo,
-            "valor_frete": r.valor_frete,
-            "autorizacao_num": r.autorizacao_num,
-            "destinatarios": r.destinatarios,
-            "status": r.status,
-            "created_at": r.created_at,
-        }
-        for r in registros
-    ]
+    return [_carta_para_dict(r) for r in registros]
 
 
 @router.delete("/cartas-frete/{carta_id}")
