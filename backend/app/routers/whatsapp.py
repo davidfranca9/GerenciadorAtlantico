@@ -173,6 +173,7 @@ def _processar_arquivo_recebido(numero_remetente: str, mensagem_id: int, media_i
                         cidade=str(item.get("cidade") or ""),
                         cliente=str(item.get("cliente") or ""),
                         supplier=settings.whatsapp_supplier_padrao or "AFL",
+                        cidades_candidatas="" if item.get("cidade") else ocr.candidatas_para_guardar(resultado),
                         toneladas_total=toneladas,
                         toneladas_usadas=0,
                     )

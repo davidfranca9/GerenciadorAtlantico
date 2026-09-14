@@ -159,6 +159,15 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .pedido-meta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pedido-cliente{display:flex;align-items:center;gap:7px;min-width:0}
 .pedido-cliente-nome{min-width:0}
+.pedido-sem-cidade{display:flex;flex-direction:column;gap:8px;padding:10px 18px 12px;border-top:1px solid var(--border-soft);background:var(--panel-soft)}
+.pedido-sem-cidade-topo{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--danger);font-size:12px;font-weight:700}
+.pedido-sugestoes{display:flex;flex-wrap:wrap;gap:6px}
+.pedido-sugestoes button{font-size:11.5px;padding:5px 10px}
+.pedido-sugestoes small{color:var(--muted);font-weight:500}
+.pedido-cidade-manual{display:flex;gap:6px;flex-wrap:wrap}
+.pedido-cidade-manual select{width:78px}
+.pedido-cidade-manual input{flex:1;min-width:140px}
+.pedido-sem-cidade-erro{color:var(--danger);font-size:12px}
 .pedido-meta .pedido-novo{padding:2px 8px;border-radius:999px;background:var(--success);color:#fff;font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;flex-shrink:0;overflow:visible}
 .pedido-card-summary{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted-soft);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
 .pedido-chevron{flex-shrink:0;transition:transform .18s}

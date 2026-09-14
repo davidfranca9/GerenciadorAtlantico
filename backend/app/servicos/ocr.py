@@ -8,6 +8,7 @@ frontend decidir) e trocando a planilha de cidades por consulta ao Postgres.
 from __future__ import annotations
 
 import io
+import json
 import os
 import re
 import unicodedata
@@ -398,14 +399,45 @@ def encontrar_cidades_candidatas(texto_pdf: str, cidades: list[tuple[str, str]])
     if filtradas:
         return filtradas
 
-    encontradas_c = []
+    # Rotulo "CIDADE" ou "MUNICIPIO", com ou sem dois-pontos. Sem aceitar o
+    # dois-pontos, "CIDADE: AGUAS VERMELHAS" - o formato comum, igual ao
+    # "CLIENTE:" la de cima - nao casava, e o pedido ficava sem cidade.
+    #
+    # Todas as cidades que casam num mesmo rotulo comecam no mesmo ponto;
+    # vale a de nome mais longo, senao "SANTA MARIA" competiria com "SANTA
+    # MARIA DA VITORIA" e a leitura desistiria por ambiguidade. Empate de
+    # tamanho e homonimo em outro estado: ai continua em duvida, de verdade.
+    por_inicio: dict[int, tuple[int, list]] = {}
     for cidade_norm, uf, cidade_orig in lista_ordenada:
-        padrao = r"CIDADE\s+" + re.escape(cidade_norm) + r"\b"
-        match = re.search(padrao, texto_normalizado)
-        if match:
-            encontradas_c.append((match.start(), (cidade_orig, uf)))
-    filtradas_c = filtrar_jacuipe([c for _p, c in sorted(encontradas_c, key=lambda x: x[0])])
-    return filtradas_c
+        padrao = r"(?:CIDADE|MUNICIPIO)\s*:?\s*(" + re.escape(cidade_norm) + r")\b"
+        for match in re.finditer(padrao, texto_normalizado):
+            inicio, fim = match.start(1), match.end(1)
+            fim_atual, cidades_no_ponto = por_inicio.get(inicio, (-1, []))
+            if fim > fim_atual:
+                por_inicio[inicio] = (fim, [(cidade_orig, uf)])
+            elif fim == fim_atual:
+                cidades_no_ponto.append((cidade_orig, uf))
+    encontradas_c = [cidade for _inicio, (_fim, cidades) in sorted(por_inicio.items()) for cidade in cidades]
+    # A mesma cidade repetida (endereco do cliente e de entrega) nao e duvida.
+    return filtrar_jacuipe(list(dict.fromkeys(encontradas_c)))
+
+
+def formatar_cidade(nome: str, uf: str) -> str:
+    """Formato gravado no pedido: "AGUAS VERMELHAS", "MG" vira "Aguas Vermelhas-MG".
+
+    E tambem o que a cotacao de frete usa pra achar a tarifa do destino - por
+    isso fica num lugar so.
+    """
+    return f"{' '.join(w.capitalize() for w in str(nome).split())}-{str(uf).strip().upper()}"
+
+
+def candidatas_para_guardar(resultado: dict) -> str:
+    """Cidades possiveis, em JSON, pra guardar no pedido quando a leitura nao
+    conseguiu decidir. A tela de Pedidos mostra como sugestao."""
+    return json.dumps(
+        [formatar_cidade(c["cidade"], c["uf"]) for c in resultado.get("cidades_candidatas") or []],
+        ensure_ascii=False,
+    )
 
 
 def parse_pdf_fields(pdf_path: str, cidades: list[tuple[str, str]]) -> dict:
@@ -418,7 +450,7 @@ def parse_pdf_fields(pdf_path: str, cidades: list[tuple[str, str]]) -> dict:
     cidade = ""
     if len(candidatas) == 1:
         nome, uf = candidatas[0]
-        cidade = f"{' '.join(w.capitalize() for w in nome.split())}-{uf}"
+        cidade = formatar_cidade(nome, uf)
 
     m_cliente = re.search(r"CLIENTE:\s*(.+)", text, re.MULTILINE)
     cliente = m_cliente.group(1).strip() if m_cliente else None

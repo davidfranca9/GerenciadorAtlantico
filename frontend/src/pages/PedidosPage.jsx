@@ -15,6 +15,127 @@ function formatTon(valor) {
   return parseNumero(valor).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 }
 
+// A lista de cidades e grande e nao muda: carrega uma vez so por pagina.
+let cidadesDoCadastro = null;
+function carregarCidades() {
+  if (!cidadesDoCadastro) {
+    cidadesDoCadastro = api.bsoftCidades().catch((err) => {
+      cidadesDoCadastro = null;
+      throw err;
+    });
+  }
+  return cidadesDoCadastro;
+}
+
+function semAcento(texto) {
+  return String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+}
+
+// "Águas Vermelhas-MG" -> { nome, uf }. Corta no ULTIMO hifen: tem cidade
+// com hifen no nome.
+function separarCidade(texto) {
+  const valor = String(texto || "");
+  const corte = valor.lastIndexOf("-");
+  if (corte <= 0) return null;
+  const nome = valor.slice(0, corte).trim();
+  const uf = valor.slice(corte + 1).trim().toUpperCase();
+  return nome && /^[A-Z]{2}$/.test(uf) ? { nome, uf } : null;
+}
+
+// Aparece no card quando a leitura do PDF deixou produto sem cidade. Antes
+// isso passava calado e so era notado na Ordem de Coleta.
+function DefinirCidade({ grupo, todos, aoSalvar }) {
+  const [aberto, setAberto] = useState(false);
+  const [cidades, setCidades] = useState(null);
+  const [uf, setUf] = useState("");
+  const [nome, setNome] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  const semCidade = grupo.itens.filter((p) => !(p.cidade || "").trim());
+
+  const sugestoes = useMemo(() => {
+    const vistas = new Map();
+    const sugerir = (texto, origem) => {
+      if (separarCidade(texto) && !vistas.has(texto)) vistas.set(texto, origem);
+    };
+    grupo.itens.forEach((p) => (p.cidades_candidatas || []).forEach((c) => sugerir(c, "lida no PDF")));
+    grupo.itens.forEach((p) => p.cidade && sugerir(p.cidade, "outro produto deste pedido"));
+    const cliente = semAcento(grupo.cliente);
+    todos.forEach((p) => {
+      if (p.cidade && cliente && semAcento(p.cliente) === cliente && p.contrato !== grupo.contrato) {
+        sugerir(p.cidade, `pedido ${p.contrato || "s/nº"} do mesmo cliente`);
+      }
+    });
+    return [...vistas.entries()];
+  }, [grupo, todos]);
+
+  if (!semCidade.length) return null;
+
+  async function abrir() {
+    setAberto(true);
+    if (cidades) return;
+    try {
+      setCidades(await carregarCidades());
+    } catch (err) {
+      setErro(err.message);
+    }
+  }
+
+  async function salvar(cidade) {
+    if (!cidade) return;
+    setSalvando(true);
+    setErro("");
+    try {
+      await api.definirCidadePedidos(semCidade.map((p) => p.id), cidade.nome, cidade.uf);
+      await aoSalvar();
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  const idLista = `cidades-${grupo.contrato || semCidade[0].id}`;
+  const nomesDaUf = cidades && uf ? (cidades[uf] || []).map(([nomeCidade]) => nomeCidade) : [];
+
+  return (
+    <div className="pedido-sem-cidade">
+      <div className="pedido-sem-cidade-topo">
+        <span>Sem cidade{semCidade.length < grupo.itens.length ? ` em ${semCidade.length} produto(s)` : ""}</span>
+        {!aberto && (
+          <button type="button" className="btn-secondary" onClick={abrir}>Escolher cidade</button>
+        )}
+      </div>
+      {sugestoes.length > 0 && (
+        <div className="pedido-sugestoes">
+          {sugestoes.map(([texto, origem]) => (
+            <button key={texto} type="button" className="btn-secondary" disabled={salvando} onClick={() => salvar(separarCidade(texto))}>
+              {texto} <small>· {origem}</small>
+            </button>
+          ))}
+        </div>
+      )}
+      {aberto && (
+        <div className="pedido-cidade-manual">
+          <select value={uf} onChange={(e) => { setUf(e.target.value); setNome(""); }} disabled={!cidades}>
+            <option value="">{cidades ? "UF" : "..."}</option>
+            {cidades && Object.keys(cidades).sort().map((sigla) => <option key={sigla} value={sigla}>{sigla}</option>)}
+          </select>
+          <input list={idLista} value={nome} onChange={(e) => setNome(e.target.value)} placeholder={uf ? "Cidade" : "Escolha a UF"} disabled={!uf} />
+          <datalist id={idLista}>
+            {nomesDaUf.map((nomeCidade) => <option key={nomeCidade} value={nomeCidade} />)}
+          </datalist>
+          <button type="button" className="btn-primary" disabled={salvando || !uf || !nome.trim()} onClick={() => salvar({ nome: nome.trim(), uf })}>
+            {salvando ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      )}
+      {erro && <div className="pedido-sem-cidade-erro">{erro}</div>}
+    </div>
+  );
+}
+
 export default function PedidosPage() {
   const navigate = useNavigate();
   const { substituirRows, setSupplier } = useContrato();
@@ -55,15 +176,18 @@ export default function PedidosPage() {
     setImportando(true);
     setError("");
     let total = 0;
+    let semCidade = 0;
     for (const file of files) {
       try {
         const resultado = await api.importarPedidoPdf(file, importSupplier);
         total += resultado.pedidos?.length || 0;
+        semCidade += (resultado.pedidos || []).filter((p) => !(p.cidade || "").trim()).length;
       } catch (err) {
         setError(`Erro ao importar ${file.name}: ${err.message}`);
       }
     }
-    setStatus(total > 0 ? `${total} pedido(s) importado(s) com sucesso.` : "Nenhum pedido foi extraído dos PDFs.");
+    const avisoCidade = semCidade > 0 ? ` ${semCidade} ficaram sem cidade: escolha no card do pedido.` : "";
+    setStatus(total > 0 ? `${total} pedido(s) importado(s) com sucesso.${avisoCidade}` : "Nenhum pedido foi extraído dos PDFs.");
     setImportando(false);
     await carregar();
   }
@@ -122,7 +246,9 @@ export default function PedidosPage() {
       if (!mapa.has(chave)) {
         mapa.set(chave, { contrato: p.contrato, cliente: p.cliente, cidade: p.cidade, supplier: p.supplier, itens: [] });
       }
-      mapa.get(chave).itens.push(p);
+      const grupoAtual = mapa.get(chave);
+      if (!grupoAtual.cidade && p.cidade) grupoAtual.cidade = p.cidade;
+      grupoAtual.itens.push(p);
     }
     const grupos = [...mapa.values()];
 
@@ -242,6 +368,8 @@ export default function PedidosPage() {
                   <Icon name="chevron" size={14} className={`pedido-chevron ${expandido ? "open" : ""}`} />
                 </div>
               </button>
+
+              <DefinirCidade grupo={grupo} todos={pedidos} aoSalvar={carregar} />
 
               {expandido && (
               <div className="pedido-itens">

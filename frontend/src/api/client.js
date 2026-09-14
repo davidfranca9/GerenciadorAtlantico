@@ -146,6 +146,10 @@ export async function enviarArquivoWhatsapp(numero, arquivo, legenda) {
   return res.json();
 }
 
+export function definirCidadePedidos(pedidoIds, cidade, uf) {
+  return request("/pedidos/cidade", { method: "PATCH", body: { pedido_ids: pedidoIds, cidade, uf } });
+}
+
 export function listarPedidos(mostrarEsgotados = false) {
   return request(`/pedidos?mostrar_esgotados=${mostrarEsgotados}`);
 }

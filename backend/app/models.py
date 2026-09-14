@@ -126,6 +126,10 @@ class Pedido(Base):
     supplier: Mapped[str] = mapped_column(String(20), default="AFL")
     toneladas_total: Mapped[float] = mapped_column(Float, default=0)
     toneladas_usadas: Mapped[float] = mapped_column(Float, default=0)
+    # Quando a leitura do PDF nao decide a cidade (nenhuma ou mais de uma),
+    # as possiveis ficam aqui em JSON ("Nome-UF") pra tela sugerir. Antes
+    # elas eram descartadas e o pedido ficava sem cidade, calado.
+    cidades_candidatas: Mapped[str] = mapped_column(String(1000), default="")
 
 
 class WhatsAppMensagem(Base):
