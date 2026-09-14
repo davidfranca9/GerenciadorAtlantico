@@ -8,6 +8,7 @@ from __future__ import annotations
 import locale
 import re
 import unicodedata
+from copy import copy
 from datetime import datetime
 
 from docx import Document
@@ -17,11 +18,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
-
-SHEET_NAME = "Ordem de Carregamento"
-AUTORIZACAO_FIRST_DATA_ROW = 2
-AUTORIZACAO_TOTAL_ROW = 13
+from openpyxl.worksheet.pagebreak import Break
 
 OC_HEADERS = ["Pedido", "Produto", "Embalagem", "Peso (t)", "Cidade/UF", "Cliente"]
 OC_COLUMN_WIDTHS_IN = [0.55, 1.55, 0.78, 0.58, 1.05, 1.39]
@@ -377,58 +374,137 @@ def fill_carta_frete_docx(doc, dados):
         preencher_tabela(table)
 
 
-def get_headers_from_sheet(ws):
-    return [str(h.value) if h.value is not None else "" for h in ws[1]]
+# --------------------------------------------------------------------------
+# Autorizacao de Carregamento (Fertimaxi)
+# --------------------------------------------------------------------------
+
+# O modelo da Fertimaxi e um cartao vertical: rotulo na coluna B, valor na C,
+# um bloco por pedido. O arquivo traz dois blocos (linhas 2-15 e 17-30); o
+# primeiro e o carimbo - estilo, bordas, altura de linha e mesclagens saem
+# dele pra quantos pedidos houver, e o rotulo de cada linha e lido do
+# arquivo, nunca reescrito aqui.
+AUTORIZACAO_BLOCO_INICIO = 2
+AUTORIZACAO_BLOCO_LINHAS = 14
+AUTORIZACAO_PASSO = 15  # o bloco e a linha em branco que o separa do proximo
+AUTORIZACAO_BLOCOS_POR_PAGINA = 2  # como no modelo
+TRANSPORTADOR = "ATLÂNTICO FERTLOG"
 
 
-def _format_autorizacao_sheet(ws, headers, total_row=AUTORIZACAO_TOTAL_ROW):
-    """Preenche apenas a formula da linha de total. Nao mexe em cor, fonte,
-    borda, largura de coluna ou no rotulo (ja vem pronto no template): o
-    template do usuario deve ser preservado exatamente como enviado."""
-    try:
-        qty_col_idx = headers.index("Quantidade") + 1
-    except ValueError:
-        return
-
-    total_cell = ws.cell(row=total_row, column=qty_col_idx)
-    total_cell.value = f"=SUM({get_column_letter(qty_col_idx)}{AUTORIZACAO_FIRST_DATA_ROW}:{get_column_letter(qty_col_idx)}{total_row - 1})"
-    total_cell.number_format = "General"
+def _chave_do_rotulo(texto) -> str:
+    """'Modelo Veiculo:' -> 'modelo veiculo'. Sem acento e sem dois-pontos,
+    pra um ajuste de grafia no modelo nao desligar o campo."""
+    limpo = unicodedata.normalize("NFKD", str(texto or ""))
+    limpo = "".join(c for c in limpo if not unicodedata.combining(c))
+    return _clean(limpo.replace(":", "")).lower()
 
 
-def _clear_autorizacao_data_rows(ws, headers, total_row=AUTORIZACAO_TOTAL_ROW):
-    for row_num in range(AUTORIZACAO_FIRST_DATA_ROW, total_row):
-        for col_num in range(1, len(headers) + 1):
-            ws.cell(row=row_num, column=col_num).value = None
+def _formatar_cpf_documento(cpf) -> str:
+    digitos = re.sub(r"\D", "", str(cpf or ""))
+    if len(digitos) != 11:
+        return _clean(cpf)
+    return f"{digitos[:3]}.{digitos[3:6]}.{digitos[6:9]}-{digitos[9:]}"
 
 
-def _write_autorizacao_rows(ws, headers, produtos, data_carregamento, nome_condutor=None, placa_cavalo=None):
-    max_items = max(0, AUTORIZACAO_TOTAL_ROW - AUTORIZACAO_FIRST_DATA_ROW)
-    for idx, p in enumerate((produtos or [])[:max_items]):
-        contrato = str(p.get("contrato") or "").strip()
-        row_map = {
-            "Cliente": p.get("cliente"),
-            "Data de Carregamento": data_carregamento,
-            "Placa cavalo mecânico": placa_cavalo,
-            "Nome do condutor": nome_condutor,
-            "Número do pedido": int(contrato) if contrato.isdigit() else contrato,
-            "Produto": p.get("produto"),
-            "Embalagem": p.get("embalagem"),
-            "Quantidade": _safe_float(p.get("toneladas")),
-            "Cidade/UF": p.get("cidade"),
-        }
-        for col_idx, header in enumerate(headers, start=1):
-            ws.cell(row=AUTORIZACAO_FIRST_DATA_ROW + idx, column=col_idx).value = row_map.get(header)
+def _formatar_placa_documento(placa) -> str:
+    limpa = re.sub(r"[^A-Za-z0-9]", "", str(placa or "")).upper()
+    if len(limpa) != 7:
+        return _clean(placa).upper()
+    return f"{limpa[:3]}-{limpa[3:]}"
 
 
-def gerar_autorizacao_xlsx(template_path, save_path, produtos, data_carregamento, nome_condutor, placa_cavalo):
+def _modelo_pelas_placas(placas: list) -> str:
+    """Configuracao do conjunto pela quantidade de placas.
+
+    Cavalo + uma carreta e CARRETA; cavalo + duas e BITREM. Uma placa so
+    fica em branco de proposito: pode ser um truck, ou uma carreta cuja placa
+    ainda nao foi informada - e o chute errado vai impresso pra fabrica.
+    """
+    return {2: "CARRETA", 3: "BITREM"}.get(len(placas), "")
+
+
+def _valores_autorizacao(produto: dict, motorista, cpf, telefone, placas) -> dict:
+    """{rotulo normalizado: valor} de um bloco."""
+    placas_informadas = [_formatar_placa_documento(p) for p in placas or () if str(p or "").strip()]
+    contrato = _clean(produto.get("contrato"))
+    toneladas = _format_peso_documento(produto.get("toneladas"))
+    return {
+        "cliente": _clean(produto.get("cliente")),
+        "pedido": int(contrato) if contrato.isdigit() else contrato,
+        "quantidade": f"{toneladas} t" if toneladas else "",
+        "produto": _clean(produto.get("produto")),
+        "embalagem": _clean(produto.get("embalagem")),
+        "transportador": TRANSPORTADOR,
+        "motorista": _clean(motorista),
+        "cpf": _formatar_cpf_documento(cpf),
+        "modelo veiculo": _modelo_pelas_placas(placas_informadas),
+        "placa": " / ".join(placas_informadas),
+        "telefone": _clean(telefone),
+    }
+
+
+def gerar_autorizacao_xlsx(template_path, save_path, produtos, *, motorista="", cpf="", telefone="", placas=()):
+    """Preenche o modelo da Fertimaxi: um bloco por pedido.
+
+    A data de carregamento nao entra - o modelo nao tem esse campo, e ela ja
+    vai no corpo do e-mail que leva a planilha.
+    """
     wb = load_workbook(template_path)
-    ws = wb[SHEET_NAME] if SHEET_NAME in wb.sheetnames else wb.active
-    headers = get_headers_from_sheet(ws)
-    _clear_autorizacao_data_rows(ws, headers)
-    _write_autorizacao_rows(ws, headers, produtos, data_carregamento, nome_condutor, placa_cavalo)
-    _format_autorizacao_sheet(ws, headers)
-    try:
-        wb.calculation.fullCalcOnLoad = True
-    except Exception:
-        pass
+    ws = wb.active
+    inicio, linhas, passo = AUTORIZACAO_BLOCO_INICIO, AUTORIZACAO_BLOCO_LINHAS, AUTORIZACAO_PASSO
+
+    # Carimbo: o primeiro bloco do modelo, linha a linha.
+    carimbo = [
+        {
+            "altura": ws.row_dimensions[inicio + r].height,
+            "rotulo": ws[f"B{inicio + r}"].value,
+            "estilo_b": copy(ws[f"B{inicio + r}"]._style),
+            "estilo_c": copy(ws[f"C{inicio + r}"]._style),
+        }
+        for r in range(linhas)
+    ]
+    mescladas = sorted(
+        m.min_row - inicio for m in ws.merged_cells.ranges
+        if inicio <= m.min_row < inicio + linhas and (m.min_col, m.max_col) == (2, 3)
+    )
+    altura_separador = ws.row_dimensions[inicio + linhas].height
+    estilo_neutro = copy(ws["B1"]._style)
+
+    # Limpa os blocos de exemplo inteiros antes de carimbar.
+    for m in list(ws.merged_cells.ranges):
+        ws.unmerge_cells(str(m))
+    for linha in range(inicio, ws.max_row + 1):
+        for col in "BC":
+            celula = ws[f"{col}{linha}"]
+            celula.value = None
+            celula._style = copy(estilo_neutro)
+        ws.row_dimensions[linha].height = None
+
+    blocos = list(produtos or []) or [{}]
+    for i, produto in enumerate(blocos):
+        topo = inicio + i * passo
+        valores = _valores_autorizacao(produto, motorista, cpf, telefone, placas)
+        if i:
+            ws.row_dimensions[topo - 1].height = altura_separador
+            if i % AUTORIZACAO_BLOCOS_POR_PAGINA == 0:
+                ws.row_breaks.append(Break(id=topo - 1))
+        for r, modelo in enumerate(carimbo):
+            linha = topo + r
+            ws.row_dimensions[linha].height = modelo["altura"]
+            rotulo = ws[f"B{linha}"]
+            rotulo._style = copy(modelo["estilo_b"])
+            rotulo.value = modelo["rotulo"]
+            ws[f"C{linha}"]._style = copy(modelo["estilo_c"])
+            valor = valores.get(_chave_do_rotulo(modelo["rotulo"]))
+            if r not in mescladas and valor not in (None, ""):
+                ws[f"C{linha}"].value = valor
+        for r in mescladas:
+            ws.merge_cells(f"B{topo + r}:C{topo + r}")
+
+    ultima = inicio + (len(blocos) - 1) * passo + linhas - 1
+    ws.print_area = f"B{inicio}:C{ultima}"
+    # Uma pagina de largura e altura livre: com o ajuste do modelo (tudo numa
+    # pagina so), cinco pedidos ficariam ilegiveis. As quebras acima mantem
+    # dois blocos por pagina.
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
     wb.save(save_path)

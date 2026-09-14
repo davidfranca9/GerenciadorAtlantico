@@ -42,7 +42,9 @@ RECIPIENTS_FERTIMAX = [
 DADOS_DIR = Path(__file__).resolve().parents[2] / "dados"
 SUPPLIERS_OC = {"AFL", "HERINGER"}
 TEMPLATE_CF = DADOS_DIR / "CARTA FRETE atlantico (1).docx"
-TEMPLATE_AUTORIZACAO = DADOS_DIR / "Autorizacao de Carregamento (2).xlsx"
+# Modelo da Fertimaxi: cartao vertical, um bloco por pedido. So o sistema web
+# usa este; o app desktop antigo continua com o dados/ da raiz.
+TEMPLATE_AUTORIZACAO = DADOS_DIR / "Autorizacao de Carregamento FERTIMAXI.xlsx"
 
 
 def _safe_filename(nome: str) -> str:
@@ -92,6 +94,19 @@ class CartaFreteRequest(BaseModel):
     formato: str = "docx"
 
 
+def _gerar_autorizacao(payload: OrdemColetaRequest, produtos_dict: list, xlsx_path: str) -> None:
+    """Preenche o modelo da Fertimaxi com os dados do motorista e das placas."""
+    gerar_autorizacao_xlsx(
+        str(TEMPLATE_AUTORIZACAO),
+        xlsx_path,
+        produtos_dict,
+        motorista=payload.nome,
+        cpf=payload.cpf,
+        telefone=payload.fone,
+        placas=(payload.placa1, payload.placa2, payload.placa3),
+    )
+
+
 def _gerar_oc_arquivos(payload: OrdemColetaRequest, tmp_dir: str) -> dict:
     """Gera a Ordem de Coleta (PDF via HTML/WeasyPrint) e, para fornecedores
     que nao sejam Heringer, tambem a Autorizacao de Coleta (xlsx). Retorna um
@@ -122,14 +137,7 @@ def _gerar_oc_arquivos(payload: OrdemColetaRequest, tmp_dir: str) -> dict:
     if payload.template.upper() != "HERINGER" and TEMPLATE_AUTORIZACAO.exists():
         cliente_name = _client_name_from_produtos(produtos_dict)
         xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{cliente_name}.xlsx")
-        gerar_autorizacao_xlsx(
-            str(TEMPLATE_AUTORIZACAO),
-            xlsx_path,
-            produtos_dict,
-            payload.data_carregamento,
-            payload.nome,
-            payload.placa1,
-        )
+        _gerar_autorizacao(payload, produtos_dict, xlsx_path)
 
     return {"pdf": pdf_path, "xlsx": xlsx_path, "safe_name": safe_name}
 
@@ -231,14 +239,7 @@ def gerar_autorizacao_coleta(payload: OrdemColetaRequest, db: Session = Depends(
     produtos_dict = [p.model_dump() for p in payload.produtos]
     cliente_name = _client_name_from_produtos(produtos_dict)
     xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{cliente_name}.xlsx")
-    gerar_autorizacao_xlsx(
-        str(TEMPLATE_AUTORIZACAO),
-        xlsx_path,
-        produtos_dict,
-        payload.data_carregamento,
-        payload.nome,
-        payload.placa1,
-    )
+    _gerar_autorizacao(payload, produtos_dict, xlsx_path)
     agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, {"xlsx": xlsx_path})
     return FileResponse(
         xlsx_path,
@@ -264,14 +265,7 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
     produtos_dict = [p.model_dump() for p in payload.produtos]
     cliente_name = _client_name_from_produtos(produtos_dict)
     xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{cliente_name}.xlsx")
-    gerar_autorizacao_xlsx(
-        str(TEMPLATE_AUTORIZACAO),
-        xlsx_path,
-        produtos_dict,
-        payload.data_carregamento,
-        payload.nome,
-        payload.placa1,
-    )
+    _gerar_autorizacao(payload, produtos_dict, xlsx_path)
 
     vistos: set[tuple[str, str]] = set()
     assuntos_enviados: list[str] = []
