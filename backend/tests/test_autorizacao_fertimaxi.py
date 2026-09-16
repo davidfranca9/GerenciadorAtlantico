@@ -31,7 +31,7 @@ PEDIDO_WAGMAR = {
 def gerar(tmp_path, produtos, **motorista):
     destino = tmp_path / "autorizacao.xlsx"
     base = dict(motorista="TALISSON JUNIOR GUIMARAES RIBEIRO", cpf="12159781622",
-                telefone="(38) 99999-0000", placas=("PFJ2I64", "nzb4h89", ""))
+                telefone="(38) 99999-0000", placas=("PFJ2I64", "nzb4h89", ""), modelo_veiculo="SIDER")
     base.update(motorista)
     gerar_autorizacao_xlsx(str(MODELO), str(destino), produtos, **base)
     return load_workbook(destino).active
@@ -55,7 +55,7 @@ def test_um_pedido_preenche_o_bloco_do_modelo(tmp_path):
         "Transportador:": "ATLÂNTICO FERTLOG",
         "Motorista:": "TALISSON JUNIOR GUIMARAES RIBEIRO",
         "CPF:": "121.597.816-22",
-        "Modelo Veiculo:": "CARRETA",
+        "Modelo Veiculo:": "SIDER",
         "Placa:": "PFJ-2I64 / NZB-4H89",
         "Telefone:": "(38) 99999-0000",
     }
@@ -109,15 +109,19 @@ def test_sem_pedido_ainda_sai_um_bloco_com_o_motorista(tmp_path):
     assert valores(ws, 2)["Cliente:"] in (None, "")
 
 
-@pytest.mark.parametrize("placas, modelo", [
-    (("PFJ2I64", "", ""), ""),              # so o cavalo: pode ser truck ou carreta sem a placa
-    (("PFJ2I64", "NZB4H89", ""), "CARRETA"),
-    (("RSC1A84", "SIZ8G24", "SIZ8F82"), "BITREM"),
-    (("", "", ""), ""),
+@pytest.mark.parametrize("escolhido, impresso", [
+    ("GRANELEIRO", "GRANELEIRO"),
+    ("grade baixa", "GRADE BAIXA"),
+    ("SIDER", "SIDER"),
 ])
-def test_modelo_do_veiculo_pela_quantidade_de_placas(tmp_path, placas, modelo):
-    # Campo sem valor fica em branco na planilha (None ao reler).
-    assert (valores(gerar(tmp_path, [PEDIDO_WAGMAR], placas=placas), 2)["Modelo Veiculo:"] or "") == modelo
+def test_modelo_do_veiculo_e_o_escolhido_na_ordem_de_coleta(tmp_path, escolhido, impresso):
+    assert valores(gerar(tmp_path, [PEDIDO_WAGMAR], modelo_veiculo=escolhido), 2)["Modelo Veiculo:"] == impresso
+
+
+def test_sem_modelo_escolhido_fica_em_branco_mesmo_com_placas(tmp_path):
+    # Nao deduz pelas placas: cavalo + carreta pode ser qualquer carroceria.
+    ws = gerar(tmp_path, [PEDIDO_WAGMAR], modelo_veiculo="", placas=("PFJ2I64", "NZB4H89", ""))
+    assert (valores(ws, 2)["Modelo Veiculo:"] or "") == ""
 
 
 def test_cpf_e_placa_sem_mascara_valida_saem_como_vieram(tmp_path):

@@ -3,7 +3,7 @@ import * as api from "../api/client";
 import Icon from "../components/Icon";
 import { useContrato } from "../context/ContratoContext";
 import { formatCPF, formatNome, formatPhone, formatPlaca } from "../utils/format";
-import { CATEGORIAS_TRATORAS, ordenarVeiculosPorCategoria } from "../utils/vehicleCategory";
+import { CATEGORIAS_TRATORAS, MODELOS_VEICULO, ordenarVeiculosPorCategoria } from "../utils/vehicleCategory";
 
 const SUPPLIER_LABEL = { AFL: "Fertimaxi", HERINGER: "Heringer" };
 function cleanOcrValue(value) {
@@ -13,12 +13,12 @@ function cleanOcrValue(value) {
 
 export default function OrdemColetaPage() {
   const { selectedRows, metrics, dataCarregamento, supplier, motorista, updateMotorista, limparMotorista } = useContrato();
-  const { nome, cpf, cnh, fone, placa1, placa2, placa3, roteiro, localizador, contatoCliente, observacoes, agendamentoId } = motorista;
+  const { nome, cpf, cnh, fone, placa1, placa2, placa3, modeloVeiculo, roteiro, localizador, contatoCliente, observacoes, agendamentoId } = motorista;
   const [status, setStatus] = useState("Importe os documentos e revise os dados antes de gerar a O.C.");
   const [error, setError] = useState(""); const [loadingAction, setLoadingAction] = useState("");
 
   function buildPayload() {
-    return { template: supplier, produtos: selectedRows.map((r) => ({ contrato:r.contrato, produto:r.produto, embalagem:r.embalagem, toneladas:String(r.toneladas), cidade:r.cidade, cliente:r.cliente, pedido_id:r.pedidoId||undefined })), cpf, nome, cnh, fone, placa1, placa2, placa3, data_carregamento:dataCarregamento, observacoes, agendamento_id:agendamentoId };
+    return { template: supplier, produtos: selectedRows.map((r) => ({ contrato:r.contrato, produto:r.produto, embalagem:r.embalagem, toneladas:String(r.toneladas), cidade:r.cidade, cliente:r.cliente, pedido_id:r.pedidoId||undefined })), cpf, nome, cnh, fone, placa1, placa2, placa3, modelo_veiculo:modeloVeiculo, data_carregamento:dataCarregamento, observacoes, agendamento_id:agendamentoId };
   }
   async function handleImportCnh(e) {
     const file=e.target.files?.[0]; e.target.value=""; if(!file)return; setError("");
@@ -50,7 +50,7 @@ export default function OrdemColetaPage() {
     finally { setLoadingAction(""); }
   }
   function categoryIsTruck(category){ return CATEGORIAS_TRATORAS.has(category); }
-  async function handleGerar(){ setError(""); if(!selectedRows.length){setError("Selecione os contratos antes de gerar a O.C.");return;} if(!nome.trim()){setError("O nome do motorista é obrigatório.");return;} setLoadingAction("pdf"); try{const payload=buildPayload();const result=await api.gerarOrdemColeta(payload);if(result?.agendamentoId)updateMotorista("agendamentoId",result.agendamentoId);setStatus("O.C. gerada com sucesso.");}catch(err){setError(err.message);}finally{setLoadingAction("");} }
+  async function handleGerar(){ setError(""); if(!selectedRows.length){setError("Selecione os contratos antes de gerar a O.C.");return;} if(!nome.trim()){setError("O nome do motorista é obrigatório.");return;} setLoadingAction("pdf"); try{const payload=buildPayload();const result=await api.gerarOrdemColeta(payload);const idAgendamento=result?.agendamentoId??agendamentoId;if(idAgendamento)updateMotorista("agendamentoId",idAgendamento);if(supplier!=="HERINGER"){await api.gerarAutorizacaoColeta({...payload,agendamento_id:idAgendamento});setStatus("O.C. e autorização de coleta geradas.");}else{setStatus("O.C. gerada com sucesso.");}}catch(err){setError(err.message);}finally{setLoadingAction("");} }
   async function handleEnviarEmail(){ setError(""); if(!selectedRows.length){setError("Selecione os contratos antes de enviar a O.C.");return;} if(!nome.trim()){setError("O nome do motorista é obrigatório.");return;} setLoadingAction("email"); try{const result=await api.enviarOrdemColetaEmail({...buildPayload(),roteiro,localizador,contato_cliente:contatoCliente});if(result?.agendamento_id)updateMotorista("agendamentoId",result.agendamento_id);setStatus(`E-mail enviado e agendamento #${result.agendamento_id} registrado.`);}catch(err){setError(err.message);}finally{setLoadingAction("");} }
   function handleLimpar(){limparMotorista();setStatus("Campos limpos. Importe novamente CNH e CRLV se necessário.");setError("");}
 
@@ -80,6 +80,7 @@ export default function OrdemColetaPage() {
           <div className="field"><label>Placa cavalo</label><input value={placa1} onChange={(e)=>updateMotorista("placa1",formatPlaca(e.target.value))} placeholder="ABC-1D23"/></div>
           <div className="field"><label>Placa carreta 1</label><input value={placa2} onChange={(e)=>updateMotorista("placa2",formatPlaca(e.target.value))} placeholder="ABC-1D23"/></div>
           <div className="field"><label>Placa carreta 2</label><input value={placa3} onChange={(e)=>updateMotorista("placa3",formatPlaca(e.target.value))} placeholder="ABC-1D23"/></div>
+          <div className="field"><label>Modelo do veículo</label><select value={modeloVeiculo} onChange={(e)=>updateMotorista("modeloVeiculo",e.target.value)}><option value="">Selecione</option>{MODELOS_VEICULO.map((m)=><option key={m.valor} value={m.valor}>{m.rotulo}</option>)}</select></div>
         </div>
       </section>
       <aside className="document-panel">
@@ -94,6 +95,6 @@ export default function OrdemColetaPage() {
       <div className="field-grid route-grid"><div className="field field-full"><label>Observações</label><textarea value={observacoes} onChange={(e)=>updateMotorista("observacoes",e.target.value)} placeholder="Observações que aparecerão na O.C." rows={3}/></div></div>
     </section>
     {status&&<div className="inline-alert info"><span className="status-dot"/>{status}</div>}{error&&<div className="inline-alert error">{error}</div>}
-    <div className="action-dock"><div><span>ETAPA FINAL</span><strong>{hasContracts && hasDriver ? "Tudo pronto para emitir" : "Conclua as etapas anteriores para emitir"}</strong></div><div className="action-buttons"><button className="btn-ghost" disabled={!!loadingAction} onClick={handleLimpar}><Icon name="trash" size={16}/>Limpar</button><button className="btn-secondary" disabled={!!loadingAction || !hasContracts || !hasDriver} onClick={handleEnviarEmail}><Icon name="mail" size={16}/>{loadingAction==="email"?"Enviando...":"Enviar por e-mail"}</button><button className="btn-primary" disabled={!!loadingAction || !hasContracts || !hasDriver} onClick={handleGerar}><Icon name="file" size={16}/>{loadingAction==="pdf"?"Gerando...":"Gerar Ordem de Coleta PDF"}</button></div></div>
+    <div className="action-dock"><div><span>ETAPA FINAL</span><strong>{hasContracts && hasDriver ? "Tudo pronto para emitir" : "Conclua as etapas anteriores para emitir"}</strong></div><div className="action-buttons"><button className="btn-ghost" disabled={!!loadingAction} onClick={handleLimpar}><Icon name="trash" size={16}/>Limpar</button><button className="btn-secondary" disabled={!!loadingAction || !hasContracts || !hasDriver} onClick={handleEnviarEmail}><Icon name="mail" size={16}/>{loadingAction==="email"?"Enviando...":"Enviar por e-mail"}</button><button className="btn-primary" disabled={!!loadingAction || !hasContracts || !hasDriver} onClick={handleGerar}><Icon name="file" size={16}/>{loadingAction==="pdf"?"Gerando...":supplier==="HERINGER"?"Gerar Ordem de Coleta PDF":"Gerar O.C. + autorização"}</button></div></div>
   </div>;
 }

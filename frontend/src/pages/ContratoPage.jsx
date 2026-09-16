@@ -3,6 +3,7 @@ import * as api from "../api/client";
 import DateField from "../components/DateField";
 import { useContrato } from "../context/ContratoContext";
 import { formatNome, formatPlaca } from "../utils/format";
+import { MODELOS_VEICULO } from "../utils/vehicleCategory";
 
 function parseNumero(texto) {
   const num = parseFloat(String(texto ?? "").replace(",", "."));
@@ -31,6 +32,7 @@ export default function ContratoPage() {
 
   const [nomeCondutor, setNomeCondutor] = useState("");
   const [placaCavalo, setPlacaCavalo] = useState("");
+  const [modeloVeiculo, setModeloVeiculo] = useState("");
   const [gerandoAutorizacao, setGerandoAutorizacao] = useState(false);
   const [enviandoAutorizacao, setEnviandoAutorizacao] = useState(false);
 
@@ -90,9 +92,13 @@ export default function ContratoPage() {
         toneladas: String(r.toneladas),
         cidade: r.cidade,
         cliente: r.cliente,
+        // Sem o id, o agendamento criado aqui nao descontava o saldo e a
+        // barra do pedido nao andava.
+        pedido_id: r.pedidoId || undefined,
       })),
       nome: nomeCondutor,
       placa1: placaCavalo,
+      modelo_veiculo: modeloVeiculo,
       data_carregamento: dataCarregamento,
     };
   }
@@ -248,6 +254,13 @@ export default function ContratoPage() {
             <div className="field">
               <label>Placa Cavalo (opcional)</label>
               <input value={placaCavalo} onChange={(e) => setPlacaCavalo(formatPlaca(e.target.value))} placeholder="ABC-1D23" />
+            </div>
+            <div className="field">
+              <label>Modelo do veículo (opcional)</label>
+              <select value={modeloVeiculo} onChange={(e) => setModeloVeiculo(e.target.value)}>
+                <option value="">Selecione</option>
+                {MODELOS_VEICULO.map((m) => <option key={m.valor} value={m.valor}>{m.rotulo}</option>)}
+              </select>
             </div>
           </div>
           <div style={{ display: "flex", gap: 10 }}>

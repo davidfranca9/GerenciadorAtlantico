@@ -412,17 +412,7 @@ def _formatar_placa_documento(placa) -> str:
     return f"{limpa[:3]}-{limpa[3:]}"
 
 
-def _modelo_pelas_placas(placas: list) -> str:
-    """Configuracao do conjunto pela quantidade de placas.
-
-    Cavalo + uma carreta e CARRETA; cavalo + duas e BITREM. Uma placa so
-    fica em branco de proposito: pode ser um truck, ou uma carreta cuja placa
-    ainda nao foi informada - e o chute errado vai impresso pra fabrica.
-    """
-    return {2: "CARRETA", 3: "BITREM"}.get(len(placas), "")
-
-
-def _valores_autorizacao(produto: dict, motorista, cpf, telefone, placas) -> dict:
+def _valores_autorizacao(produto: dict, motorista, cpf, telefone, placas, modelo_veiculo="") -> dict:
     """{rotulo normalizado: valor} de um bloco."""
     placas_informadas = [_formatar_placa_documento(p) for p in placas or () if str(p or "").strip()]
     contrato = _clean(produto.get("contrato"))
@@ -436,13 +426,15 @@ def _valores_autorizacao(produto: dict, motorista, cpf, telefone, placas) -> dic
         "transportador": TRANSPORTADOR,
         "motorista": _clean(motorista),
         "cpf": _formatar_cpf_documento(cpf),
-        "modelo veiculo": _modelo_pelas_placas(placas_informadas),
+        # A carroceria escolhida na Ordem de Coleta. Nao se deduz pelas
+        # placas: cavalo + carreta pode ser graneleiro, grade baixa ou sider.
+        "modelo veiculo": _clean(modelo_veiculo).upper(),
         "placa": " / ".join(placas_informadas),
         "telefone": _clean(telefone),
     }
 
 
-def gerar_autorizacao_xlsx(template_path, save_path, produtos, *, motorista="", cpf="", telefone="", placas=()):
+def gerar_autorizacao_xlsx(template_path, save_path, produtos, *, motorista="", cpf="", telefone="", placas=(), modelo_veiculo=""):
     """Preenche o modelo da Fertimaxi: um bloco por pedido.
 
     A data de carregamento nao entra - o modelo nao tem esse campo, e ela ja
@@ -482,7 +474,7 @@ def gerar_autorizacao_xlsx(template_path, save_path, produtos, *, motorista="", 
     blocos = list(produtos or []) or [{}]
     for i, produto in enumerate(blocos):
         topo = inicio + i * passo
-        valores = _valores_autorizacao(produto, motorista, cpf, telefone, placas)
+        valores = _valores_autorizacao(produto, motorista, cpf, telefone, placas, modelo_veiculo)
         if i:
             ws.row_dimensions[topo - 1].height = altura_separador
             if i % AUTORIZACAO_BLOCOS_POR_PAGINA == 0:

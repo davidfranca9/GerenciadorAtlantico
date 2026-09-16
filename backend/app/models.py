@@ -78,6 +78,8 @@ class Agendamento(Base):
     plate_cavalo: Mapped[str] = mapped_column(String(16), default="")
     plate_carreta1: Mapped[str] = mapped_column(String(16), default="")
     plate_carreta2: Mapped[str] = mapped_column(String(16), default="")
+    # Carroceria que a Fertimaxi pede na autorizacao: GRANELEIRO, GRADE BAIXA, SIDER.
+    modelo_veiculo: Mapped[str] = mapped_column(String(40), default="")
     total_items: Mapped[int] = mapped_column(Integer, default=0)
     total_tons: Mapped[float] = mapped_column(Float, default=0)
     pedidos: Mapped[str] = mapped_column(String(2000), default="")

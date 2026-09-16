@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import * as api from "../api/client";
 import DateField from "../components/DateField";
 import { formatCPF, formatDateInput, formatNome, formatPhone, formatPlaca } from "../utils/format";
+import { MODELOS_VEICULO } from "../utils/vehicleCategory";
 
 const STATUS_OPTIONS = ["Aguardando Agendamento", "Agendado", "Cancelado", "Carregou"];
 const ITEM_VAZIO = { pedidoId: null, pedido: "", cliente: "", produto: "", cidade: "", embalagem: "", toneladas: "", toneladasMax: 0 };
@@ -93,9 +94,31 @@ function DataAgendadaCell({ agendamento, onSalvo }) {
   );
 }
 
+function semAcentoBusca(texto) {
+  return String(texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+}
+
+// Tudo que da pra procurar num agendamento: motorista, CPF, placas, datas,
+// fornecedor, status, observacoes e os itens (pedido, cliente, produto,
+// cidade). A comparacao ignora acento, caixa e pontuacao - "abc1d23" acha
+// "ABC-1D23" e "40947" acha "040947".
+function agendamentoCombina(a, termo) {
+  const texto = semAcentoBusca([
+    a.id, a.supplier, a.loading_date, a.data_agendada, a.driver_name, a.driver_cpf,
+    a.plate_cavalo, a.plate_carreta1, a.plate_carreta2, a.modelo_veiculo, a.status, a.observacoes,
+    ...(a.itens || []).flatMap((it) => [it.pedido, it.cliente, it.produto, it.cidade]),
+  ].join(" | "));
+  const procurado = semAcentoBusca(termo).trim();
+  if (!procurado) return true;
+  if (texto.includes(procurado)) return true;
+  const compacto = procurado.replace(/[^A-Z0-9]/g, "");
+  return Boolean(compacto) && texto.replace(/[^A-Z0-9|]/g, "").includes(compacto);
+}
+
 export default function AgendamentosPage() {
   const [agendamentos, setAgendamentos] = useState([]);
   const [filtroStatus, setFiltroStatus] = useState("");
+  const [busca, setBusca] = useState("");
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [supplier, setSupplier] = useState("");
@@ -169,9 +192,10 @@ export default function AgendamentosPage() {
     setDiaSelecionado(hojeStr);
   }
 
-  const agendamentosExibidos = viewMode === "agenda" && diaSelecionado
+  const agendamentosExibidos = (viewMode === "agenda" && diaSelecionado
     ? agendamentos.filter((a) => dataEfetiva(a) === diaSelecionado)
-    : agendamentos;
+    : agendamentos
+  ).filter((a) => agendamentoCombina(a, busca));
 
   useEffect(() => {
     if (showForm) {
@@ -261,6 +285,7 @@ export default function AgendamentosPage() {
         plate_cavalo: full.plate_cavalo || "",
         plate_carreta1: full.plate_carreta1 || "",
         plate_carreta2: full.plate_carreta2 || "",
+        modelo_veiculo: full.modelo_veiculo || "",
         observacoes: full.observacoes || "",
         itens: full.itens.length
           ? full.itens.map((it) => ({
@@ -270,6 +295,7 @@ export default function AgendamentosPage() {
               cidade: it.cidade || "",
               embalagem: it.embalagem || "",
               toneladas: String(it.toneladas ?? ""),
+              pedido_id: it.pedido_id ?? null,
             }))
           : [{ ...OC_ITEM_VAZIO }],
       });
@@ -306,7 +332,11 @@ export default function AgendamentosPage() {
   function updateEditItem(idx, field, value) {
     setEditForm((prev) => ({
       ...prev,
-      itens: prev.itens.map((it, i) => (i === idx ? { ...it, [field]: value } : it)),
+      // Mudou o numero ou o produto: o vinculo antigo nao vale mais, e o
+      // backend acha o pedido certo pelo que foi digitado.
+      itens: prev.itens.map((it, i) => (i === idx
+        ? { ...it, [field]: value, ...(field === "contrato" || field === "produto" ? { pedido_id: null } : {}) }
+        : it)),
     }));
   }
 
@@ -324,6 +354,7 @@ export default function AgendamentosPage() {
         placa1: editForm.plate_cavalo,
         placa2: editForm.plate_carreta1,
         placa3: editForm.plate_carreta2,
+        modelo_veiculo: editForm.modelo_veiculo,
         data_carregamento: editForm.loading_date,
         observacoes: editForm.observacoes,
         agendamento_id: editId,
@@ -355,6 +386,7 @@ export default function AgendamentosPage() {
           cidade: it.cidade || "",
           embalagem: it.embalagem || "",
           toneladas: String(it.toneladas ?? ""),
+          pedido_id: it.pedido_id ?? null,
         })),
         cpf: a.driver_cpf,
         nome: a.driver_name,
@@ -363,6 +395,7 @@ export default function AgendamentosPage() {
         placa1: a.plate_cavalo,
         placa2: a.plate_carreta1,
         placa3: a.plate_carreta2,
+        modelo_veiculo: a.modelo_veiculo || "",
         data_carregamento: a.loading_date,
         observacoes: a.observacoes,
         agendamento_id: a.id,
@@ -515,6 +548,15 @@ export default function AgendamentosPage() {
         </form>
       )}
 
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div className="field" style={{ flex: "1 1 320px", maxWidth: 480 }}>
+          <label>Buscar agendamento</label>
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Motorista, placa, cliente, pedido, produto ou cidade"
+          />
+        </div>
       <div className="field" style={{ maxWidth: 260 }}>
         <label>Filtrar por status</label>
         <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)}>
@@ -523,6 +565,12 @@ export default function AgendamentosPage() {
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
+      </div>
+        {busca.trim() && (
+          <span style={{ fontSize: 12.5, color: "var(--muted)", paddingBottom: 10 }}>
+            {agendamentosExibidos.length} encontrado(s)
+          </span>
+        )}
       </div>
 
       {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
@@ -657,6 +705,13 @@ export default function AgendamentosPage() {
                             <div className="field">
                               <label>Placa Carreta 2</label>
                               <input value={editForm.plate_carreta2} onChange={(e) => updateEditField("plate_carreta2", formatPlaca(e.target.value))} />
+                            </div>
+                            <div className="field">
+                              <label>Modelo do veículo</label>
+                              <select value={editForm.modelo_veiculo} onChange={(e) => updateEditField("modelo_veiculo", e.target.value)}>
+                                <option value="">Selecione</option>
+                                {MODELOS_VEICULO.map((m) => <option key={m.valor} value={m.valor}>{m.rotulo}</option>)}
+                              </select>
                             </div>
                           </div>
 

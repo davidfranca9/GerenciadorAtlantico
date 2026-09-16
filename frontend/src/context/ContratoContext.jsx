@@ -16,7 +16,7 @@ function todayFormatted() {
 }
 
 const MOTORISTA_VAZIO = {
-  nome: "", cpf: "", cnh: "", fone: "", placa1: "", placa2: "", placa3: "",
+  nome: "", cpf: "", cnh: "", fone: "", placa1: "", placa2: "", placa3: "", modeloVeiculo: "",
   roteiro: "", localizador: "", contatoCliente: "", observacoes: "", agendamentoId: null,
 };
 

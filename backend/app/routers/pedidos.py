@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import Cidade, Pedido
-from ..servicos import ocr
+from ..servicos import ocr, saldo_pedidos
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"], dependencies=[Depends(get_current_user)])
 
@@ -142,6 +142,19 @@ def definir_cidade(payload: DefinirCidadeIn, db: Session = Depends(get_db)):
         pedido.cidades_candidatas = ""
     db.commit()
     return {"cidade": texto, "pedidos": [_to_dict(p) for p in pedidos]}
+
+
+@router.get("/conciliacao")
+def ver_conciliacao(db: Session = Depends(get_db)):
+    """LEITURA. Barras que nao batem com os agendamentos, e como ficariam."""
+    return saldo_pedidos.conciliar(db, aplicar=False)
+
+
+@router.post("/conciliacao")
+def aplicar_conciliacao(db: Session = Depends(get_db)):
+    """Acerta a barra de todos os pedidos pelos agendamentos e liga os itens
+    antigos que ficaram sem vinculo."""
+    return saldo_pedidos.conciliar(db, aplicar=True)
 
 
 @router.delete("/{pedido_id}")

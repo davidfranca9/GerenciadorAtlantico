@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoItem, Pedido
+from ..servicos import saldo_pedidos
 from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
 from .documentos import Produto, OrdemColetaRequest, _gerar_oc_arquivos
 
@@ -56,6 +57,7 @@ def _gerar_anexos_oc(agendamento: Agendamento) -> list[str]:
         placa1=agendamento.plate_cavalo,
         placa2=agendamento.plate_carreta1,
         placa3=agendamento.plate_carreta2,
+        modelo_veiculo=agendamento.modelo_veiculo,
         data_carregamento=agendamento.loading_date,
         observacoes=agendamento.observacoes,
     )
@@ -118,6 +120,7 @@ class AgendamentoIn(BaseModel):
     plate_cavalo: str = ""
     plate_carreta1: str = ""
     plate_carreta2: str = ""
+    modelo_veiculo: str = ""
     roteiro: str = ""
     localizador: str = ""
     contato_cliente: str = ""
@@ -147,6 +150,7 @@ def _to_dict(a: Agendamento) -> dict:
         "plate_cavalo": a.plate_cavalo,
         "plate_carreta1": a.plate_carreta1,
         "plate_carreta2": a.plate_carreta2,
+        "modelo_veiculo": a.modelo_veiculo,
         "total_items": a.total_items,
         "total_tons": a.total_tons,
         "roteiro": a.roteiro,
@@ -162,6 +166,9 @@ def _to_dict(a: Agendamento) -> dict:
                 "cidade": it.cidade,
                 "embalagem": it.embalagem,
                 "toneladas": it.toneladas,
+                # O vinculo com o pedido volta pra tela: sem ele, "Salvar e
+                # regerar" reescrevia os itens soltos e a barra parava.
+                "pedido_id": it.pedido_ref_id,
             }
             for it in a.itens
         ],
@@ -185,20 +192,10 @@ def criar_agendamento(payload: AgendamentoIn, db: Session = Depends(get_db)):
         total_items=len(itens),
         total_tons=sum(i.toneladas for i in itens),
     )
-    agendamento.itens = [
-        AgendamentoItem(**i.model_dump(exclude={"pedido_id"}), pedido_ref_id=i.pedido_id) for i in itens
-    ]
     db.add(agendamento)
-
-    # Desconta o saldo dos pedidos vinculados, igual acontece quando a O.C.
-    # e gerada pelo fluxo normal (Pedidos -> Ordem de Coleta).
-    for item in itens:
-        if not item.pedido_id:
-            continue
-        pedido = db.get(Pedido, item.pedido_id)
-        if pedido is None:
-            continue
-        pedido.toneladas_usadas = min(pedido.toneladas_total, pedido.toneladas_usadas + item.toneladas)
+    # Itens ligados ao pedido - pelo id, ou pelo numero + produto quando a
+    # tela nao mandou - e a barra do pedido acompanhando.
+    saldo_pedidos.gravar_itens(db, agendamento, [i.model_dump() for i in itens])
 
     db.commit()
     db.refresh(agendamento)
@@ -225,13 +222,7 @@ def excluir_agendamento(agendamento_id: int, db: Session = Depends(get_db)):
 
     # Devolve o saldo pros pedidos vinculados antes de apagar - excluir uma
     # O.C. libera de volta a tonelada que tinha sido descontada dela.
-    for item in agendamento.itens:
-        if not item.pedido_ref_id:
-            continue
-        pedido = db.get(Pedido, item.pedido_ref_id)
-        if pedido is None:
-            continue
-        pedido.toneladas_usadas = max(0.0, pedido.toneladas_usadas - item.toneladas)
+    saldo_pedidos.liberar(db, agendamento)
 
     db.delete(agendamento)
     db.commit()
@@ -271,7 +262,8 @@ def atualizar_status(agendamento_id: int, payload: AgendamentoStatusIn, db: Sess
         raise HTTPException(status_code=404, detail="Agendamento nao encontrado")
     if payload.status not in STATUS_AGENDAMENTO:
         raise HTTPException(status_code=400, detail=f"Status invalido. Use um de: {STATUS_AGENDAMENTO}")
-    agendamento.status = payload.status
+    # Cancelado nao ocupa saldo: cancelar devolve, reabrir desconta de novo.
+    saldo_pedidos.mudar_status(db, agendamento, payload.status)
     agendamento.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(agendamento)

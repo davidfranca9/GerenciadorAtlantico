@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem, CartaFreteEnviada, Pedido
-from ..servicos import carta_frete
+from ..servicos import carta_frete, saldo_pedidos
 from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
 from ..servicos.documentos import gerar_autorizacao_xlsx
 from ..servicos.oc_html import gerar_oc_pdf_html
@@ -79,6 +79,7 @@ class OrdemColetaRequest(BaseModel):
     placa1: str = ""
     placa2: str = ""
     placa3: str = ""
+    modelo_veiculo: str = ""
     data_carregamento: str = ""
     observacoes: str = ""
     agendamento_id: Optional[int] = None
@@ -115,6 +116,7 @@ def _gerar_autorizacao(payload: OrdemColetaRequest, produtos_dict: list, xlsx_pa
         cpf=payload.cpf,
         telefone=payload.fone,
         placas=(payload.placa1, payload.placa2, payload.placa3),
+        modelo_veiculo=payload.modelo_veiculo,
     )
 
 
@@ -161,7 +163,6 @@ def _salvar_agendamento_oc(
 ) -> Agendamento:
     """Cria ou atualiza (quando payload.agendamento_id e informado) o registro
     da Ordem de Coleta no banco, funcionando como o "banco de OCs geradas"."""
-    eh_novo = not payload.agendamento_id
     if payload.agendamento_id:
         agendamento = db.get(Agendamento, payload.agendamento_id)
         if agendamento is None:
@@ -179,19 +180,23 @@ def _salvar_agendamento_oc(
     agendamento.plate_cavalo = payload.placa1.strip()
     agendamento.plate_carreta1 = payload.placa2.strip()
     agendamento.plate_carreta2 = payload.placa3.strip()
+    agendamento.modelo_veiculo = payload.modelo_veiculo.strip()
     agendamento.observacoes = payload.observacoes.strip()
-    agendamento.itens = [
-        AgendamentoItem(
-            pedido=p.get("contrato", ""),
-            cliente=p.get("cliente", ""),
-            produto=p.get("produto", ""),
-            cidade=p.get("cidade", ""),
-            embalagem=p.get("embalagem", ""),
-            toneladas=_safe_float(p.get("toneladas")),
-            pedido_ref_id=p.get("pedido_id"),
-        )
+    # Itens ligados ao pedido (pelo id, ou pelo numero + produto) e a barra
+    # acertada pela DIFERENCA: gerar a O.C. e a autorizacao em sequencia nao
+    # desconta duas vezes, e mudar a tonelada na edicao ajusta o saldo.
+    saldo_pedidos.gravar_itens(db, agendamento, [
+        {
+            "pedido": p.get("contrato", ""),
+            "cliente": p.get("cliente", ""),
+            "produto": p.get("produto", ""),
+            "cidade": p.get("cidade", ""),
+            "embalagem": p.get("embalagem", ""),
+            "toneladas": _safe_float(p.get("toneladas")),
+            "pedido_id": p.get("pedido_id"),
+        }
         for p in produtos_dict
-    ]
+    ])
     agendamento.total_items = len(agendamento.itens)
     agendamento.total_tons = sum(i.toneladas for i in agendamento.itens)
     if arquivos.get("pdf"):
@@ -199,20 +204,6 @@ def _salvar_agendamento_oc(
     if arquivos.get("xlsx"):
         agendamento.planilha_path = arquivos["xlsx"]
     agendamento.updated_at = datetime.utcnow()
-
-    # So desconta o saldo do pedido na criacao da O.C. (nao em edicao/
-    # regeracao), pra nao descontar duas vezes quando o frontend chama
-    # gerar-oc e gerar-autorizacao em sequencia pro mesmo agendamento.
-    if eh_novo:
-        for p in produtos_dict:
-            pedido_id = p.get("pedido_id")
-            if not pedido_id:
-                continue
-            pedido = db.get(Pedido, pedido_id)
-            if pedido is None:
-                continue
-            usado = _safe_float(p.get("toneladas"))
-            pedido.toneladas_usadas = min(pedido.toneladas_total, pedido.toneladas_usadas + usado)
 
     db.commit()
     db.refresh(agendamento)

@@ -15,3 +15,11 @@ export function ordenarVeiculosPorCategoria(veiculos) {
   }
   return [...tratores, ...reboques, ...outros].slice(0, 3);
 }
+
+// Carroceria que a Fertimaxi pede na autorizacao de carregamento. O valor
+// e o que sai impresso na planilha.
+export const MODELOS_VEICULO = [
+  { valor: "GRANELEIRO", rotulo: "Graneleiro" },
+  { valor: "GRADE BAIXA", rotulo: "Grade baixa" },
+  { valor: "SIDER", rotulo: "Sider" },
+];
