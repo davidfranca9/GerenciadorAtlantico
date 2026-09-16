@@ -20,9 +20,8 @@ import PedidosPage from "./pages/PedidosPage";
 import TrocarSenhaPage from "./pages/TrocarSenhaPage";
 import WhatsAppPage from "./pages/WhatsAppPage";
 import CaixaPage from "./pages/financeiro/CaixaPage";
-import {
-  DividasPage, GastosPage, LucroBrutoPage, PagamentosPage, PrecificacaoPage, RedirecionarCarregamentos,
-} from "./pages/financeiro/PaginasFinanceiro";
+import CarregamentosPage from "./pages/financeiro/CarregamentosPage";
+import { DividasPage, GastosPage, LucroBrutoPage, PagamentosPage, PrecificacaoPage } from "./pages/financeiro/PaginasFinanceiro";
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -57,13 +56,13 @@ function AppRoutes() {
         <Route path="/ordem-coleta" element={<OrdemColetaPage />} />
         <Route path="/carta-frete" element={<CartaFretePage />} />
         <Route path="/financeiro/caixa" element={<AdminRoute><CaixaPage /></AdminRoute>} />
+        <Route path="/financeiro/carregamentos" element={<AdminRoute><CarregamentosPage /></AdminRoute>} />
         <Route path="/financeiro/lucro-bruto" element={<AdminRoute><LucroBrutoPage /></AdminRoute>} />
         <Route path="/financeiro/gastos" element={<AdminRoute><GastosPage /></AdminRoute>} />
         <Route path="/financeiro/precificacao" element={<AdminRoute><PrecificacaoPage /></AdminRoute>} />
         <Route path="/financeiro/pagamentos" element={<AdminRoute><PagamentosPage /></AdminRoute>} />
         <Route path="/financeiro/dividas" element={<AdminRoute><DividasPage /></AdminRoute>} />
         {/* Enderecos das versoes anteriores. */}
-        <Route path="/financeiro/carregamentos" element={<RedirecionarCarregamentos />} />
         <Route path="/financeiro/resultado" element={<Navigate to="/financeiro/lucro-bruto" replace />} />
         <Route path="/financeiro/contas" element={<Navigate to="/financeiro/pagamentos" replace />} />
         <Route path="/agendamentos" element={<AgendamentosPage />} />

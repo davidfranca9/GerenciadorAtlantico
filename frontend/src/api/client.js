@@ -617,6 +617,7 @@ export const financeiro = {
   excluirLancamento: (id) => request(`/financeiro/lancamentos/${id}`, { method: "DELETE" }),
 
   resultado: (competencia) => request(`/financeiro/resultado${consulta({ competencia })}`),
+  carregamentos: (competencia) => request(`/financeiro/carregamentos${consulta({ competencia })}`),
   criarCarregamento: (dados) => request("/financeiro/carregamentos", { method: "POST", body: dados }),
   atualizarCarregamento: (id, dados) => request(`/financeiro/carregamentos/${id}`, { method: "PUT", body: dados }),
   excluirCarregamento: (id) => request(`/financeiro/carregamentos/${id}`, { method: "DELETE" }),

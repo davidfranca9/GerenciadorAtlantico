@@ -408,6 +408,18 @@ def carregamento_para_dict(c: CarregamentoFinanceiro) -> dict:
     }
 
 
+def listar_carregamentos(db: Session, competencia: Optional[str] = None) -> dict:
+    """Cada carregamento com as contas da linha (a aba LUCRO BRUTO inteira).
+    Sem competencia, todos os meses - o mais recente primeiro."""
+    consulta = db.query(CarregamentoFinanceiro)
+    if competencia:
+        consulta = consulta.filter(CarregamentoFinanceiro.competencia == validar_competencia(competencia))
+    carregamentos = consulta.all()
+    carregamentos.sort(key=lambda c: (c.competencia, not c.cancelado, c.data_emissao or date.min, c.id), reverse=True)
+    meses = sorted({c for (c,) in db.query(CarregamentoFinanceiro.competencia).distinct()}, reverse=True)
+    return {"competencias": meses, "carregamentos": [carregamento_para_dict(c) for c in carregamentos]}
+
+
 def despesas_do_mes(db: Session, competencia: str, escopo: Optional[str] = None) -> list[tuple[Despesa, Optional[int]]]:
     """Despesas que valem no mes, com a parcela da vez (None se nao e parcelada)."""
     consulta = db.query(Despesa).filter(Despesa.ativa.is_(True))

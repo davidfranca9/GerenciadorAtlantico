@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
 import { Aviso, CampoValor, Dinheiro, ImportarPlanilha, NavegadorMes } from "./comum";
@@ -142,7 +142,7 @@ function AbaPrecificacao({ competencia, resultado, despesas, recarregar }) {
 
 const CHAVE_MES = "financeiro.competencia";
 
-function useCompetencia() {
+export function useCompetencia() {
   const [competencia, setCompetencia] = useState(() => {
     try {
       const salvo = sessionStorage.getItem(CHAVE_MES);
@@ -163,7 +163,7 @@ function useCompetencia() {
   return [competencia, mudar];
 }
 
-function useDados(buscar, chave) {
+export function useDados(buscar, chave) {
   const [estado, setEstado] = useState({ chave: null, dados: null });
   const [erro, setErro] = useState("");
   const carregar = useCallback(async () => {
@@ -179,12 +179,13 @@ function useDados(buscar, chave) {
   return { dados: estado.chave === chave ? estado.dados : null, erro, carregar };
 }
 
-function Moldura({ competencia, aoMudarMes, erro, carregando, aoImportar, children }) {
+export function Moldura({ competencia, aoMudarMes, erro, carregando, aoImportar, extras, children }) {
   const [importando, setImportando] = useState(false);
   return (
     <div className="ops-page fin-pagina">
       <div className="fin-barra">
         {competencia && <NavegadorMes competencia={competencia} aoMudar={aoMudarMes} />}
+        {extras}
         <span className="fin-espaco" />
         <button type="button" className="btn-secondary" onClick={() => setImportando(true)}><Icon name="upload" size={15} /> Importar planilha</button>
       </div>
@@ -293,18 +294,4 @@ export function DividasPage() {
       {dados && <Dividas dividas={dados} recarregar={carregar} />}
     </Moldura>
   );
-}
-
-// Endereco da versao com tudo numa tela so (?aba=...).
-const DESTINO_ANTIGO = {
-  "gastos-empresa": "/financeiro/gastos",
-  "gastos-pessoais": "/financeiro/gastos?aba=pessoal",
-  precificacao: "/financeiro/precificacao",
-  pagamentos: "/financeiro/pagamentos",
-  dividas: "/financeiro/dividas",
-};
-
-export function RedirecionarCarregamentos() {
-  const [busca] = useSearchParams();
-  return <Navigate to={DESTINO_ANTIGO[busca.get("aba")] || "/financeiro/lucro-bruto"} replace />;
 }

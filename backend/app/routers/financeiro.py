@@ -228,6 +228,15 @@ def resultado(competencia: str, db: Session = Depends(get_db)):
         raise _erro(exc)
 
 
+@router.get("/carregamentos")
+def listar_carregamentos(competencia: Optional[str] = None, db: Session = Depends(get_db)):
+    """Todos os carregamentos (ou os do mes), com frete, custos e sobra de cada um."""
+    try:
+        return fin.listar_carregamentos(db, competencia)
+    except fin.ErroFinanceiro as exc:
+        raise _erro(exc)
+
+
 def _aplicar_carregamento(c: CarregamentoFinanceiro, dados: CarregamentoIn):
     fin.validar_competencia(dados.competencia)
     for campo, valor in dados.model_dump().items():

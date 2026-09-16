@@ -436,6 +436,23 @@ def test_dividas_em_aberto_na_ordem_do_pagamento(db):
     assert [d["credor"] for d in http.get("/financeiro/dividas").json()] == ["Antes", "Depois", "Sem data"]
 
 
+def test_lista_de_carregamentos_de_todos_os_meses(db):
+    carregamento(db, ctes="4990", competencia="2026-08", data_emissao=date(2026, 8, 30))
+    carregamento(db, ctes="5003", data_emissao=date(2026, 9, 1))
+    carregamento(db, ctes="5010", motorista="", cancelado=True)
+    carregamento(db, ctes="5012", data_emissao=date(2026, 9, 2))
+    db.commit()
+    http = cliente_http(db)
+    todos = http.get("/financeiro/carregamentos").json()
+    assert todos["competencias"] == ["2026-09", "2026-08"]
+    # Mais recente primeiro; cancelado no fim do mes dele.
+    assert [c["ctes"] for c in todos["carregamentos"]] == ["5012", "5003", "5010", "4990"]
+    assert todos["carregamentos"][0]["totais"]["liquido"] == 1600
+    so_agosto = http.get("/financeiro/carregamentos", params={"competencia": "2026-08"}).json()
+    assert [c["ctes"] for c in so_agosto["carregamentos"]] == ["4990"]
+    assert http.get("/financeiro/carregamentos", params={"competencia": "setembro"}).status_code == 400
+
+
 def test_so_administrador_ve_o_financeiro(db):
     assert cliente_http(db, papel="user").get("/financeiro/contas").status_code == 403
     assert cliente_http(db).get("/financeiro/contas").status_code == 200

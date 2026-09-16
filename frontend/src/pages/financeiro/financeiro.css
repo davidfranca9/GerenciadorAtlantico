@@ -114,7 +114,7 @@
 
 /* ---------- caixa: extrato + composer ---------- */
 .fin-caixa-grade { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
-.fin-extrato { padding: 0; overflow: hidden; }
+.fin-extrato { padding: 0; overflow: clip; }
 .fin-extrato-topo { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--border-soft); }
 .fin-extrato-topo p { margin: 3px 0 0; color: var(--muted); font-size: 11.5px; }
 .fin-extrato-filtros { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -280,6 +280,44 @@
 .fin-caminho-conta li.positivo .fin-sinal, .fin-caminho-conta li.positivo .fin-inteiro { color: var(--fin-entrada); }
 
 .fin-resultado-grade { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+.fin-rankings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.fin-botao-ativo { border-color: var(--accent); color: var(--accent); background: var(--row-selected); }
+
+/* ---------- carregamentos (aba LUCRO BRUTO da planilha) ---------- */
+.fin-resumo-cargas { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.fin-resumo-cargas > div { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 12px; background: var(--panel); border: 1px solid var(--panel-border); box-shadow: var(--shadow); min-width: 0; }
+.fin-resumo-cargas > div.destaque { border-color: color-mix(in srgb, var(--accent) 35%, var(--panel-border)); }
+.fin-resumo-cargas > div > span:first-child { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+.fin-resumo-cargas strong { font: 800 21px Manrope, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
+.fin-resumo-cargas small { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fin-filtros-cargas { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.fin-filtros-cargas .fin-busca input { width: 190px; }
+.fin-select-pequeno { width: auto; height: 34px; padding: 0 30px 0 10px; font-size: 12px; background-position: right 10px center; }
+.fin-tabela-cargas { padding: 0; overflow: clip; }
+.fin-tabela-cargas ul { margin: 0; padding: 0; list-style: none; }
+.fin-cabecalho-cargas, .fin-linha-carga-botao { display: grid; grid-template-columns: 54px minmax(170px, 1.6fr) repeat(5, minmax(0, 1fr)) minmax(118px, 1.05fr); align-items: center; gap: 10px; padding: 11px 20px; }
+.fin-linha-carga-custos { display: contents; }
+.fin-cabecalho-cargas { position: sticky; top: 104px; z-index: 2; background: var(--panel-soft); border-bottom: 1px solid var(--border-soft); font-size: 10px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: var(--muted); }
+.fin-cabecalho-cargas > span:last-child, .fin-cabecalho-cargas .fin-linha-carga-custos > span { text-align: right; }
+.fin-linha-carga { border-bottom: 1px solid var(--border-soft); }
+.fin-tabela-cargas > div:last-child ul > .fin-linha-carga:last-child { border-bottom: 0; }
+.fin-linha-carga-botao { width: 100%; min-height: 0; border: 0; border-radius: 0; background: transparent; color: var(--text); text-align: left; font-weight: 400; }
+.fin-linha-carga-botao:hover, .fin-linha-carga.aberto .fin-linha-carga-botao { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.fin-linha-carga-quem { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.fin-linha-carga-quem strong { font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+.fin-linha-carga-quem small { font-size: 11.5px; line-height: 1.4; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.fin-linha-carga-quem .fin-composicao { max-width: 220px; }
+.fin-col { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; min-width: 0; font-variant-numeric: tabular-nums; }
+.fin-col small { font-size: 10.5px; color: var(--muted-soft); white-space: nowrap; }
+.fin-col b { font-size: 12.5px; white-space: nowrap; }
+.fin-col.frete_empresa .fin-inteiro { color: var(--text); }
+.fin-col.frete_motorista .fin-inteiro, .fin-col.agenciamento .fin-inteiro, .fin-col.comissao .fin-inteiro { color: color-mix(in srgb, var(--text) 78%, var(--muted)); font-weight: 700; }
+.fin-col.sobra .fin-margem { font-size: 10.5px; }
+.fin-linha-carga.cancelado .fin-linha-carga-quem strong { color: var(--muted); text-decoration: line-through; }
+.fin-linha-carga.cancelado .fin-col b, .fin-linha-carga.cancelado em { color: var(--muted-soft); font-style: normal; font-size: 11px; font-weight: 700; }
+.fin-linha-carga .fin-editor-carregamento { border-top: 1px dashed var(--border); }
+.fin-mes-cargas { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 0; padding: 10px 20px; font-size: 11px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--text); background: color-mix(in srgb, var(--accent) 6%, var(--panel-soft)); border-bottom: 1px solid var(--border-soft); }
+.fin-mes-cargas span:last-child { color: var(--muted); font-weight: 700; text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .fin-carregamentos { padding: 0; overflow: hidden; }
 .fin-carregamentos > ul { margin: 0; padding: 0; list-style: none; }
 .fin-carga { border-bottom: 1px solid var(--border-soft); }
@@ -489,7 +527,16 @@
 }
 @media (max-width: 1100px) {
   .fin-hero { grid-template-columns: 1fr; }
-  .fin-caixa-grade, .fin-resultado-grade, .fin-agenda, .fin-caminho, .fin-preco-grade { grid-template-columns: 1fr; }
+  .fin-caixa-grade, .fin-resultado-grade, .fin-agenda, .fin-caminho, .fin-preco-grade, .fin-rankings { grid-template-columns: 1fr; }
+  .fin-resumo-cargas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .fin-cabecalho-cargas { display: none; }
+  .fin-linha-carga-botao { grid-template-columns: 50px minmax(0, 1fr) auto; grid-template-areas: "data quem sobra" "custos custos custos"; row-gap: 10px; }
+  .fin-linha-carga-botao > .fin-carga-data { grid-area: data; }
+  .fin-linha-carga-botao > .fin-linha-carga-quem { grid-area: quem; }
+  .fin-linha-carga-botao > .fin-col.sobra { grid-area: sobra; }
+  .fin-linha-carga-custos { grid-area: custos; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 8px 10px; border-radius: 9px; background: var(--panel-soft); }
+  .fin-linha-carga-custos .fin-col { align-items: flex-start; }
+  .fin-linha-carga-custos .fin-col::before { content: attr(data-rotulo); font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--muted-soft); }
   .fin-simulador { position: static; }
   .fin-fechamento { border-left: 0; padding-left: 0; }
   .fin-caminho-conta { border-left: 0; border-top: 1px solid var(--border-soft); }
@@ -499,6 +546,11 @@
 @media (max-width: 700px) {
   .fin-dinheiro.xl { font-size: 32px; }
   .fin-kpis, .fin-resumo-contas, .fin-vazio { grid-template-columns: 1fr; }
+  .fin-resumo-cargas { grid-template-columns: 1fr 1fr; }
+  .fin-resumo-cargas > div.destaque { grid-column: 1 / -1; }
+  .fin-linha-carga-custos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fin-filtros-cargas .fin-busca { flex: 1 1 100%; }
+  .fin-filtros-cargas .fin-busca input { width: 100%; }
   .fin-nav-periodo strong { min-width: 120px; }
   .fin-caminho-legenda { grid-template-columns: 1fr; }
   .fin-caminho-conta li { grid-template-columns: minmax(0, 1fr) auto; row-gap: 5px; padding-bottom: 10px; }

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { Link } from "react-router-dom";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
 import { Aviso, CampoValor, Dinheiro } from "./comum";
@@ -11,7 +12,7 @@ const PARTES = [
 ];
 
 // Margem por tonelada: a media da planilha em setembro foi R$ 50/t.
-function saudeMargem(porTonelada) {
+export function saudeMargem(porTonelada) {
   if (porTonelada === null || porTonelada === undefined) return "neutra";
   if (porTonelada >= 60) return "boa";
   if (porTonelada >= 40) return "media";
@@ -96,6 +97,7 @@ function CartaoLucro({ resumo }) {
       <p className="fin-kpi-rodape">
         {resumo.carregamentos} {resumo.carregamentos === 1 ? "carregamento" : "carregamentos"} · {toneladas(resumo.toneladas)}
         {resumo.cancelados > 0 && ` · ${resumo.cancelados} cancelado${resumo.cancelados > 1 ? "s" : ""}`}
+        {" · "}<Link className="fin-link" to="/financeiro/carregamentos">ver cada carga</Link>
       </p>
     </section>
   );
@@ -215,7 +217,7 @@ function totalDaParte(parte, peso) {
   return parte.modo === "total" ? numero : numero * (peso || 0);
 }
 
-function EditorCarregamento({ competencia, carregamento, aoSalvar, aoExcluir, aoFechar }) {
+export function EditorCarregamento({ competencia, carregamento, aoSalvar, aoExcluir, aoFechar }) {
   const [form, setForm] = useState(() => paraFormulario(carregamento));
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -307,7 +309,7 @@ function EditorCarregamento({ competencia, carregamento, aoSalvar, aoExcluir, ao
 
 // A barra fina mostra pra onde foi cada real do frete: motorista,
 // agenciamento, comissao e o que sobrou.
-function Composicao({ totais }) {
+export function Composicao({ totais }) {
   const receita = totais.frete_empresa;
   if (!receita) return null;
   const pedacos = [
@@ -323,11 +325,11 @@ function Composicao({ totais }) {
   );
 }
 
-function Contratantes({ grupos }) {
+function Ranking({ titulo, grupos }) {
   const maior = Math.max(1, ...grupos.map((g) => Math.abs(g.lucro)));
   return (
     <section className="card fin-ranking">
-      <header><h3>Por contratante</h3><p>Lucro do mês e média por tonelada</p></header>
+      <header><h3>{titulo}</h3><p>Sobra do mês e média por tonelada</p></header>
       {grupos.length === 0 ? <p className="fin-sem-itens">Sem carregamentos.</p> : (
         <ol>
           {grupos.map((g) => (
@@ -343,12 +345,9 @@ function Contratantes({ grupos }) {
   );
 }
 
-// Aba "Lucro bruto" do Controle de carregamentos.
+// Pagina "Lucro bruto": o resumo do mes. Cada carga fica em "Carregamentos".
 export function AbaLucroBruto({ competencia, dados, recarregar }) {
-  const [abertoId, setAbertoId] = useState(null);
-  useEffect(() => setAbertoId(null), [competencia]);
   const vazio = dados.carregamentos.length === 0;
-
   return (
     <>
       <div className="fin-kpis">
@@ -357,72 +356,20 @@ export function AbaLucroBruto({ competencia, dados, recarregar }) {
         <CartaoCustoFixo precificacao={dados.precificacao} resumo={dados.resumo} />
       </div>
 
-      {!vazio && <CaminhoDoFrete resumo={dados.resumo} despesas={dados.despesas} lucroReal={dados.lucro_real} sobra={dados.sobra} />}
-
-      <div className="fin-resultado-grade">
-        <section className="card fin-carregamentos">
-          <header className="fin-extrato-topo">
-            <div><h3>Carregamentos</h3><p>Clique numa carga para ver e ajustar os valores</p></div>
-            <div className="fin-carregamentos-acoes">
-              <div className="fin-legenda">
-                <span><i className="motorista" />Motorista</span><span><i className="agenciamento" />Agenciamento</span>
-                <span><i className="comissao" />Comissão</span><span><i className="sobra" />Sobra</span>
-              </div>
-              <button type="button" className="btn-primary" onClick={() => setAbertoId("novo")}><Icon name="plus" size={14} /> Carregamento</button>
-            </div>
-          </header>
-          {abertoId === "novo" && (
-            <div className="fin-carga aberto">
-              <EditorCarregamento
-                competencia={competencia}
-                aoFechar={() => setAbertoId(null)}
-                aoSalvar={async (p) => { await api.criarCarregamento(p); setAbertoId(null); await recarregar(); }}
-              />
-            </div>
-          )}
-          {vazio && abertoId !== "novo" ? (
-            <div className="fin-sem-itens">
-              <Icon name="truck" size={22} />
-              <p>Nenhum carregamento em {competencia.split("-").reverse().join("/")}. Importe a planilha do Controle de Carregamentos ou lance a primeira carga.</p>
-            </div>
-          ) : (
-            <ul>
-              {dados.carregamentos.map((c) => (
-                <li key={c.id} className={`fin-carga ${c.cancelado ? "cancelado" : ""} ${abertoId === c.id ? "aberto" : ""}`}>
-                  <button type="button" className="fin-carga-linha" onClick={() => setAbertoId(abertoId === c.id ? null : c.id)} aria-expanded={abertoId === c.id}>
-                    <span className="fin-carga-data">{c.data_emissao ? diaCurto(c.data_emissao) : "—"}</span>
-                    <span className="fin-carga-texto">
-                      <strong>{c.cancelado ? "Cancelado" : c.motorista || "Sem motorista"}</strong>
-                      <small>
-                        {c.ctes && `CT-e ${c.ctes}`}{c.fabrica && ` · ${c.fabrica}`}{c.destino && ` → ${c.destino}`}{c.contratante && ` · ${c.contratante}`}
-                      </small>
-                      {!c.cancelado && <Composicao totais={c.totais} />}
-                    </span>
-                    <span className="fin-carga-numeros">
-                      {c.cancelado ? <em>cancelado</em> : (
-                        <>
-                          <Dinheiro valor={c.totais.liquido} tamanho="s" />
-                          <small>{toneladas(c.peso)} · <b className={`fin-margem ${saudeMargem(c.totais.por_tonelada)}`}>{brl(c.totais.por_tonelada)}/t</b></small>
-                        </>
-                      )}
-                    </span>
-                  </button>
-                  {abertoId === c.id && (
-                    <EditorCarregamento
-                      competencia={competencia}
-                      carregamento={c}
-                      aoFechar={() => setAbertoId(null)}
-                      aoSalvar={async (p) => { await api.atualizarCarregamento(c.id, p); setAbertoId(null); await recarregar(); }}
-                      aoExcluir={async () => { await api.excluirCarregamento(c.id); setAbertoId(null); await recarregar(); }}
-                    />
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+      {vazio ? (
+        <section className="card fin-sem-itens">
+          <Icon name="truck" size={22} />
+          <p>Nenhum carregamento em {competencia.split("-").reverse().join("/")}. Importe a planilha do Controle de Carregamentos ou lance as cargas em <Link className="fin-link" to="/financeiro/carregamentos">Carregamentos</Link>.</p>
         </section>
-        <Contratantes grupos={dados.por_contratante} />
-      </div>
+      ) : (
+        <>
+          <CaminhoDoFrete resumo={dados.resumo} despesas={dados.despesas} lucroReal={dados.lucro_real} sobra={dados.sobra} />
+          <div className="fin-rankings">
+            <Ranking titulo="Por contratante" grupos={dados.por_contratante} />
+            <Ranking titulo="Por fábrica" grupos={dados.por_fabrica} />
+          </div>
+        </>
+      )}
     </>
   );
 }
