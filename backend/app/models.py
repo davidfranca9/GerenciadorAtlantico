@@ -432,6 +432,9 @@ class CarregamentoFinanceiro(Base):
     origem: Mapped[str] = mapped_column(String(20), default="manual")
     cliente: Mapped[str] = mapped_column(String(255), default="")
     contrato_frete: Mapped[str] = mapped_column(String(40), default="")
+    # Valor do contrato de frete no Bsoft. So referencia: em setembro/2026 nao
+    # bateu com o pago ao motorista em nenhuma carga (a carta frete bateu).
+    valor_contrato_frete: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

@@ -17,7 +17,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.models import (  # noqa: E402
-    CarregamentoFinanceiro, Cidade, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa, MetaMensal, PagamentoAgenda,
+    CarregamentoFinanceiro, CartaFreteEnviada, Cidade, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa, MetaMensal, PagamentoAgenda,
 )
 from app.servicos import financeiro as fin  # noqa: E402
 from app.servicos import financeiro_bsoft as fb  # noqa: E402
@@ -55,13 +55,13 @@ CTES = [
      "destinatario": "Z", "dados_motorista": {"motorista": "CANCELADO", "veiculo": "CAN-0C00"}},
 ]
 CONTRATOS = [
-    {"id": "2300", "numeroCF": "2290", "motorista": "LINDOMAR DA SILVA", "statusCancelado": "N", "nrosCTe": ["5005", "5006"], "valorTotalOrigem": "7040.00"},
+    {"id": "2300", "numeroCF": "2290", "motorista": "LINDOMAR DA SILVA", "statusCancelado": "N", "nrosCTe": ["5005", "5006"], "valorTotalOrigem": "6690.00"},
     {"id": "2410", "numeroCF": "2400", "motorista": "JOSE ALBERTO SEBEN", "statusCancelado": "N", "nrosCTe": ["5121"], "valorTotalOrigem": "9200.00"},
     {"id": "2411", "numeroCF": "2401", "motorista": "X", "statusCancelado": "S", "nrosCTe": ["5122"], "valorTotalOrigem": "1.00"},
 ]
 VALORES = [
     {"id": "2410", "valorTotalOrigem": "9200.00", "tarifaMotoristaDigitada": "230.000000000", "pesoColeta": "40.0000"},
-    {"id": "2300", "valorTotalOrigem": "7040.00", "tarifaMotoristaDigitada": "220.000000000", "pesoColeta": "32.0000"},
+    {"id": "2300", "valorTotalOrigem": "6690.00", "tarifaMotoristaDigitada": "0.000000000", "pesoColeta": "32.0000"},
 ]
 XMLS = {
     "K5005": {"autorizacao": xml_cte(5005, "4640.00", "16000.0000", "TEOFILO OTONI", "3168606", "MG", "FERTILIZANTES HERINGER S.A."), "cancelamento": ""},
@@ -96,9 +96,15 @@ def bsoft(monkeypatch):
 
 @pytest.fixture
 def db():
-    sessao = banco_em_memoria(CarregamentoFinanceiro, Cidade, ContaBancaria, LancamentoCaixa, MetaMensal, Despesa,
+    sessao = banco_em_memoria(CarregamentoFinanceiro, CartaFreteEnviada, Cidade, ContaBancaria, LancamentoCaixa, MetaMensal, Despesa,
                               ContaAvulsa, PagamentoAgenda, Divida)
-    sessao.add_all([Cidade(nome="Teófilo Otoni", uf="MG", ibge="3168606"), Cidade(nome="Nova Bassano", uf="RS", ibge="4312906")])
+    sessao.add_all([
+        Cidade(nome="Teófilo Otoni", uf="MG", ibge="3168606"), Cidade(nome="Nova Bassano", uf="RS", ibge="4312906"),
+        # A carta frete e o frete do motorista de verdade (bateu com a planilha).
+        CartaFreteEnviada(data="01/09/2026", condutor="LINDOMAR DA SILVA SOUZA", placa_cavalo="QWU-2F44", valor_frete="7.040,00", status="enviada"),
+        CartaFreteEnviada(data="16/09/2026", condutor="OUTRO MOTORISTA", placa_cavalo="XYZ9A99", valor_frete="8.000,00", status="enviada"),
+        CartaFreteEnviada(data="16/09/2026", condutor="CANCELADA", placa_cavalo="CAN0C00", valor_frete="1,00", status="cancelada"),
+    ])
     sessao.commit()
     yield sessao
     sessao.close()
@@ -125,12 +131,16 @@ def test_monta_uma_carga_por_contrato(db, bsoft):
     cargas = {c["ctes"]: c for c in lido["cargas"]}
     assert set(cargas) == {"5005/5006", "5121", "5122", "5123"}  # rascunho fica de fora
     junta = cargas["5005/5006"]
-    assert (junta["frete_empresa_total"], junta["peso"], junta["frete_motorista_total"], junta["contrato"]) == (9280.0, 32.0, 7040.0, "2290")
+    assert (junta["frete_empresa_total"], junta["peso"], junta["contrato"]) == (9280.0, 32.0, "2290")
+    # Motorista pelo nome (placa diferente), valor da carta; o contrato fica so de referencia.
+    assert (junta["frete_motorista_total"], junta["valor_contrato"], junta["carta_frete"]["data"]) == (7040.0, 6690.0, "2026-09-01")
     assert (junta["destino"], junta["fabrica"], junta["motorista"]) == ("Teófilo Otoni MG", "Heringer", "LINDOMAR DA SILVA")
     timac = cargas["5121"]
-    assert (timac["fabrica"], timac["destino"], timac["frete_motorista_ton"], timac["data_emissao"]) == ("Timac", "Nova Bassano RS", 230.0, date(2026, 9, 16))
-    # Contrato cancelado nao conta: a carga fica sem frete do motorista.
-    assert (cargas["5122"]["frete_motorista_total"], cargas["5122"]["contrato"]) == (None, "")
+    assert (timac["fabrica"], timac["destino"], timac["data_emissao"]) == ("Timac", "Nova Bassano RS", date(2026, 9, 16))
+    assert (timac["frete_motorista_total"], timac["valor_contrato"]) == (None, 9200.0)  # sem carta frete: a completar
+    # Contrato cancelado nao conta; a carta sai pela placa do cavalo.
+    assert (cargas["5122"]["contrato"], cargas["5122"]["frete_motorista_total"]) == ("", 8000.0)
+    assert cargas["5123"]["frete_motorista_total"] is None  # CT-e cancelado nao pega carta
     assert cargas["5123"]["cancelado"] is True and cargas["5122"]["cancelado"] is False
     paginas = [c for c in bsoft if c[1] == "/transporte/v1/conhecimentos"]
     assert paginas[0][2]["limit"] == "0,100" and paginas[0][2]["dataInicio"] == "2026-09-01"
@@ -142,10 +152,12 @@ def test_sincronizar_previa_nao_grava_e_aplicar_cria(db, bsoft):
     assert db.query(CarregamentoFinanceiro).count() == 0
     feito = fb.sincronizar(db, "2026-09", aplicar=True)
     assert len(feito["novos"]) == 4 and feito["sem_contrato"] == 2
+    assert (feito["com_carta_frete"], feito["motorista_a_completar"]) == (2, 1)
     carga = db.query(CarregamentoFinanceiro).filter(CarregamentoFinanceiro.ctes == "5005/5006").one()
-    assert (carga.origem, carga.frete_empresa_total, carga.frete_motorista_total, carga.peso) == ("bsoft", 9280, 7040, 32)
+    assert (carga.origem, carga.frete_empresa_total, carga.frete_motorista_total, carga.peso, carga.valor_contrato_frete) == ("bsoft", 9280, 7040, 32, 6690)
     dados = fin.carregamento_para_dict(carga)
-    assert dados["a_completar"] is True and dados["totais"]["liquido"] == 2240
+    assert dados["a_completar"] is True and dados["faltando"] == ["agenciamento", "contratante"]
+    assert dados["totais"]["liquido"] == 2240
     de_novo = fb.sincronizar(db, "2026-09", aplicar=True)
     assert de_novo["novos"] == [] and de_novo["ja_existiam"] == 4 and de_novo["atualizados"] == []
 
@@ -171,7 +183,8 @@ def test_carga_da_planilha_nao_tem_valor_trocado(db, bsoft):
 def test_carga_do_bsoft_e_atualizada_mas_mantem_o_que_foi_completado(db, bsoft):
     fb.sincronizar(db, "2026-09", aplicar=True)
     carga = db.query(CarregamentoFinanceiro).filter(CarregamentoFinanceiro.ctes == "5121").one()
-    carga.agenciamento_ton, carga.contratante = 10, "Junior"
+    assert fin.carregamento_para_dict(carga)["faltando"] == ["frete do motorista", "agenciamento", "contratante"]
+    carga.frete_motorista_total, carga.agenciamento_ton, carga.contratante = 9000, 10, "Junior"
     db.commit()
     VALORES[0]["valorTotalOrigem"] = "9400.00"
     try:
@@ -180,7 +193,7 @@ def test_carga_do_bsoft_e_atualizada_mas_mantem_o_que_foi_completado(db, bsoft):
         VALORES[0]["valorTotalOrigem"] = "9200.00"
     db.refresh(carga)
     assert [a["ctes"] for a in feito["atualizados"]] == ["5121"]
-    assert (carga.frete_motorista_total, carga.agenciamento_ton, carga.contratante) == (9400, 10, "Junior")
+    assert (carga.valor_contrato_frete, carga.frete_motorista_total, carga.agenciamento_ton, carga.contratante) == (9400, 9000, 10, "Junior")
     assert fin.carregamento_para_dict(carga)["a_completar"] is False
 
 

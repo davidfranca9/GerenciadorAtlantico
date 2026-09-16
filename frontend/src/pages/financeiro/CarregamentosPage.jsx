@@ -78,8 +78,11 @@ function PuxarDoBsoft({ competencia, aoFechar, aoTrazer }) {
             {r.atualizados.length > 0 && `, ${r.atualizados.length} atualizada(s)`}
             {r.ja_existiam > 0 && ` · ${r.ja_existiam} já estavam no controle`}.
           </p>
-          {r.sem_contrato > 0 && (
-            <Aviso tipo="warning">{r.sem_contrato} {r.sem_contrato === 1 ? "carga ainda não tem" : "cargas ainda não têm"} contrato de frete no Bsoft: o frete do motorista fica para completar.</Aviso>
+          {!feito && r.novos.length > 0 && (
+            <Aviso tipo={r.motorista_a_completar ? "warning" : "info"}>
+              Frete do motorista: {r.com_carta_frete} {r.com_carta_frete === 1 ? "carga veio" : "cargas vieram"} da carta frete emitida pelo sistema
+              {r.motorista_a_completar > 0 && `; ${r.motorista_a_completar} sem carta ficam para completar`}. O valor do contrato do Bsoft não é usado: não bateu com o que foi pago.
+            </Aviso>
           )}
           {r.divergencias.length > 0 && (
             <>
@@ -105,7 +108,7 @@ function PuxarDoBsoft({ competencia, aoFechar, aoTrazer }) {
                 <li key={c.ctes}>
                   <span>{c.data_emissao ? diaCurto(c.data_emissao) : "—"}</span>
                   <span><b>{c.motorista || "Sem motorista"}</b> · CT-e {c.ctes} · {c.fabrica} → {c.destino}{c.cancelado ? " · cancelado" : ""}</span>
-                  <span>{toneladas(c.peso)} · {brl(c.frete_empresa)}{c.frete_motorista !== null ? ` · motorista ${brl(c.frete_motorista)}` : ""}</span>
+                  <span>{toneladas(c.peso)} · frete {brl(c.frete_empresa)} · {c.cancelado ? "cancelado" : c.frete_motorista !== null ? `motorista ${brl(c.frete_motorista)}` : "motorista a completar"}</span>
                 </li>
               ))}
             </ul>
@@ -134,7 +137,7 @@ function LinhaCarregamento({ carga, aberto, aoAbrir, children }) {
         <span className="fin-linha-carga-quem">
           <strong>
             {carga.cancelado ? "Cancelado" : carga.motorista || "Sem motorista"}
-            {carga.a_completar && <em className="fin-tag-completar" title="Veio do Bsoft: falta agenciamento, comissão e contratante">a completar</em>}
+            {carga.a_completar && <em className="fin-tag-completar" title={`Veio do Bsoft. Falta: ${carga.faltando.join(", ")}`}>falta {carga.faltando[0]}{carga.faltando.length > 1 ? ` +${carga.faltando.length - 1}` : ""}</em>}
           </strong>
           <small>{[carga.ctes && `CT-e ${carga.ctes}`, rota, carga.cliente && `cliente ${carga.cliente}`, carga.contratante].filter(Boolean).join(" · ")}</small>
           {!carga.cancelado && <Composicao totais={t} />}

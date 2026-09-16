@@ -3,8 +3,12 @@
 - CT-e (listagem): numero, data, motorista, placa, remetente e destinatario.
 - XML autorizado do CT-e: valor do frete (vTPrest), peso e cidade de destino.
   O XML de cancelamento, quando existe, marca a carga como cancelada.
-- Contrato de frete ("RECIBO DE FRETE"): o que foi pago ao motorista, e os
-  CT-es que ele cobre - e isso que junta "5005/5006" numa carga so.
+- Contrato de frete ("RECIBO DE FRETE"): os CT-es que ele cobre - e isso que
+  junta "5005/5006" numa carga so. O VALOR do contrato nao e o pago ao
+  motorista (em setembro/2026 nao bateu nenhuma vez com a planilha): fica
+  so como referencia.
+- Carta frete (do proprio sistema): o frete do motorista de verdade - bateu
+  com a planilha em todas as cargas que tinham carta.
 
 No Bsoft e so LEITURA. Agenciamento, comissao e contratante nao existem la:
 ficam para completar na tela.
@@ -20,7 +24,7 @@ from xml.etree import ElementTree as ET
 
 from sqlalchemy.orm import Session
 
-from ..models import CarregamentoFinanceiro, Cidade
+from ..models import CarregamentoFinanceiro, CartaFreteEnviada, Cidade
 from . import financeiro as fin
 from .bsoft_client import chamar
 from .financeiro_importacao import nome_legivel
@@ -254,7 +258,6 @@ def cargas_do_periodo(db: Session, inicio: date, fim: date) -> dict:
         fretes = [x.get("valor_frete") for x in xml if x.get("valor_frete") is not None]
         peso = round(sum(pesos), 3) if pesos else _numero((valor or {}).get("pesoColeta"))
         datas = [d for d in (_data(doc.get("dtEmissao")) for doc in docs) if d]
-        tarifa = _numero((valor or {}).get("tarifaMotoristaDigitada"))
         citados = {}
         for n in numeros:
             for c in contratos_do_cte.get(n, []):
@@ -284,14 +287,72 @@ def cargas_do_periodo(db: Session, inicio: date, fim: date) -> dict:
             "destino": destino,
             "peso": peso or 0,
             "frete_empresa_total": fin.dinheiro(sum(fretes)) if fretes else None,
-            "frete_motorista_total": fin.dinheiro(_numero(valor.get("valorTotalOrigem"))) if valor and _numero(valor.get("valorTotalOrigem")) is not None
-            else (fin.dinheiro(_numero(contrato.get("valorTotalOrigem"))) if contrato and _numero(contrato.get("valorTotalOrigem")) is not None else None),
-            "frete_motorista_ton": fin.dinheiro(tarifa) if tarifa else None,
+            "frete_motorista_total": None,  # vem da carta frete, logo abaixo
+            "carta_frete": None,
+            "valor_contrato": fin.dinheiro(_numero((valor or {}).get("valorTotalOrigem") or (contrato or {}).get("valorTotalOrigem")))
+            if _numero((valor or {}).get("valorTotalOrigem") or (contrato or {}).get("valorTotalOrigem")) is not None else None,
             "contrato": str(contrato.get("numeroCF") or "") if contrato else "",
             "cancelado": all(n in cancelados for n in numeros),
             "contratos_detalhe": detalhe_contratos,
         })
+    ligar_cartas_frete(db, cargas)
     return {"cargas": cargas, "ctes": len(por_numero), "contratos": len(contratos)}
+
+
+def _so_letras_numeros(texto) -> str:
+    return re.sub(r"[^A-Z0-9]", "", fin.sem_acento(texto).upper())
+
+
+def _mesmo_nome(motorista: str, condutor: str) -> bool:
+    """Os dois primeiros nomes batem ("KAIFFER NATAN" em "KAIFFER NATAN PEREIRA DA COSTA")."""
+    a = [p for p in fin.sem_acento(motorista).upper().split() if len(p) > 2][:2]
+    b = set(fin.sem_acento(condutor).upper().split())
+    return len(a) == 2 and all(p in b for p in a)
+
+
+def _valor_br(texto) -> Optional[float]:
+    limpo = re.sub(r"[^\d,.-]", "", str(texto or ""))
+    if not limpo:
+        return None
+    if "," in limpo:
+        limpo = limpo.replace(".", "").replace(",", ".")
+    try:
+        return float(limpo)
+    except ValueError:
+        return None
+
+
+def ligar_cartas_frete(db: Session, cargas: list[dict], dias: int = 5) -> None:
+    """O frete do motorista sai da carta frete emitida pelo sistema: mesma
+    placa do cavalo (ou mesmo motorista) e data perto da do CT-e."""
+    cartas = []
+    for carta in db.query(CartaFreteEnviada).filter(CartaFreteEnviada.status != "cancelada").all():
+        try:
+            dia = datetime.strptime(carta.data or "", "%d/%m/%Y").date()
+        except ValueError:
+            continue
+        valor = _valor_br(carta.valor_frete)
+        if valor:
+            cartas.append((carta, dia, valor))
+    usadas: set[int] = set()
+    for carga in sorted(cargas, key=lambda c: c["data_emissao"] or date.max):
+        if not carga["data_emissao"] or carga["cancelado"]:
+            continue
+        placa = _so_letras_numeros(carga.get("placa"))
+        candidatas = []
+        for carta, dia, valor in cartas:
+            distancia = abs((dia - carga["data_emissao"]).days)
+            if carta.id in usadas or distancia > dias:
+                continue
+            if placa and _so_letras_numeros(carta.placa_cavalo) == placa:
+                candidatas.append((0, distancia, carta, dia, valor))
+            elif _mesmo_nome(carga["motorista"], carta.condutor):
+                candidatas.append((1, distancia, carta, dia, valor))
+        if candidatas:
+            _, _, carta, dia, valor = min(candidatas, key=lambda c: (c[0], c[1]))
+            usadas.add(carta.id)
+            carga["frete_motorista_total"] = fin.dinheiro(valor)
+            carga["carta_frete"] = {"data": dia.isoformat(), "valor": fin.dinheiro(valor), "condutor": carta.condutor}
 
 
 # --------------------------------------------------------------------------
@@ -311,7 +372,7 @@ def _valores_da_carga(carga: dict) -> dict:
         "data_emissao": carga["data_emissao"], "motorista": carga["motorista"], "fabrica": carga["fabrica"],
         "destino": carga["destino"], "cliente": carga["cliente"], "peso": carga["peso"],
         "frete_empresa_total": carga["frete_empresa_total"], "frete_motorista_total": carga["frete_motorista_total"],
-        "contrato_frete": carga["contrato"], "cancelado": carga["cancelado"],
+        "contrato_frete": carga["contrato"], "cancelado": carga["cancelado"], "valor_contrato_frete": carga.get("valor_contrato"),
     }
 
 
@@ -321,6 +382,7 @@ def _resumo(carga: dict) -> dict:
         "motorista": carga["motorista"], "fabrica": carga["fabrica"], "destino": carga["destino"],
         "peso": carga["peso"], "frete_empresa": carga["frete_empresa_total"], "frete_motorista": carga["frete_motorista_total"],
         "cancelado": carga["cancelado"], "sem_contrato": not carga["contrato"],
+        "carta_frete": carga.get("carta_frete"), "valor_contrato": carga.get("valor_contrato"),
         "contratos": carga.get("contratos_detalhe", []),
     }
 
@@ -352,6 +414,9 @@ def sincronizar(db: Session, competencia: str, *, aplicar: bool = False, lido: O
             if alvo.origem == "bsoft":
                 mudou = False
                 for campo, valor in valores.items():
+                    # Frete do motorista digitado na tela nao e trocado.
+                    if campo == "frete_motorista_total" and (alvo.frete_motorista_total is not None or alvo.frete_motorista_ton is not None):
+                        continue
                     if valor not in (None, "") and getattr(alvo, campo) != valor:
                         setattr(alvo, campo, valor)
                         mudou = True
@@ -364,6 +429,8 @@ def sincronizar(db: Session, competencia: str, *, aplicar: bool = False, lido: O
                     setattr(alvo, campo, valores[campo])
             if alvo.data_emissao is None and valores["data_emissao"]:
                 alvo.data_emissao = valores["data_emissao"]
+            if alvo.valor_contrato_frete is None and valores["valor_contrato_frete"] is not None:
+                alvo.valor_contrato_frete = valores["valor_contrato_frete"]
             totais = fin.totais_carregamento(alvo)
             diferencas = {}
             for rotulo, no_sistema, no_bsoft in (
@@ -395,4 +462,6 @@ def sincronizar(db: Session, competencia: str, *, aplicar: bool = False, lido: O
         "ja_existiam": ja_existiam,
         "divergencias": divergencias,
         "sem_contrato": sum(1 for c in novos if c["sem_contrato"]),
+        "com_carta_frete": sum(1 for c in novos if c["carta_frete"]),
+        "motorista_a_completar": sum(1 for c in novos if not c["carta_frete"] and not c["cancelado"]),
     }

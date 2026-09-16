@@ -264,6 +264,11 @@ export function EditorCarregamento({ competencia, carregamento, aoSalvar, aoExcl
       </div>
       <CampoValor valor={form[chave].valor} aoMudar={(v) => mudarParte(chave, { valor: v })} />
       <small>{form[chave].modo === "ton" ? `= ${brl(totalDaParte(form[chave], peso))}` : peso ? `= ${brl(totalDaParte(form[chave], peso) / peso)}/t` : ""}</small>
+      {chave === "frete_motorista" && carregamento?.valor_contrato_frete != null && (
+        <small className="fin-referencia" title="Valor do contrato de frete no Bsoft. Não costuma ser o que foi pago ao motorista.">
+          Contrato no Bsoft: {brl(carregamento.valor_contrato_frete)}
+        </small>
+      )}
     </div>
   );
 

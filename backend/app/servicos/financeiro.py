@@ -407,11 +407,23 @@ def carregamento_para_dict(c: CarregamentoFinanceiro) -> dict:
         "origem": c.origem or "manual",
         "cliente": c.cliente or "",
         "contrato_frete": c.contrato_frete or "",
-        # Veio do Bsoft e ainda falta o que so a operacao sabe.
-        "a_completar": (c.origem == "bsoft" and not c.cancelado
-                        and c.agenciamento_ton is None and c.agenciamento_total is None and not c.contratante),
+        "valor_contrato_frete": dinheiro(c.valor_contrato_frete) if c.valor_contrato_frete is not None else None,
+        **_o_que_falta(c),
         "totais": totais_carregamento(c),
     }
+
+
+def _o_que_falta(c: CarregamentoFinanceiro) -> dict:
+    """Carga que veio do Bsoft e ainda nao tem o que so a operacao sabe."""
+    faltando = []
+    if c.origem == "bsoft" and not c.cancelado:
+        if c.frete_motorista_ton is None and c.frete_motorista_total is None:
+            faltando.append("frete do motorista")
+        if c.agenciamento_ton is None and c.agenciamento_total is None:
+            faltando.append("agenciamento")
+        if not c.contratante:
+            faltando.append("contratante")
+    return {"a_completar": bool(faltando), "faltando": faltando}
 
 
 def listar_carregamentos(db: Session, competencia: Optional[str] = None) -> dict:
