@@ -56,10 +56,10 @@ class Settings(BaseSettings):
     # cotacao, o sistema monta o CT-e e cria o RASCUNHO no Bsoft sozinho.
     # Nunca o definitivo. Pra desligar sem deploy: RASCUNHO_AUTOMATICO=false.
     rascunho_automatico: bool = True
-    # E-mails de inclusao e substituicao de motorista. Enquanto em teste, vao
-    # SO pro endereco de teste, nunca pra fabrica. Aprovados os testes, fica
-    # False. Pra voltar ao teste sem deploy: EMAILS_MOTORISTA_EM_TESTE=true.
-    emails_motorista_em_teste: bool = True
+    # E-mails de inclusao e substituicao de motorista. Testados em 16/09/2026
+    # com e-mail de verdade pra davidfranca9@gmail.com e aprovados: vao pra
+    # fabrica. Pra voltar ao modo teste sem deploy: EMAILS_MOTORISTA_EM_TESTE=true.
+    emails_motorista_em_teste: bool = False
     # Destino dos e-mails de teste - os de inclusao/substituicao enquanto em
     # teste, e qualquer e-mail de fabrica chamado com teste=True.
     email_teste_fabrica: str = "davidfranca9@gmail.com"
