@@ -9,8 +9,9 @@ export function Dinheiro({ valor, tamanho = "m", sinal = false, className = "" }
   const { negativo, inteiro, centavos } = partesBrl(valor);
   const prefixo = negativo ? "−" : sinal && Number(valor) > 0 ? "+" : "";
   return (
-    <span className={`fin-dinheiro ${tamanho} ${className}`}>
-      <span className="fin-moeda">{prefixo}R$</span>
+    <span className={`fin-dinheiro ${tamanho} ${negativo ? "negativo" : ""} ${className}`}>
+      {prefixo && <span className="fin-sinal">{prefixo}</span>}
+      <span className="fin-moeda">R$</span>
       <span className="fin-inteiro">{inteiro}</span>
       <span className="fin-centavos">,{centavos}</span>
     </span>

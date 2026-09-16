@@ -6,9 +6,9 @@ import { brl, competenciaDe, diaCurto, hojeIso, numeroBr, toneladas, valorParaCa
 import "./financeiro.css";
 
 const PARTES = [
-  { chave: "frete_motorista", rotulo: "Frete do motorista" },
+  { chave: "frete_motorista", rotulo: "Motorista" },
   { chave: "agenciamento", rotulo: "Agenciamento" },
-  { chave: "comissao", rotulo: "Comissão do representante" },
+  { chave: "comissao", rotulo: "Comissão" },
 ];
 
 // Margem por tonelada: a media da planilha em setembro foi R$ 50/t.
@@ -128,39 +128,66 @@ function CartaoCustoFixo({ precificacao, resumo }) {
   );
 }
 
-function Cascata({ passos }) {
-  let acumulado = 0;
-  const barras = passos.map((passo) => {
-    if (passo.tipo === "saida") {
-      const de = acumulado;
-      acumulado += passo.valor;
-      return { ...passo, de: acumulado, ate: de };
-    }
-    acumulado = passo.valor;
-    return { ...passo, de: Math.min(0, passo.valor), ate: Math.max(0, passo.valor) };
-  });
-  const minimo = Math.min(0, ...barras.map((b) => b.de));
-  const maximo = Math.max(0, ...barras.map((b) => b.ate));
-  const escala = (v) => ((v - minimo) / (maximo - minimo || 1)) * 100;
+// Duas leituras simples no lugar da cascata com o zero no meio (que parecia
+// quebrada): pra onde foi cada real do frete, e a conta do mes ate a sobra,
+// com toda barra saindo da esquerda.
+function CaminhoDoFrete({ resumo, despesas, lucroReal, sobra }) {
+  const custos = resumo.frete_motorista + resumo.agenciamento + resumo.comissao;
+  const partes = [
+    { chave: "motorista", rotulo: "Motoristas", valor: resumo.frete_motorista },
+    { chave: "agenciamento", rotulo: "Agenciamento", valor: resumo.agenciamento },
+    { chave: "comissao", rotulo: "Comissão", valor: resumo.comissao },
+    { chave: "sobra", rotulo: "Lucro bruto", valor: resumo.lucro_bruto },
+  ];
+  // Se os custos passarem do frete, a barra mede os custos e o lucro some dela.
+  const base = Math.max(resumo.frete_empresa, custos) || 1;
+  const conta = [
+    { rotulo: "Lucro bruto dos carregamentos", valor: resumo.lucro_bruto, tipo: "item" },
+    { rotulo: "Despesas da empresa", valor: -despesas.empresa, tipo: "item" },
+    { rotulo: "Lucro real", valor: lucroReal, tipo: "total" },
+    { rotulo: "Gastos pessoais", valor: -despesas.pessoal, tipo: "item" },
+    { rotulo: "Sobra do mês", valor: sobra, tipo: "final" },
+  ];
+  const maior = Math.max(1, ...conta.map((l) => Math.abs(l.valor)));
 
   return (
-    <section className="card fin-cascata">
-      <header>
-        <h3>Do frete cobrado à sobra do mês</h3>
-        <p>Cada linha desconta do total anterior. Negativo fica à esquerda da linha do zero.</p>
-      </header>
-      <ol>
-        {barras.map((b) => (
-          <li key={b.rotulo} className={`${b.tipo} ${b.valor < 0 && b.tipo !== "saida" ? "negativo" : ""}`}>
-            <span className="fin-cascata-rotulo">{b.rotulo}</span>
-            <span className="fin-cascata-trilho">
-              <span className="fin-cascata-zero" style={{ left: `${escala(0)}%` }} />
-              <span className="fin-cascata-barra" style={{ left: `${escala(b.de)}%`, width: `${Math.max(0.4, escala(b.ate) - escala(b.de))}%` }} />
-            </span>
-            <Dinheiro valor={b.valor} tamanho="xs" sinal={b.tipo === "saida"} className="fin-cascata-valor" />
-          </li>
-        ))}
-      </ol>
+    <section className="card fin-caminho">
+      <div className="fin-caminho-frete">
+        <header>
+          <h3>Para onde foi o frete</h3>
+          <p>{brl(resumo.frete_empresa)} cobrados em {toneladas(resumo.toneladas)}</p>
+        </header>
+        <div className="fin-caminho-barra" role="img" aria-label="Divisão do frete cobrado">
+          {partes.map((p) => p.valor > 0 && (
+            <i key={p.chave} className={p.chave} style={{ width: `${(p.valor / base) * 100}%` }} title={`${p.rotulo}: ${brl(p.valor)}`} />
+          ))}
+        </div>
+        <ul className="fin-caminho-legenda">
+          {partes.map((p) => (
+            <li key={p.chave} className={p.valor < 0 ? "negativo" : ""}>
+              <i className={p.chave} />
+              <span>{p.rotulo}</span>
+              <Dinheiro valor={p.valor} tamanho="xs" />
+              <small>{resumo.frete_empresa ? `${Math.round((p.valor / resumo.frete_empresa) * 100)}%` : ""}</small>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="fin-caminho-conta">
+        <header>
+          <h3>O que sobrou no mês</h3>
+          <p>Lucro dos carregamentos menos as contas do mês</p>
+        </header>
+        <ol>
+          {conta.map((l) => (
+            <li key={l.rotulo} className={`${l.tipo} ${l.valor < 0 ? "negativo" : "positivo"}`}>
+              <span className="fin-caminho-rotulo">{l.rotulo}</span>
+              <span className="fin-caminho-trilho"><i style={{ width: `${(Math.abs(l.valor) / maior) * 100}%` }} /></span>
+              <Dinheiro valor={l.valor} sinal tamanho={l.tipo === "final" ? "m" : "xs"} />
+            </li>
+          ))}
+        </ol>
+      </div>
     </section>
   );
 }
@@ -357,7 +384,7 @@ export default function ResultadoPage() {
             <CartaoCustoFixo precificacao={dados.precificacao} resumo={dados.resumo} />
           </div>
 
-          {!vazio && <Cascata passos={dados.cascata} />}
+          {!vazio && <CaminhoDoFrete resumo={dados.resumo} despesas={dados.despesas} lucroReal={dados.lucro_real} sobra={dados.sobra} />}
 
           <div className="fin-resultado-grade">
             <section className="card fin-carregamentos">

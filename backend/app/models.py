@@ -493,6 +493,8 @@ class Divida(Base):
     parcelas_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     parcelas_pagas: Mapped[int] = mapped_column(Integer, default=0)
     valor_parcela: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    # Quando sera pago. Registrar uma parcela paga empurra pro mes seguinte.
+    proximo_pagamento: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     observacao: Mapped[str] = mapped_column(String(300), default="")
     quitada: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

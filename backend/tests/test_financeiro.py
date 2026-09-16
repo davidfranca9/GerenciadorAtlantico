@@ -414,6 +414,28 @@ def cliente_http(db, papel="admin"):
     return TestClient(app)
 
 
+def test_somar_mes_fica_no_ultimo_dia_quando_o_mes_e_curto():
+    assert fin.somar_mes(date(2026, 1, 31)) == date(2026, 2, 28)
+    assert fin.somar_mes(date(2026, 12, 10)) == date(2027, 1, 10)
+
+
+def test_parcela_paga_empurra_a_data_e_quitar_limpa(db):
+    http = cliente_http(db)
+    van = http.post("/financeiro/dividas", json={"credor": "Van", "valor_total": 30000, "parcelas_total": 10, "parcelas_pagas": 8,
+                                                 "valor_parcela": 3000, "proximo_pagamento": "2026-09-30"}).json()
+    assert van["proximo_pagamento"] == "2026-09-30"
+    assert http.post(f"/financeiro/dividas/{van['id']}/parcela-paga").json()["proximo_pagamento"] == "2026-10-30"
+    ultima = http.post(f"/financeiro/dividas/{van['id']}/parcela-paga").json()
+    assert ultima["quitada"] is True and ultima["proximo_pagamento"] is None
+
+
+def test_dividas_em_aberto_na_ordem_do_pagamento(db):
+    http = cliente_http(db)
+    for credor, dia in (("Sem data", None), ("Depois", "2026-10-25"), ("Antes", "2026-10-10")):
+        http.post("/financeiro/dividas", json={"credor": credor, "proximo_pagamento": dia})
+    assert [d["credor"] for d in http.get("/financeiro/dividas").json()] == ["Antes", "Depois", "Sem data"]
+
+
 def test_so_administrador_ve_o_financeiro(db):
     assert cliente_http(db, papel="user").get("/financeiro/contas").status_code == 403
     assert cliente_http(db).get("/financeiro/contas").status_code == 200

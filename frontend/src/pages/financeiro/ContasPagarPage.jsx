@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
-import { Aviso, CampoValor, Dinheiro, ImportarPlanilha, NavegadorMes } from "./comum";
-import { brl, brlCurto, competenciaDe, diaBr, diaPorExtenso, hojeIso, isoDe, numeroBr, valorParaCampo } from "./formato";
+import { Aviso, CampoValor, Dinheiro, ImportarPlanilha, Modal, NavegadorMes } from "./comum";
+import { brl, brlCurto, competenciaDe, diaBr, diaPorExtenso, diasAte, hojeIso, isoDe, numeroBr, valorParaCampo } from "./formato";
 import "./financeiro.css";
 
 const ABAS = [
@@ -436,17 +436,23 @@ function EditorDivida({ divida, aoSalvar, aoExcluir, aoCancelar }) {
   const [form, setForm] = useState(() => ({
     credor: divida?.credor || "", valor_total: valorParaCampo(divida?.valor_total), valor_parcela: valorParaCampo(divida?.valor_parcela),
     parcelas_total: divida?.parcelas_total ?? "", parcelas_pagas: divida?.parcelas_pagas ?? 0, observacao: divida?.observacao || "",
+    quitada: divida?.quitada || false, proximo_pagamento: divida?.proximo_pagamento || "",
   }));
   const [erro, setErro] = useState("");
+  const [confirmar, setConfirmar] = useState(false);
   const mudar = (campo, valor) => setForm((f) => ({ ...f, [campo]: valor }));
+  const total = form.parcelas_total === "" ? null : Number(form.parcelas_total);
+  const pagas = Number(form.parcelas_pagas) || 0;
 
   async function salvar(e) {
     e.preventDefault();
+    if (total && pagas > total) return setErro("Parcelas pagas passam do total de parcelas");
     try {
       await aoSalvar({
         credor: form.credor.trim(), valor_total: numeroBr(form.valor_total), valor_parcela: numeroBr(form.valor_parcela),
-        parcelas_total: form.parcelas_total === "" ? null : Number(form.parcelas_total), parcelas_pagas: Number(form.parcelas_pagas) || 0,
-        observacao: form.observacao, quitada: divida?.quitada || false,
+        parcelas_total: total, parcelas_pagas: pagas, observacao: form.observacao, proximo_pagamento: form.proximo_pagamento || null,
+        // Com parcelas, quitada e quando todas foram pagas; sem, vale a marcacao.
+        quitada: total ? pagas >= total : form.quitada,
       });
     } catch (err) {
       setErro(err.message);
@@ -454,23 +460,48 @@ function EditorDivida({ divida, aoSalvar, aoExcluir, aoCancelar }) {
   }
 
   return (
-    <form className="fin-editor-divida" onSubmit={salvar}>
-      <div className="fin-editor-grade">
-        <label className="field fin-editor-largo"><span>Credor</span><input value={form.credor} onChange={(e) => mudar("credor", e.target.value)} required autoFocus /></label>
+    <form className="fin-form-janela" onSubmit={salvar}>
+      <label className="field"><span>Credor</span><input value={form.credor} onChange={(e) => mudar("credor", e.target.value)} required autoFocus /></label>
+      <div className="fin-form-dupla">
         <label className="field"><span>Valor total</span><CampoValor valor={form.valor_total} aoMudar={(v) => mudar("valor_total", v)} placeholder="a organizar" /></label>
-        <label className="field"><span>Parcela</span><CampoValor valor={form.valor_parcela} aoMudar={(v) => mudar("valor_parcela", v)} /></label>
-        <label className="field"><span>Parcelas pagas</span><input type="number" min="0" value={form.parcelas_pagas} onChange={(e) => mudar("parcelas_pagas", e.target.value)} /></label>
-        <label className="field"><span>De quantas</span><input type="number" min="1" value={form.parcelas_total} onChange={(e) => mudar("parcelas_total", e.target.value)} placeholder="—" /></label>
-        <label className="field fin-editor-largo"><span>Observação</span><input value={form.observacao} onChange={(e) => mudar("observacao", e.target.value)} placeholder="Ex.: A organizar" /></label>
+        <label className="field"><span>Valor da parcela</span><CampoValor valor={form.valor_parcela} aoMudar={(v) => mudar("valor_parcela", v)} /></label>
       </div>
+      <div className="fin-form-dupla">
+        <label className="field"><span>Parcelas pagas</span><input type="number" min="0" value={form.parcelas_pagas} onChange={(e) => mudar("parcelas_pagas", e.target.value)} /></label>
+        <label className="field"><span>Total de parcelas</span><input type="number" min="1" value={form.parcelas_total} onChange={(e) => mudar("parcelas_total", e.target.value)} placeholder="sem parcelas" /></label>
+      </div>
+      <div className="fin-form-dupla">
+        <label className="field"><span>Próximo pagamento</span><input type="date" value={form.proximo_pagamento} onChange={(e) => mudar("proximo_pagamento", e.target.value)} /></label>
+        <label className="field"><span>Observação</span><input value={form.observacao} onChange={(e) => mudar("observacao", e.target.value)} placeholder="Ex.: A organizar" /></label>
+      </div>
+      {total > 0 && <small className="fin-dica">Ao registrar uma parcela paga, o próximo pagamento passa para o mês seguinte.</small>}
+      {!total && <label className="fin-check"><input type="checkbox" checked={form.quitada} onChange={(e) => mudar("quitada", e.target.checked)} /> Quitada</label>}
       {erro && <Aviso tipo="error">{erro}</Aviso>}
-      <div className="fin-editor-acoes">
-        {divida && <button type="button" className="btn-ghost perigo" onClick={aoExcluir}><Icon name="trash" size={14} /> Excluir</button>}
+      <footer className="fin-modal-rodape">
+        {divida && (confirmar ? (
+          <span className="fin-confirmar">Apagar esta dívida?
+            <button type="button" className="btn-ghost perigo" onClick={aoExcluir}>Apagar</button>
+            <button type="button" className="btn-ghost" onClick={() => setConfirmar(false)}>Não</button>
+          </span>
+        ) : <button type="button" className="btn-ghost perigo" onClick={() => setConfirmar(true)}><Icon name="trash" size={14} /> Excluir</button>)}
         <span className="fin-espaco" />
         <button type="button" className="btn-secondary" onClick={aoCancelar}>Cancelar</button>
         <button type="submit" className="btn-primary">Salvar</button>
-      </div>
+      </footer>
     </form>
+  );
+}
+
+function DataPagamento({ dia }) {
+  if (!dia) return <span className="fin-pagamento sem-data">Sem data de pagamento</span>;
+  const dias = diasAte(dia);
+  const quando = dias === 0 ? "hoje" : dias === 1 ? "amanhã" : dias > 0 ? `em ${dias} dias` : `atrasado há ${-dias} ${dias === -1 ? "dia" : "dias"}`;
+  const estado = dias < 0 ? "atrasado" : dias <= 7 ? "perto" : "";
+  return (
+    <span className={`fin-pagamento ${estado}`}>
+      <Icon name="calendar" size={13} />
+      <span>Paga em <b>{diaBr(dia)}</b> · {quando}</span>
+    </span>
   );
 }
 
@@ -480,15 +511,18 @@ function Dividas({ dividas, recarregar }) {
   const emAberto = dividas.filter((d) => !d.quitada);
   const restante = emAberto.reduce((s, d) => s + (d.restante ?? d.valor_total ?? 0), 0);
   const parcelas = emAberto.reduce((s, d) => s + (d.valor_parcela || 0), 0);
+  const editando = aberto && aberto !== "nova" ? dividas.find((d) => d.id === aberto) : null;
+  const proxima = emAberto.find((d) => d.proximo_pagamento);
 
-  async function agir(acao) {
+  async function agir(acao, fechar = true) {
     setErro("");
     try {
       await acao();
-      setAberto(null);
+      if (fechar) setAberto(null);
       await recarregar();
     } catch (err) {
       setErro(err.message);
+      throw err;
     }
   }
 
@@ -498,45 +532,56 @@ function Dividas({ dividas, recarregar }) {
         <div>
           <span className="eyebrow">AINDA A PAGAR</span>
           <Dinheiro valor={restante} tamanho="l" />
-          <small>{emAberto.length} dívidas em aberto · {brl(parcelas)} em parcelas por mês</small>
+          <small>
+            {emAberto.length} dívidas em aberto · {brl(parcelas)} em parcelas por mês
+            {proxima && ` · próximo pagamento: ${proxima.credor}, ${diaBr(proxima.proximo_pagamento)}`}
+          </small>
         </div>
-        <button type="button" className="btn-primary" onClick={() => setAberto(aberto === "nova" ? null : "nova")}><Icon name="plus" size={14} /> Dívida</button>
+        <button type="button" className="btn-primary" onClick={() => setAberto("nova")}><Icon name="plus" size={14} /> Dívida</button>
       </div>
-      {erro && <Aviso tipo="error">{erro}</Aviso>}
-      {aberto === "nova" && <div className="card"><EditorDivida aoCancelar={() => setAberto(null)} aoSalvar={(d) => agir(() => api.criarDivida(d))} /></div>}
+      {erro && !aberto && <Aviso tipo="error">{erro}</Aviso>}
       <div className="fin-dividas">
         {dividas.map((d) => {
           const pct = d.parcelas_total ? Math.round((d.parcelas_pagas / d.parcelas_total) * 100) : null;
           const organizar = d.valor_total === null || /organizar/i.test(d.observacao);
           return (
             <section key={d.id} className={`card fin-divida ${d.quitada ? "quitada" : ""}`}>
-              {aberto === d.id ? (
-                <EditorDivida divida={d} aoCancelar={() => setAberto(null)} aoSalvar={(dados) => agir(() => api.atualizarDivida(d.id, dados))} aoExcluir={() => agir(() => api.excluirDivida(d.id))} />
-              ) : (
+              <header>
+                <h3>{d.credor}</h3>
+                {d.quitada ? <b className="fin-situacao pago">Quitada</b> : organizar && <b className="fin-situacao hoje">A organizar</b>}
+                <button type="button" className="icon-btn" aria-label={`Editar ${d.credor}`} title="Editar" onClick={() => setAberto(d.id)}><Icon name="edit" size={14} /></button>
+              </header>
+              {!d.quitada && <DataPagamento dia={d.proximo_pagamento} />}
+              <Dinheiro valor={d.restante ?? d.valor_total} tamanho="m" />
+              <small className="fin-divida-sub">
+                {d.restante !== null ? `falta, de ${brl(d.valor_total ?? d.restante)}` : d.valor_total !== null ? "valor total" : "valor total a definir"}
+              </small>
+              {pct !== null && (
                 <>
-                  <header>
-                    <h3>{d.credor}</h3>
-                    {d.quitada ? <b className="fin-situacao pago">Quitada</b> : organizar && <b className="fin-situacao hoje">A organizar</b>}
-                    <button type="button" className="icon-btn" aria-label={`Editar ${d.credor}`} onClick={() => setAberto(d.id)}><Icon name="edit" size={14} /></button>
-                  </header>
-                  <Dinheiro valor={d.restante ?? d.valor_total} tamanho="m" />
-                  <small className="fin-divida-sub">{d.restante !== null ? `falta de ${brl(d.valor_total ?? d.restante)}` : d.valor_total !== null ? "valor total" : "valor total a definir"}</small>
-                  {pct !== null && (
-                    <>
-                      <span className="fin-progresso"><i style={{ width: `${pct}%` }} /></span>
-                      <small>{d.parcelas_pagas} de {d.parcelas_total} parcelas pagas{d.valor_parcela ? ` · ${brl(d.valor_parcela)} cada` : ""}</small>
-                    </>
-                  )}
-                  {pct === null && d.valor_parcela && <small>Parcela de {brl(d.valor_parcela)}</small>}
-                  {!d.quitada && d.parcelas_total && (
-                    <button type="button" className="btn-secondary fin-divida-acao" onClick={() => agir(() => api.parcelaPaga(d.id))}><Icon name="check" size={14} /> Registrar parcela paga</button>
-                  )}
+                  <span className="fin-progresso"><i style={{ width: `${pct}%` }} /></span>
+                  <small>{d.parcelas_pagas} de {d.parcelas_total} parcelas pagas{d.valor_parcela ? ` · ${brl(d.valor_parcela)} cada` : ""}</small>
                 </>
+              )}
+              {pct === null && Boolean(d.valor_parcela) && <small>Parcela de {brl(d.valor_parcela)}</small>}
+              {!d.quitada && Boolean(d.parcelas_total) && (
+                <button type="button" className="btn-secondary fin-divida-acao" onClick={() => agir(() => api.parcelaPaga(d.id)).catch(() => {})}>
+                  <Icon name="check" size={14} /> Registrar parcela paga
+                </button>
               )}
             </section>
           );
         })}
       </div>
+      {aberto && (
+        <Modal titulo={editando ? `Editar dívida · ${editando.credor}` : "Nova dívida"} aoFechar={() => setAberto(null)} largura={480}>
+          <EditorDivida
+            divida={editando}
+            aoCancelar={() => setAberto(null)}
+            aoSalvar={(dados) => agir(() => (editando ? api.atualizarDivida(editando.id, dados) : api.criarDivida(dados)))}
+            aoExcluir={() => agir(() => api.excluirDivida(editando.id)).catch(() => {})}
+          />
+        </Modal>
+      )}
     </div>
   );
 }

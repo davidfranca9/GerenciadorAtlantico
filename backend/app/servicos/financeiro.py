@@ -64,6 +64,13 @@ def limites_competencia(competencia: str) -> tuple[date, date]:
     return date(ano, mes, 1), date(ano, mes, calendar.monthrange(ano, mes)[1])
 
 
+def somar_mes(dia: date, meses: int = 1) -> date:
+    """31/01 + 1 mes = 28/02 (ultimo dia quando o mes e mais curto)."""
+    total = dia.month - 1 + meses
+    ano, mes = dia.year + total // 12, total % 12 + 1
+    return date(ano, mes, min(dia.day, calendar.monthrange(ano, mes)[1]))
+
+
 def meses_entre(inicio: str, fim: str) -> int:
     a1, m1 = map(int, inicio.split("-"))
     a2, m2 = map(int, fim.split("-"))

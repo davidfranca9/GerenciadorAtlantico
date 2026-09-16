@@ -40,6 +40,7 @@
 .fin-dinheiro { display: inline-flex; align-items: baseline; gap: 2px; font-family: Manrope, sans-serif; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -.3px; color: var(--text); }
 .fin-moeda { font-size: .52em; font-weight: 700; color: var(--muted); margin-right: 3px; letter-spacing: 0; }
 .fin-centavos { font-size: .58em; font-weight: 700; color: var(--muted); }
+.fin-sinal { margin-right: 2px; }
 .fin-dinheiro.xl { font-size: 42px; letter-spacing: -1.2px; }
 .fin-dinheiro.l { font-size: 28px; letter-spacing: -.8px; }
 .fin-dinheiro.m { font-size: 21px; }
@@ -54,7 +55,8 @@
 .fin-segmentado button:not(.ativo):hover { color: var(--text); background: var(--panel-soft); }
 .fin-segmentado.pequeno button { min-height: 28px; padding: 0 10px; font-size: 11.5px; }
 .fin-segmentado.mini { padding: 2px; border-radius: 7px; }
-.fin-segmentado.mini button { min-height: 22px; padding: 0 7px; font-size: 10.5px; border-radius: 5px; }
+.fin-segmentado.mini button { min-height: 22px; padding: 0 7px; font-size: 10.5px; border-radius: 5px; white-space: nowrap; }
+.fin-parte-topo > span { min-width: 0; }
 .fin-nav-periodo { display: inline-flex; align-items: center; gap: 4px; padding: 3px; border-radius: 10px; background: var(--panel); border: 1px solid var(--panel-border); }
 .fin-nav-periodo .icon-btn { width: 32px; height: 32px; min-height: 32px; color: var(--muted); }
 .fin-nav-periodo .icon-btn:hover { color: var(--accent); background: var(--row-selected); }
@@ -141,7 +143,8 @@
 
 .fin-editor-lancamento, .fin-editor-carregamento, .fin-editor-despesa, .fin-pagar, .fin-avulsa, .fin-editor-divida { display: flex; flex-direction: column; gap: 12px; padding: 14px 20px 18px; background: var(--panel-soft); border-top: 1px dashed var(--border); }
 .fin-editor-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-.fin-editor-largo { grid-column: span 2; }
+/* 1 / -1 ocupa a linha toda sem criar coluna a mais (span 2 espremia os campos em cartao estreito). */
+.fin-editor-largo { grid-column: 1 / -1; }
 .fin-editor-acoes { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .fin-confirmar { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--danger); font-weight: 600; }
 
@@ -243,23 +246,38 @@
 .fin-comparar i.lucro { background: var(--accent); }
 .fin-comparar b { color: var(--text); font-variant-numeric: tabular-nums; }
 
-.fin-cascata { padding: 20px 22px; }
-.fin-cascata header p { margin: 3px 0 12px; color: var(--muted); font-size: 11.5px; }
-.fin-cascata ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
-.fin-cascata li { display: grid; grid-template-columns: 190px minmax(0, 1fr) 120px; align-items: center; gap: 14px; min-height: 30px; }
-.fin-cascata-rotulo { font-size: 12.5px; color: var(--muted); }
-.fin-cascata li.subtotal .fin-cascata-rotulo, .fin-cascata li.final .fin-cascata-rotulo, .fin-cascata li.inicio .fin-cascata-rotulo { color: var(--text); font-weight: 700; }
-.fin-cascata li.subtotal, .fin-cascata li.final { border-top: 1px dashed var(--border-soft); padding-top: 4px; }
-.fin-cascata-trilho { position: relative; height: 20px; }
-.fin-cascata-zero { position: absolute; top: -5px; bottom: -5px; width: 1px; background: var(--border); }
-.fin-cascata-barra { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; background: var(--accent); }
-.fin-cascata li.inicio .fin-cascata-barra { background: color-mix(in srgb, var(--accent) 45%, var(--fin-trilho)); }
-.fin-cascata li.saida .fin-cascata-barra { background: var(--fin-saida); opacity: .82; }
-.fin-cascata li.negativo .fin-cascata-barra { background: var(--fin-saida); }
-.fin-cascata li.final .fin-cascata-barra { top: 1px; bottom: 1px; }
-.fin-cascata-valor { justify-self: end; }
-.fin-cascata li.saida .fin-cascata-valor, .fin-cascata li.saida .fin-cascata-valor span { color: var(--fin-saida); }
-.fin-cascata li.negativo .fin-cascata-valor .fin-inteiro { color: var(--fin-saida); }
+.fin-caminho { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); padding: 0; overflow: hidden; }
+.fin-caminho > div { display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; min-width: 0; }
+.fin-caminho-conta { border-left: 1px solid var(--border-soft); }
+.fin-caminho header p { margin: 3px 0 0; color: var(--muted); font-size: 11.5px; }
+.fin-caminho-barra { display: flex; gap: 2px; height: 26px; border-radius: 8px; overflow: hidden; background: var(--fin-trilho); }
+.fin-caminho-barra i, .fin-caminho-legenda i { display: block; }
+.fin-caminho-barra i.motorista, .fin-caminho-legenda i.motorista { background: var(--fin-motorista); }
+.fin-caminho-barra i.agenciamento, .fin-caminho-legenda i.agenciamento { background: var(--fin-agenciamento); }
+.fin-caminho-barra i.comissao, .fin-caminho-legenda i.comissao { background: var(--fin-comissao); }
+.fin-caminho-barra i.sobra, .fin-caminho-legenda i.sobra { background: var(--fin-sobra); }
+.fin-caminho-barra i { min-width: 3px; }
+.fin-caminho-legenda { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; margin: 0; padding: 0; list-style: none; }
+.fin-caminho-legenda li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 8px; align-items: center; }
+.fin-caminho-legenda li i { width: 10px; height: 10px; border-radius: 3px; grid-row: 1 / 3; align-self: start; margin-top: 3px; }
+.fin-caminho-legenda li span { font-size: 12px; color: var(--muted); }
+.fin-caminho-legenda li .fin-dinheiro { grid-column: 2; grid-row: 2; justify-self: start; }
+.fin-caminho-legenda li small { grid-column: 3; grid-row: 1 / 3; font-size: 12px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fin-caminho-conta ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.fin-caminho-conta li { display: grid; grid-template-columns: minmax(130px, 190px) minmax(0, 1fr) auto; align-items: center; gap: 14px; min-height: 36px; }
+.fin-caminho-rotulo { font-size: 12.5px; color: var(--muted); }
+.fin-caminho-trilho { height: 10px; border-radius: 5px; background: var(--fin-trilho); overflow: hidden; }
+.fin-caminho-trilho i { display: block; height: 100%; border-radius: 5px; min-width: 3px; }
+.fin-caminho-conta li.positivo .fin-caminho-trilho i { background: var(--fin-sobra); }
+.fin-caminho-conta li.negativo .fin-caminho-trilho i { background: var(--fin-saida); opacity: .75; }
+.fin-caminho-conta li.total, .fin-caminho-conta li.final { border-top: 1px solid var(--border-soft); margin-top: 4px; padding-top: 4px; }
+.fin-caminho-conta li.total .fin-caminho-rotulo, .fin-caminho-conta li.final .fin-caminho-rotulo { color: var(--text); font-weight: 700; }
+.fin-caminho-conta li.total.negativo .fin-caminho-trilho i, .fin-caminho-conta li.final.negativo .fin-caminho-trilho i { opacity: 1; }
+.fin-caminho-conta li.final { min-height: 46px; }
+.fin-caminho-conta li.final .fin-caminho-trilho { height: 14px; border-radius: 7px; }
+.fin-caminho .fin-dinheiro { justify-self: end; }
+.fin-dinheiro.negativo .fin-sinal, .fin-dinheiro.negativo .fin-inteiro, .fin-caminho-conta li.negativo .fin-dinheiro .fin-sinal, .fin-caminho-conta li.negativo .fin-inteiro { color: var(--fin-saida); }
+.fin-caminho-conta li.positivo .fin-sinal, .fin-caminho-conta li.positivo .fin-inteiro { color: var(--fin-entrada); }
 
 .fin-resultado-grade { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
 .fin-carregamentos { padding: 0; overflow: hidden; }
@@ -374,7 +392,7 @@
 .fin-conta-acoes { display: flex; align-items: center; gap: 4px; }
 .fin-conta-acoes .btn-secondary { min-height: 32px; padding: 0 12px; font-size: 12px; }
 .fin-conta-acoes .icon-btn { width: 30px; height: 30px; min-height: 30px; color: var(--muted); }
-.fin-pagar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.fin-pagar { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .fin-pagar .fin-editor-acoes, .fin-pagar .inline-alert { grid-column: 1 / -1; }
 .fin-avulsa { border-top: 0; border-bottom: 1px dashed var(--border); }
 .fin-avulsa small { color: var(--muted); font-size: 11.5px; margin-top: -8px; }
@@ -412,18 +430,24 @@
 .fin-divida small { color: var(--muted); font-size: 11.5px; }
 .fin-divida-sub { margin-top: -4px; }
 .fin-divida-acao { align-self: flex-start; margin-top: 6px; min-height: 32px; padding: 0 12px; font-size: 12px; }
+.fin-pagamento { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; max-width: 100%; white-space: nowrap; padding: 3px 9px; border-radius: 8px; font-size: 11.5px; color: var(--muted); background: var(--panel-soft); border: 1px solid var(--border-soft); font-variant-numeric: tabular-nums; }
+.fin-pagamento b { color: var(--text); }
+.fin-pagamento.perto { color: var(--warning); background: color-mix(in srgb, var(--warning) 9%, transparent); border-color: color-mix(in srgb, var(--warning) 25%, transparent); }
+.fin-pagamento.atrasado { color: var(--fin-saida); background: var(--fin-saida-fundo); border-color: color-mix(in srgb, var(--fin-saida) 25%, transparent); }
+.fin-pagamento.sem-data { color: var(--muted-soft); border-style: dashed; background: transparent; }
 .fin-divida.quitada { opacity: .7; }
-.fin-divida .fin-editor-divida { margin: -16px -18px; border-top: 0; }
+.fin-form-janela { display: flex; flex-direction: column; gap: 12px; }
+.fin-form-dupla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 
 /* ---------- telas menores ---------- */
 @media (max-width: 1280px) {
   .fin-caixa-grade { grid-template-columns: minmax(0, 1fr) 300px; }
   .fin-resultado-grade { grid-template-columns: minmax(0, 1fr) 260px; }
-  .fin-cascata li { grid-template-columns: 160px minmax(0, 1fr) 110px; }
 }
 @media (max-width: 1100px) {
   .fin-hero { grid-template-columns: 1fr; }
-  .fin-caixa-grade, .fin-resultado-grade, .fin-agenda { grid-template-columns: 1fr; }
+  .fin-caixa-grade, .fin-resultado-grade, .fin-agenda, .fin-caminho { grid-template-columns: 1fr; }
+  .fin-caminho-conta { border-left: 0; border-top: 1px solid var(--border-soft); }
   .fin-composer { position: static; }
   .fin-kpis, .fin-resumo-contas { grid-template-columns: 1fr 1fr; }
 }
@@ -431,14 +455,16 @@
   .fin-dinheiro.xl { font-size: 32px; }
   .fin-kpis, .fin-resumo-contas, .fin-vazio { grid-template-columns: 1fr; }
   .fin-nav-periodo strong { min-width: 120px; }
-  .fin-cascata li { grid-template-columns: 1fr auto; }
-  .fin-cascata-trilho { grid-column: 1 / -1; grid-row: 2; }
+  .fin-caminho-legenda { grid-template-columns: 1fr; }
+  .fin-caminho-conta li { grid-template-columns: minmax(0, 1fr) auto; row-gap: 5px; padding-bottom: 10px; }
+  .fin-editor-acoes > button { flex: 1; }
+  .fin-caminho-trilho { grid-column: 1 / -1; grid-row: 2; }
+  .fin-form-dupla { grid-template-columns: 1fr; }
   .fin-cal-dia { min-height: 52px; padding: 5px; }
   .fin-cal-total { display: none; }
   .fin-conta-linha { grid-template-columns: minmax(0, 1fr) auto; }
   .fin-conta-acoes { grid-column: 1 / -1; justify-content: flex-end; }
   .fin-pagar { grid-template-columns: 1fr; }
-  .fin-editor-largo { grid-column: auto; }
   .fin-dia h4 { top: 80px; }
   .fin-carga-linha { grid-template-columns: 46px minmax(0, 1fr); }
   .fin-carga-numeros { grid-column: 2; align-items: flex-start; }

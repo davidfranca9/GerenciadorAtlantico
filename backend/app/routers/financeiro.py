@@ -338,6 +338,7 @@ class DividaIn(BaseModel):
     parcelas_total: Optional[int] = Field(default=None, ge=1)
     parcelas_pagas: int = Field(default=0, ge=0)
     valor_parcela: Optional[float] = Field(default=None, ge=0)
+    proximo_pagamento: Optional[date] = None
     observacao: str = Field(default="", max_length=300)
     quitada: bool = False
 
@@ -495,12 +496,16 @@ def _divida_para_dict(d: Divida) -> dict:
         "parcelas_total": d.parcelas_total, "parcelas_pagas": d.parcelas_pagas,
         "valor_parcela": fin.dinheiro(d.valor_parcela) if d.valor_parcela is not None else None,
         "restante": restante, "observacao": d.observacao, "quitada": d.quitada,
+        "proximo_pagamento": d.proximo_pagamento.isoformat() if d.proximo_pagamento else None,
     }
 
 
 @router.get("/dividas")
 def listar_dividas(db: Session = Depends(get_db)):
-    return [_divida_para_dict(d) for d in db.query(Divida).order_by(Divida.quitada, Divida.id).all()]
+    # Em aberto primeiro, a que vence antes no topo; sem data no fim.
+    dividas = db.query(Divida).all()
+    dividas.sort(key=lambda d: (d.quitada, d.proximo_pagamento is None, d.proximo_pagamento or date.max, d.id))
+    return [_divida_para_dict(d) for d in dividas]
 
 
 @router.post("/dividas")
@@ -532,6 +537,9 @@ def registrar_parcela(divida_id: int, db: Session = Depends(get_db)):
     divida.parcelas_pagas += 1
     if divida.parcelas_total and divida.parcelas_pagas >= divida.parcelas_total:
         divida.quitada = True
+        divida.proximo_pagamento = None
+    elif divida.proximo_pagamento:
+        divida.proximo_pagamento = fin.somar_mes(divida.proximo_pagamento)
     db.commit()
     return _divida_para_dict(divida)
 

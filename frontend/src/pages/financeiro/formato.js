@@ -53,17 +53,26 @@ export function toneladas(valor, casas = 1) {
 }
 
 export function numeroBr(texto) {
-  // "1.234,56" / "1234.56" / "1234,5" -> 1234.56
+  // "1.234,56" -> 1234.56 · "9.000" -> 9000 · "1234.56" -> 1234.56 · "1234,5" -> 1234.5
+  // Ponto so e decimal quando nao parece separador de milhar: antes "9.000"
+  // (como o proprio campo mostrava) virava 9.
   const limpo = String(texto ?? "").replace(/[R$\s]/g, "");
   if (!limpo) return null;
-  const normalizado = limpo.includes(",") ? limpo.replace(/\./g, "").replace(",", ".") : limpo;
+  let normalizado = limpo;
+  if (limpo.includes(",")) normalizado = limpo.replace(/\./g, "").replace(",", ".");
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(limpo)) normalizado = limpo.replace(/\./g, "");
   const numero = Number(normalizado);
   return Number.isFinite(numero) ? numero : null;
 }
 
+// Campo de digitar: sem ponto de milhar ("9000", "614,21"), pra nao confundir.
 export function valorParaCampo(valor) {
   if (valor === null || valor === undefined || valor === "") return "";
-  return Number(valor).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return Number(valor).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2, useGrouping: false });
+}
+
+export function diasAte(iso, hoje = hojeIso()) {
+  return Math.round((dataDe(iso) - dataDe(hoje)) / 86400000);
 }
 
 export function hojeIso() {
