@@ -339,7 +339,7 @@
 .fin-comecando svg { color: var(--warning); }
 .fin-comecando p { flex: 1; min-width: 240px; margin: 0; font-size: 12.5px; line-height: 1.5; }
 
-.fin-agenda { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); gap: 16px; align-items: start; }
+.fin-agenda { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(360px, 1fr); gap: 16px; align-items: start; }
 .fin-calendario { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(64px, .95fr); gap: 6px; }
 .fin-cal-semana-total { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 2px; min-height: 74px; padding: 6px 8px; border-radius: 10px; background: var(--panel-soft); border: 1px dashed var(--border); font-variant-numeric: tabular-nums; color: var(--muted-soft); font-size: 12px; }
 .fin-cal-semana-total b { font: 800 12px Manrope, sans-serif; color: var(--text); white-space: nowrap; }
@@ -370,7 +370,7 @@
 .fin-secao summary::-webkit-details-marker { display: none; }
 .fin-secao summary::after { content: "Ver"; font-size: 10.5px; color: var(--accent); letter-spacing: .4px; }
 .fin-secao[open] summary::after { content: "Esconder"; }
-.fin-secao summary b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.fin-secao summary b { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fin-secao summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .fin-contas { margin: 0; padding: 0; list-style: none; }
 .fin-conta { border-bottom: 1px solid var(--border-soft); border-left: 3px solid transparent; }

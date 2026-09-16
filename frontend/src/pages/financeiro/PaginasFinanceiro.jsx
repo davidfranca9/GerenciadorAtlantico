@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
 import { Aviso, CampoValor, Dinheiro, ImportarPlanilha, NavegadorMes } from "./comum";
@@ -7,16 +7,6 @@ import { AbaPagamentos, Despesas, Dividas } from "./ContasPagarPage";
 import { brl, competenciaDe, hojeIso, nomeCompetencia, numeroBr, toneladas, valorParaCampo } from "./formato";
 import { AbaLucroBruto } from "./ResultadoPage";
 import "./financeiro.css";
-
-// As mesmas abas da planilha "Controle de carregamentos", na mesma ordem.
-const ABAS = [
-  { valor: "lucro-bruto", rotulo: "Lucro bruto", icone: "truck" },
-  { valor: "gastos-empresa", rotulo: "Gastos empresa", icone: "clipboard" },
-  { valor: "gastos-pessoais", rotulo: "Gastos pessoais", icone: "users" },
-  { valor: "precificacao", rotulo: "Precificação CT-e", icone: "chart" },
-  { valor: "pagamentos", rotulo: "Pagamentos", icone: "calendar" },
-  { valor: "dividas", rotulo: "Dívidas ativas", icone: "wallet" },
-];
 
 function payloadDespesa(d, mudanca) {
   return {
@@ -145,87 +135,176 @@ function AbaPrecificacao({ competencia, resultado, despesas, recarregar }) {
   );
 }
 
-export default function ControleCarregamentosPage() {
-  const [busca, setBusca] = useSearchParams();
-  const aba = ABAS.some((a) => a.valor === busca.get("aba")) ? busca.get("aba") : "lucro-bruto";
-  const [competencia, setCompetencia] = useState(competenciaDe(hojeIso()));
-  const [dados, setDados] = useState(null);
+// ----------------------------------------------------------------------------
+// Uma pagina por parte da planilha "Controle de carregamentos", cada uma com
+// o seu item no menu. O mes escolhido acompanha de uma pagina pra outra.
+// ----------------------------------------------------------------------------
+
+const CHAVE_MES = "financeiro.competencia";
+
+function useCompetencia() {
+  const [competencia, setCompetencia] = useState(() => {
+    try {
+      const salvo = sessionStorage.getItem(CHAVE_MES);
+      if (/^\d{4}-\d{2}$/.test(salvo || "")) return salvo;
+    } catch {
+      /* sem storage: comeca no mes atual */
+    }
+    return competenciaDe(hojeIso());
+  });
+  const mudar = useCallback((nova) => {
+    setCompetencia(nova);
+    try {
+      sessionStorage.setItem(CHAVE_MES, nova);
+    } catch {
+      /* so nao lembra o mes */
+    }
+  }, []);
+  return [competencia, mudar];
+}
+
+function useDados(buscar, chave) {
+  const [estado, setEstado] = useState({ chave: null, dados: null });
   const [erro, setErro] = useState("");
-  const [modal, setModal] = useState(false);
-  const abas = useRef(null);
-
-  // No celular a barra de abas rola de lado: mantem a aba aberta a vista.
-  useEffect(() => {
-    abas.current?.querySelector("button.ativa")?.scrollIntoView({ block: "nearest", inline: "center" });
-  }, [aba]);
-
   const carregar = useCallback(async () => {
     setErro("");
     try {
-      const [resultado, agenda, despesas, dividas, contas] = await Promise.all([
-        api.resultado(competencia), api.agenda(competencia), api.despesas(competencia), api.dividas(), api.contas(),
-      ]);
-      setDados({ competencia, resultado, agenda, despesas, dividas, contas: contas.filter((c) => c.ativa) });
+      const dados = await buscar();
+      setEstado({ chave, dados });
     } catch (err) {
       setErro(err.message);
     }
-  }, [competencia]);
-
+  }, [chave]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { carregar(); }, [carregar]);
+  return { dados: estado.chave === chave ? estado.dados : null, erro, carregar };
+}
 
-  const pronto = dados && dados.competencia === competencia;
-  const r = dados?.resultado;
-
+function Moldura({ competencia, aoMudarMes, erro, carregando, aoImportar, children }) {
+  const [importando, setImportando] = useState(false);
   return (
     <div className="ops-page fin-pagina">
       <div className="fin-barra">
-        <NavegadorMes competencia={competencia} aoMudar={setCompetencia} />
+        {competencia && <NavegadorMes competencia={competencia} aoMudar={aoMudarMes} />}
         <span className="fin-espaco" />
-        <button type="button" className="btn-secondary" onClick={() => setModal(true)}><Icon name="upload" size={15} /> Importar planilha</button>
+        <button type="button" className="btn-secondary" onClick={() => setImportando(true)}><Icon name="upload" size={15} /> Importar planilha</button>
       </div>
+      {erro && <Aviso tipo="error">{erro}</Aviso>}
+      {carregando && !erro && <Aviso>Carregando...</Aviso>}
+      {children}
+      {importando && (
+        <ImportarPlanilha
+          aoFechar={() => setImportando(false)}
+          aoImportar={(r) => { if (r.competencia && aoMudarMes) aoMudarMes(r.competencia); aoImportar(); }}
+        />
+      )}
+    </div>
+  );
+}
 
-      <nav ref={abas} className="fin-abas" role="tablist" aria-label="Abas do controle de carregamentos">
-        {ABAS.map((a) => (
+export function LucroBrutoPage() {
+  const [competencia, setCompetencia] = useCompetencia();
+  const { dados, erro, carregar } = useDados(() => api.resultado(competencia), competencia);
+  return (
+    <Moldura competencia={competencia} aoMudarMes={setCompetencia} erro={erro} carregando={!dados} aoImportar={carregar}>
+      {dados && <AbaLucroBruto competencia={competencia} dados={dados} recarregar={carregar} />}
+    </Moldura>
+  );
+}
+
+const ABAS_GASTOS = [
+  { valor: "empresa", rotulo: "Empresa", icone: "clipboard" },
+  { valor: "pessoal", rotulo: "Pessoal", icone: "users" },
+];
+
+export function GastosPage() {
+  const [competencia, setCompetencia] = useCompetencia();
+  const [busca, setBusca] = useSearchParams();
+  const escopo = busca.get("aba") === "pessoal" ? "pessoal" : "empresa";
+  const { dados, erro, carregar } = useDados(
+    async () => {
+      const [resultado, despesas] = await Promise.all([api.resultado(competencia), api.despesas(competencia)]);
+      return { resultado, despesas };
+    },
+    competencia,
+  );
+  const r = dados?.resultado;
+  return (
+    <Moldura competencia={competencia} aoMudarMes={setCompetencia} erro={erro} carregando={!dados} aoImportar={carregar}>
+      <nav className="fin-abas" role="tablist" aria-label="Gastos">
+        {ABAS_GASTOS.map((a) => (
           <button
-            key={a.valor}
-            type="button"
-            role="tab"
-            aria-selected={aba === a.valor}
-            className={aba === a.valor ? "ativa" : ""}
-            onClick={() => setBusca(a.valor === "lucro-bruto" ? {} : { aba: a.valor }, { replace: true })}
+            key={a.valor} type="button" role="tab" aria-selected={escopo === a.valor} className={escopo === a.valor ? "ativa" : ""}
+            onClick={() => setBusca(a.valor === "empresa" ? {} : { aba: a.valor }, { replace: true })}
           >
             <Icon name={a.icone} size={15} />{a.rotulo}
           </button>
         ))}
       </nav>
-
-      {erro && <Aviso tipo="error">{erro}</Aviso>}
-      {!pronto && !erro && <Aviso>Carregando {nomeCompetencia(competencia).toLowerCase()}...</Aviso>}
-
-      {pronto && aba === "lucro-bruto" && <AbaLucroBruto competencia={competencia} dados={r} recarregar={carregar} />}
-      {pronto && aba === "gastos-empresa" && (
+      {dados && (
         <Despesas
-          escopo="empresa" competencia={competencia} despesas={dados.despesas} recarregar={carregar}
-          fechamento={[
-            { rotulo: "Lucro bruto", valor: r.resumo.lucro_bruto },
-            { rotulo: "Lucro real", valor: r.lucro_real, destaque: true },
-          ]}
+          key={escopo}
+          escopo={escopo} competencia={competencia} despesas={dados.despesas} recarregar={carregar}
+          fechamento={escopo === "empresa"
+            ? [{ rotulo: "Lucro bruto", valor: r.resumo.lucro_bruto }, { rotulo: "Lucro real", valor: r.lucro_real, destaque: true }]
+            : [{ rotulo: "Lucro real da empresa", valor: r.lucro_real }, { rotulo: "Sobra do mês", valor: r.sobra, destaque: true }]}
         />
       )}
-      {pronto && aba === "gastos-pessoais" && (
-        <Despesas
-          escopo="pessoal" competencia={competencia} despesas={dados.despesas} recarregar={carregar}
-          fechamento={[
-            { rotulo: "Lucro real da empresa", valor: r.lucro_real },
-            { rotulo: "Sobra do mês", valor: r.sobra, destaque: true },
-          ]}
-        />
-      )}
-      {pronto && aba === "precificacao" && <AbaPrecificacao competencia={competencia} resultado={r} despesas={dados.despesas} recarregar={carregar} />}
-      {pronto && aba === "pagamentos" && <AbaPagamentos competencia={competencia} agenda={dados.agenda} contas={dados.contas} recarregar={carregar} />}
-      {pronto && aba === "dividas" && <Dividas dividas={dados.dividas} recarregar={carregar} />}
-
-      {modal && <ImportarPlanilha aoFechar={() => setModal(false)} aoImportar={(res) => { if (res.competencia) setCompetencia(res.competencia); carregar(); }} />}
-    </div>
+    </Moldura>
   );
+}
+
+export function PrecificacaoPage() {
+  const [competencia, setCompetencia] = useCompetencia();
+  const { dados, erro, carregar } = useDados(
+    async () => {
+      const [resultado, despesas] = await Promise.all([api.resultado(competencia), api.despesas(competencia)]);
+      return { resultado, despesas };
+    },
+    competencia,
+  );
+  return (
+    <Moldura competencia={competencia} aoMudarMes={setCompetencia} erro={erro} carregando={!dados} aoImportar={carregar}>
+      {dados && <AbaPrecificacao competencia={competencia} resultado={dados.resultado} despesas={dados.despesas} recarregar={carregar} />}
+    </Moldura>
+  );
+}
+
+export function PagamentosPage() {
+  const [competencia, setCompetencia] = useCompetencia();
+  const { dados, erro, carregar } = useDados(
+    async () => {
+      const [agenda, contas] = await Promise.all([api.agenda(competencia), api.contas()]);
+      return { agenda, contas: contas.filter((c) => c.ativa) };
+    },
+    competencia,
+  );
+  return (
+    <Moldura competencia={competencia} aoMudarMes={setCompetencia} erro={erro} carregando={!dados} aoImportar={carregar}>
+      {dados && <AbaPagamentos competencia={competencia} agenda={dados.agenda} contas={dados.contas} recarregar={carregar} />}
+    </Moldura>
+  );
+}
+
+// Divida nao e do mes: sem o seletor de mes.
+export function DividasPage() {
+  const { dados, erro, carregar } = useDados(() => api.dividas(), "dividas");
+  return (
+    <Moldura erro={erro} carregando={!dados} aoImportar={carregar}>
+      {dados && <Dividas dividas={dados} recarregar={carregar} />}
+    </Moldura>
+  );
+}
+
+// Endereco da versao com tudo numa tela so (?aba=...).
+const DESTINO_ANTIGO = {
+  "gastos-empresa": "/financeiro/gastos",
+  "gastos-pessoais": "/financeiro/gastos?aba=pessoal",
+  precificacao: "/financeiro/precificacao",
+  pagamentos: "/financeiro/pagamentos",
+  dividas: "/financeiro/dividas",
+};
+
+export function RedirecionarCarregamentos() {
+  const [busca] = useSearchParams();
+  return <Navigate to={DESTINO_ANTIGO[busca.get("aba")] || "/financeiro/lucro-bruto"} replace />;
 }
