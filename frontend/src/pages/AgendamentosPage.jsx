@@ -628,7 +628,7 @@ export default function AgendamentosPage() {
       {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
       {avisoEmail && <div className="inline-alert info">{avisoEmail}</div>}
 
-      <div className="card">
+      <div className="card" style={{ overflowX: "auto" }}>
         <table>
           <thead>
             <tr>
@@ -669,7 +669,10 @@ export default function AgendamentosPage() {
                       ))}
                     </select>
                   </td>
-                  <td style={{ display: "flex", gap: 8 }} onClick={(e) => e.stopPropagation()}>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    {/* Botoes em ate duas linhas: em uma so, empurravam a tabela
+                        pra fora do quadro e o "Excluir" ficava cortado. */}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxWidth: 260 }}>
                     <button className="btn-secondary" onClick={() => (editId === a.id ? fecharEdicao() : abrirEdicao(a))}>
                       {editId === a.id ? "Fechar" : "Editar"}
                     </button>
@@ -680,6 +683,7 @@ export default function AgendamentosPage() {
                       {docGerandoId === a.id ? "Gerando..." : "Salvar Documentos"}
                     </button>
                     <button className="btn-ghost" onClick={() => handleExcluir(a)}>Excluir</button>
+                    </div>
                   </td>
                 </tr>
                 {motoristaAbertoId === a.id && (
