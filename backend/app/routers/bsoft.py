@@ -202,19 +202,23 @@ def _ler_documento(path: str) -> dict:
     DESCONHECIDO, pra nao derrubar os outros que foram enviados junto."""
     inicio = time.perf_counter()
     aviso = ""
+    erro_ia = ""
     try:
         resultado = ocr_gemini.ler_documento_com_gemini(path)
         metodo = "ia"
     except Exception as exc:
         aviso = "IA não configurada" if isinstance(exc, ocr_gemini.GeminiIndisponivel) else "a IA não respondeu"
-        logger.warning("importar-documentos: leitura pela IA falhou (%s: %s)", type(exc).__name__, str(exc)[:200])
+        # Motivo curto (tipo e codigo do erro da API), sem nada do documento.
+        codigo = getattr(exc, "code", None)
+        erro_ia = f"{type(exc).__name__}{f' {codigo}' if codigo else ''}: {str(exc)[:240]}"
+        logger.warning("importar-documentos: leitura pela IA falhou (%s)", erro_ia)
         try:
             resultado = _classificar_e_extrair_fallback(path)
             metodo = "ocr_local"
         except Exception:
             resultado = {"tipo": "DESCONHECIDO", "dados": {}}
             metodo = "falhou"
-    resultado = {**resultado, "metodo": metodo, "segundos": round(time.perf_counter() - inicio, 1), "aviso": aviso}
+    resultado = {**resultado, "metodo": metodo, "segundos": round(time.perf_counter() - inicio, 1), "aviso": aviso, "erro_ia": erro_ia}
     logger.info("importar-documentos: %s lido por %s em %.1f s", resultado["tipo"], metodo, resultado["segundos"])
     return resultado
 
@@ -242,7 +246,8 @@ async def importar_documentos(files: list[UploadFile]):
     vehicle_docs: list[dict] = []
     # Como cada arquivo foi lido: a tela avisa quando nao foi pela IA.
     leituras = [
-        {"arquivo": file.filename or "", "tipo": r["tipo"], "metodo": r["metodo"], "segundos": r["segundos"], "aviso": r["aviso"]}
+        {"arquivo": file.filename or "", "tipo": r["tipo"], "metodo": r["metodo"], "segundos": r["segundos"],
+         "aviso": r["aviso"], "erro_ia": r["erro_ia"]}
         for file, r in zip(files, resultados)
     ]
     for resultado in resultados:

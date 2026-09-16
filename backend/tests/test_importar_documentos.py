@@ -95,6 +95,7 @@ def test_se_a_ia_falha_le_sem_ia_e_avisa_qual_arquivo(cliente, monkeypatch):
     leituras = {l["arquivo"]: l for l in corpo["leituras"]}
     assert leituras["cnh.pdf"]["metodo"] == "ia" and leituras["cnh.pdf"]["aviso"] == ""
     assert leituras["cavalo.pdf"]["metodo"] == "ocr_local" and leituras["cavalo.pdf"]["aviso"] == "a IA não respondeu"
+    assert leituras["cavalo.pdf"]["erro_ia"] == "RuntimeError: IA fora do ar" and leituras["cnh.pdf"]["erro_ia"] == ""
     assert all(isinstance(l["segundos"], float) for l in corpo["leituras"])
 
 
@@ -150,10 +151,12 @@ class _ClienteFalso:
     def __init__(self, falhas=()):
         self.falhas = list(falhas)
         self.configs = []
+        self.modelos = []
         self.models = self
 
     def generate_content(self, model, contents, config):
         self.configs.append(config)
+        self.modelos.append(model)
         if self.falhas:
             raise self.falhas.pop(0)
         return _Resposta()
@@ -166,7 +169,8 @@ def _erro(codigo, mensagem="erro"):
 
 @pytest.fixture
 def arquivo(tmp_path, monkeypatch):
-    monkeypatch.setattr(ocr_gemini, "_aceita_nivel_raciocinio", True)
+    monkeypatch.setattr(ocr_gemini, "_sem_nivel_raciocinio", set())
+    monkeypatch.setattr(ocr_gemini, "_modelos_inexistentes", set())
     monkeypatch.setattr(ocr_gemini.time, "sleep", lambda s: None)
     caminho = tmp_path / "doc.pdf"
     caminho.write_bytes(b"%PDF")
@@ -187,12 +191,28 @@ def test_limite_de_uso_tenta_de_novo_uma_vez(monkeypatch, arquivo):
     assert len(cliente.configs) == 2
 
 
-def test_erro_de_pedido_nao_repete(monkeypatch, arquivo):
-    cliente = _ClienteFalso(falhas=[_erro(400, "arquivo invalido")])
+def test_erro_de_pedido_nao_repete_no_mesmo_modelo(monkeypatch, arquivo):
+    cliente = _ClienteFalso(falhas=[_erro(400, "arquivo invalido")] * len(ocr_gemini.MODELOS))
     monkeypatch.setattr(ocr_gemini, "_client", lambda: cliente)
     with pytest.raises(ocr_gemini.genai_errors.ClientError):
         ocr_gemini.ler_documento_com_gemini(arquivo)
-    assert len(cliente.configs) == 1
+    assert cliente.modelos == list(ocr_gemini.MODELOS)
+
+
+def test_modelo_aposentado_passa_pro_proximo_e_nao_tenta_mais(monkeypatch, arquivo):
+    cliente = _ClienteFalso(falhas=[_erro(404, "models/gemini-3.6-flash is not found")])
+    monkeypatch.setattr(ocr_gemini, "_client", lambda: cliente)
+    assert ocr_gemini.ler_documento_com_gemini(arquivo)["tipo"] == "RNTRC"
+    assert cliente.modelos == [ocr_gemini.MODELOS[0], ocr_gemini.MODELOS[1]]
+    ocr_gemini.ler_documento_com_gemini(arquivo)
+    assert cliente.modelos[-1] == ocr_gemini.MODELOS[1]
+
+
+def test_sem_cota_tenta_de_novo_e_depois_outro_modelo(monkeypatch, arquivo):
+    cliente = _ClienteFalso(falhas=[_erro(429, "quota"), _erro(429, "quota")])
+    monkeypatch.setattr(ocr_gemini, "_client", lambda: cliente)
+    assert ocr_gemini.ler_documento_com_gemini(arquivo)["tipo"] == "RNTRC"
+    assert cliente.modelos == [ocr_gemini.MODELOS[0], ocr_gemini.MODELOS[0], ocr_gemini.MODELOS[1]]
 
 
 def test_modelo_sem_nivel_de_raciocinio_segue_sem(monkeypatch, arquivo):
@@ -200,7 +220,7 @@ def test_modelo_sem_nivel_de_raciocinio_segue_sem(monkeypatch, arquivo):
     monkeypatch.setattr(ocr_gemini, "_client", lambda: cliente)
     assert ocr_gemini.ler_documento_com_gemini(arquivo)["tipo"] == "RNTRC"
     assert cliente.configs[1].thinking_config is None
-    assert ocr_gemini._aceita_nivel_raciocinio is False
+    assert ocr_gemini.MODELOS[0] in ocr_gemini._sem_nivel_raciocinio
 
 
 # --------------------------------------------------------------------------

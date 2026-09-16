@@ -23,7 +23,11 @@ from google.genai import types
 from ..config import settings
 from .bsoft_lookup import BSOFT_CATEGORIAS_VEICULO, BSOFT_SIMPLE_BRANDS_LIST, BSOFT_TIPOS_CARROCERIA_NOMES
 
-MODELO = "gemini-3.6-flash"
+# Em ordem de preferencia. O Google aposenta modelo (o 2.0-flash saiu em
+# 08/2026): se um nao existir mais ou estiver sem cota, vai pro proximo em
+# vez de cair direto no OCR local, que erra muito mais.
+MODELOS = ("gemini-3.6-flash", "gemini-flash-latest", "gemini-2.5-flash")
+MODELO = MODELOS[0]
 # Ler documento nao pede raciocinio longo. No padrao do modelo um CRLV de
 # 80 KB levava ~29 s e uma foto de CNH ~16 s - quase tudo "pensando".
 NIVEL_RACIOCINIO = types.ThinkingLevel.LOW
@@ -102,30 +106,48 @@ def _extrair_com_schema(caminho_arquivo: str, prompt: str, schema: dict) -> dict
     with open(caminho_arquivo, "rb") as f:
         dados_arquivo = f.read()
     conteudo = [types.Part.from_bytes(data=dados_arquivo, mime_type=mime_type), prompt]
-    # Uma segunda tentativa rapida so pra falha passageira (limite de uso,
-    # servidor ocupado). Erro de pedido nao adianta repetir.
-    for tentativa in (1, 2):
-        try:
-            return json.loads(_gerar(client, conteudo, schema).text)
-        except genai_errors.APIError as exc:
-            passageira = exc.code == 429 or (exc.code or 0) >= 500
-            if tentativa == 2 or not passageira:
-                raise
-            logger.warning("Gemini: falha passageira (%s), tentando de novo", exc.code)
-            time.sleep(1.5)
-    raise RuntimeError("inalcancavel")
+    candidatos = [m for m in MODELOS if m not in _modelos_inexistentes] or list(MODELOS)
+    ultimo_erro: Exception | None = None
+    for modelo in candidatos:
+        for tentativa in (1, 2):
+            try:
+                resposta = _gerar(client, modelo, conteudo, schema)
+                if not resposta.text:
+                    raise RespostaVazia(f"{modelo} nao devolveu texto")
+                return json.loads(resposta.text)
+            except genai_errors.APIError as exc:
+                ultimo_erro = exc
+                logger.warning("Gemini %s: erro %s (%s)", modelo, exc.code, str(exc)[:200])
+                if exc.code == 404:
+                    _modelos_inexistentes.add(modelo)
+                    break
+                # Limite de uso ou servidor ocupado: uma nova tentativa rapida
+                # no mesmo modelo, depois o proximo.
+                if tentativa == 1 and (exc.code == 429 or (exc.code or 0) >= 500):
+                    time.sleep(1.5)
+                    continue
+                break
+            except (RespostaVazia, json.JSONDecodeError) as exc:
+                ultimo_erro = exc
+                logger.warning("Gemini %s: resposta sem JSON valido (%s)", modelo, type(exc).__name__)
+                break
+    raise ultimo_erro or RespostaVazia("nenhum modelo respondeu")
 
 
-_aceita_nivel_raciocinio = True
+class RespostaVazia(Exception):
+    pass
 
 
-def _gerar(client: genai.Client, conteudo: list, schema: dict):
-    global _aceita_nivel_raciocinio
+_modelos_inexistentes: set[str] = set()
+_sem_nivel_raciocinio: set[str] = set()
+
+
+def _gerar(client: genai.Client, modelo: str, conteudo: list, schema: dict):
     base = {"response_mime_type": "application/json", "response_schema": schema}
-    if _aceita_nivel_raciocinio:
+    if modelo not in _sem_nivel_raciocinio:
         try:
             return client.models.generate_content(
-                model=MODELO,
+                model=modelo,
                 contents=conteudo,
                 config=types.GenerateContentConfig(
                     **base, thinking_config=types.ThinkingConfig(thinking_level=NIVEL_RACIOCINIO)
@@ -136,9 +158,9 @@ def _gerar(client: genai.Client, conteudo: list, schema: dict):
             # tenta mais nesse processo.
             if exc.code != 400 or "think" not in str(exc).lower():
                 raise
-            _aceita_nivel_raciocinio = False
-            logger.warning("Gemini: %s nao aceita thinking_level, seguindo sem", MODELO)
-    return client.models.generate_content(model=MODELO, contents=conteudo, config=types.GenerateContentConfig(**base))
+            _sem_nivel_raciocinio.add(modelo)
+            logger.warning("Gemini: %s nao aceita thinking_level, seguindo sem", modelo)
+    return client.models.generate_content(model=modelo, contents=conteudo, config=types.GenerateContentConfig(**base))
 
 
 PROMPT_CNH = (
