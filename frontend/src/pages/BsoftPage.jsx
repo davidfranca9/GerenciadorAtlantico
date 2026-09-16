@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import * as api from "../api/client";
 import DateField from "../components/DateField";
 import { formatCEP, formatCNPJ, formatCPF, formatNome, formatPhone, formatPlaca } from "../utils/format";
-import { ordenarVeiculosPorCategoria } from "../utils/vehicleCategory";
+import { CATEGORIAS_TRATORAS, ordenarVeiculosPorCategoria } from "../utils/vehicleCategory";
 
 const VEICULO_VAZIO = {
   placa: "", renavam: "", eixos: "", estado: "", cidade: "",
@@ -192,60 +192,87 @@ export default function BsoftPage() {
     if (files.length === 0) return;
     setError("");
     setLoadingAction("docs");
-    setStatus("Processando documentos com OCR...");
+    setStatus(files.length > 1 ? `Lendo ${files.length} documentos ao mesmo tempo...` : "Lendo o documento...");
     try {
       const { motorista: dadosMotorista, veiculos: dadosVeiculos } = await api.bsoftImportarDocumentos(files);
-      if (!dadosMotorista || Object.keys(dadosMotorista).length === 0) {
-        if (!dadosVeiculos || dadosVeiculos.length === 0) {
-          setStatus("Os documentos foram lidos, mas nenhum dado útil foi encontrado.");
-          return;
-        }
+      const temMotorista = Boolean(dadosMotorista && Object.keys(dadosMotorista).length > 0);
+      const veiculosLidos = dadosVeiculos || [];
+      if (!temMotorista && veiculosLidos.length === 0) {
+        setStatus("Os documentos foram lidos, mas nenhum dado útil foi encontrado.");
+        return;
       }
-      handleLimpar();
-      if (dadosMotorista) {
+
+      // Importar SOMA ao que ja esta na tela. Antes o formulario inteiro era
+      // limpo a cada importacao: ler a CNH e depois o CRLV apagava o
+      // motorista, o endereco e o proprietario.
+      if (temMotorista) {
+        const lido = (campo, anterior) => limparOcr(dadosMotorista[campo]) || anterior;
         setMotorista((prev) => ({
-          nome: limparOcr(dadosMotorista.nome) || prev.nome,
+          ...prev,
+          nome: lido("nome", prev.nome),
           cpf: formatCPF(limparOcr(dadosMotorista.cpf)) || prev.cpf,
-          fone: prev.fone,
-          dtNascimento: limparOcr(dadosMotorista.dtNascimento),
-          rntrc: limparOcr(dadosMotorista.rntrc),
+          dtNascimento: lido("dtNascimento", prev.dtNascimento),
+          rntrc: lido("rntrc", prev.rntrc),
           cnh: {
-            numero: limparOcr(dadosMotorista.numero),
-            seguro: limparOcr(dadosMotorista.seguro),
-            categoria: limparOcr(dadosMotorista.categoria),
-            protocolo: limparOcr(dadosMotorista.protocolo),
-            dtValidade: limparOcr(dadosMotorista.dtValidade),
-            dtExpedicao: limparOcr(dadosMotorista.dtExpedicao),
-            dtPrimeiraExpedicao: limparOcr(dadosMotorista.dtPrimeiraExpedicao),
+            ...prev.cnh,
+            numero: lido("numero", prev.cnh.numero),
+            seguro: lido("seguro", prev.cnh.seguro),
+            categoria: lido("categoria", prev.cnh.categoria),
+            protocolo: lido("protocolo", prev.cnh.protocolo),
+            dtValidade: lido("dtValidade", prev.cnh.dtValidade),
+            dtExpedicao: lido("dtExpedicao", prev.cnh.dtExpedicao),
+            dtPrimeiraExpedicao: lido("dtPrimeiraExpedicao", prev.cnh.dtPrimeiraExpedicao),
           },
         }));
       }
 
-      const slots = [
-        { setter: setCavalo, categoriaFallback: "" },
-        { setter: setReboque1, categoriaFallback: "SEMI-REBOQUE 1" },
-        { setter: setReboque2, categoriaFallback: "SEMI-REBOQUE 2" },
+      // Cada CRLV vai pro seu lugar sem apagar os outros: cavalo na vaga do
+      // cavalo, reboque na primeira vaga de reboque livre. A mesma placa lida
+      // de novo atualiza a vaga onde ela ja esta. Antes o primeiro CRLV
+      // sempre caia no cavalo - importar a carreta depois apagava o cavalo.
+      const vagas = [
+        { nome: "cavalo", rotulo: "cavalo", atual: cavalo, setter: setCavalo, categoriaFallback: "" },
+        { nome: "reboque1", rotulo: "reboque 1", atual: reboque1, setter: setReboque1, categoriaFallback: "SEMI-REBOQUE 1" },
+        { nome: "reboque2", rotulo: "reboque 2", atual: reboque2, setter: setReboque2, categoriaFallback: "SEMI-REBOQUE 2" },
       ];
-      ordenarVeiculosPorCategoria(dadosVeiculos || []).forEach((dado, idx) => {
-        if (idx === 1) setReboque1Ativo(true);
-        if (idx === 2) { setReboque1Ativo(true); setReboque2Ativo(true); }
-        const { setter, categoriaFallback } = slots[idx];
-        const categoria = limparOcr(dado.categoria_veiculo) || categoriaFallback;
-        setter({
+      const ocupadas = new Set(vagas.filter((v) => v.atual.placa).map((v) => v.nome));
+      const destinos = [];
+      let semVaga = 0;
+      for (const dado of ordenarVeiculosPorCategoria(veiculosLidos)) {
+        const placa = formatPlaca(limparOcr(dado.placa));
+        const categoriaLida = limparOcr(dado.categoria_veiculo);
+        const ehTrator = CATEGORIAS_TRATORAS.has(categoriaLida.toUpperCase());
+        const vaga = vagas.find((v) => placa && v.atual.placa === placa)
+          || (ehTrator ? vagas[0] : null)
+          || vagas.slice(1).find((v) => !ocupadas.has(v.nome))
+          || vagas.find((v) => !ocupadas.has(v.nome));
+        if (!vaga) {
+          semVaga += 1;
+          continue;
+        }
+        ocupadas.add(vaga.nome);
+        if (vaga.nome === "reboque1") setReboque1Ativo(true);
+        if (vaga.nome === "reboque2") { setReboque1Ativo(true); setReboque2Ativo(true); }
+        vaga.setter({
           ...VEICULO_VAZIO,
-          placa: formatPlaca(limparOcr(dado.placa)),
+          placa,
           renavam: limparOcr(dado.renavam),
           modelo: limparOcr(dado.modelo),
           eixos: limparOcr(dado.eixos),
-          categoria,
+          categoria: categoriaLida || vaga.categoriaFallback,
           marca: limparOcr(dado.marca),
           carroceria: limparOcr(dado.tipo_carroceria),
           estado: limparOcr(dado.estado),
           cidade: limparOcr(dado.cidade),
         });
-      });
+        destinos.push(vaga.rotulo);
+      }
 
-      setStatus("Documentos processados e formulário preenchido.");
+      const partes = [];
+      if (temMotorista) partes.push("motorista");
+      if (destinos.length) partes.push(destinos.join(", "));
+      const aviso = semVaga ? ` ${semVaga} CRLV sem vaga livre (limpe um veículo para trocar).` : "";
+      setStatus(`Documentos lidos e somados ao formulário: ${partes.join(" e ") || "nada novo"}.${aviso}`);
     } catch (err) {
       setError(`Erro no OCR: ${err.message}`);
     } finally {

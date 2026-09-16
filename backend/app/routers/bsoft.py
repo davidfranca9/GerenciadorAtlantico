@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import tempfile
@@ -188,26 +189,52 @@ def _classificar_e_extrair_fallback(path: str) -> dict:
     return {"tipo": tipo, "dados": {}}
 
 
+def _ler_documento(path: str) -> dict:
+    """Um arquivo: IA numa chamada so; se ela falhar, o caminho antigo em
+    duas chamadas; sem IA, o OCR local. Erro num arquivo vira DESCONHECIDO,
+    pra nao derrubar os outros que foram enviados junto."""
+    try:
+        return ocr_gemini.ler_documento_com_gemini(path)
+    except ocr_gemini.GeminiIndisponivel:
+        pass
+    except Exception:
+        try:
+            return ocr_gemini.classificar_e_extrair_documento_com_gemini(path)
+        except Exception:
+            pass
+    try:
+        return _classificar_e_extrair_fallback(path)
+    except Exception:
+        return {"tipo": "DESCONHECIDO", "dados": {}}
+
+
 @router.post("/importar-documentos")
 async def importar_documentos(files: list[UploadFile]):
+    """Le varios documentos (CNH, CRLV, RNTRC) AO MESMO TEMPO.
+
+    Antes era um arquivo depois do outro, e cada um com duas chamadas a IA:
+    tres documentos eram seis chamadas em fila. Agora cada arquivo e uma
+    chamada e todas correm juntas - o total fica perto do documento mais
+    lento, nao da soma.
+    """
+    caminhos = [await _salvar_upload(file) for file in files]
+    try:
+        resultados = await asyncio.gather(*(run_in_threadpool(_ler_documento, caminho) for caminho in caminhos))
+    finally:
+        for caminho in caminhos:
+            try:
+                os.remove(caminho)
+            except OSError:
+                pass
+
     driver_data: dict = {}
     vehicle_docs: list[dict] = []
-
-    for file in files:
-        path = await _salvar_upload(file)
-        try:
-            try:
-                resultado = await run_in_threadpool(ocr_gemini.classificar_e_extrair_documento_com_gemini, path)
-            except Exception:
-                resultado = await run_in_threadpool(_classificar_e_extrair_fallback, path)
-
-            if resultado["tipo"] in ("CNH", "RNTRC"):
-                driver_data.update(resultado["dados"])
-            elif resultado["tipo"] == "CRLV":
-                vehicle_docs.append(resultado["dados"])
-        finally:
-            os.remove(path)
-
+    for resultado in resultados:
+        if resultado["tipo"] in ("CNH", "RNTRC"):
+            # So o que veio preenchido: o RNTRC nao apaga o nome lido da CNH.
+            driver_data.update({campo: valor for campo, valor in (resultado["dados"] or {}).items() if valor})
+        elif resultado["tipo"] == "CRLV":
+            vehicle_docs.append(resultado["dados"])
     return {"motorista": driver_data, "veiculos": vehicle_docs}
 
 
