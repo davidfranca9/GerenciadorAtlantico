@@ -189,7 +189,8 @@ def nome_da_fabrica(remetente: str) -> str:
     if not palavras:
         return nome_legivel(remetente)
     escolhidas = palavras[:2] if len(palavras[0]) <= 3 else palavras[:1]
-    return nome_legivel(" ".join(escolhidas))
+    # Sigla curta fica em maiuscula ("MM Agricola", nao "Mm Agricola").
+    return " ".join(p.upper() if len(p) <= 3 and p.isalpha() else nome_legivel(p) for p in escolhidas)
 
 
 # --------------------------------------------------------------------------
