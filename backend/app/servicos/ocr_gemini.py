@@ -45,14 +45,16 @@ CNH_SCHEMA = {
         "cpf": {"type": "string", "description": "formato 000.000.000-00"},
         "numero": {"type": "string", "description": "numero de registro da CNH"},
         "seguro": {"type": "string", "description": "numero do seguro / cedula de identidade do condutor"},
-        "categoria": {"type": "string", "enum": CATEGORIAS_CNH + [""], "description": "campo '9 CAT. HAB.'"},
+        "categoria": {"type": "string", "enum": CATEGORIAS_CNH, "description": "campo '9 CAT. HAB.'"},
         "protocolo": {"type": "string", "description": "numero do espelho, impresso na vertical na margem"},
         "dtValidade": {"type": "string", "description": "data no formato dd/mm/aaaa"},
         "dtExpedicao": {"type": "string", "description": "data de emissao no formato dd/mm/aaaa"},
         "dtPrimeiraExpedicao": {"type": "string", "description": "data da 1a habilitacao no formato dd/mm/aaaa"},
         "dtNascimento": {"type": "string", "description": "data de nascimento no formato dd/mm/aaaa"},
     },
-    "required": ["nome", "cpf", "numero", "seguro", "categoria", "protocolo", "dtValidade", "dtExpedicao", "dtPrimeiraExpedicao", "dtNascimento"],
+    # Campo com lista de opcoes fica fora do "required": sem ele legivel, a IA
+    # deixa de fora (a API do Gemini recusa opcao vazia na lista).
+    "required": ["nome", "cpf", "numero", "seguro", "protocolo", "dtValidade", "dtExpedicao", "dtPrimeiraExpedicao", "dtNascimento"],
 }
 
 CRLV_SCHEMA = {
@@ -63,12 +65,12 @@ CRLV_SCHEMA = {
         "modelo": {"type": "string", "description": "modelo do veiculo, sem a marca"},
         "eixos": {"type": "string", "description": "quantidade de eixos"},
         "categoria_veiculo": {"type": "string", "enum": sorted(BSOFT_CATEGORIAS_VEICULO.keys())},
-        "marca": {"type": "string", "enum": sorted(set(BSOFT_SIMPLE_BRANDS_LIST) | {""})},
-        "tipo_carroceria": {"type": "string", "enum": sorted(set(BSOFT_TIPOS_CARROCERIA_NOMES.values()) | {""})},
+        "marca": {"type": "string", "enum": sorted(set(BSOFT_SIMPLE_BRANDS_LIST))},
+        "tipo_carroceria": {"type": "string", "enum": sorted(set(BSOFT_TIPOS_CARROCERIA_NOMES.values()))},
         "estado": {"type": "string", "description": "sigla da UF, 2 letras"},
         "cidade": {"type": "string"},
     },
-    "required": ["placa", "renavam", "modelo", "eixos", "categoria_veiculo", "marca", "tipo_carroceria", "estado", "cidade"],
+    "required": ["placa", "renavam", "modelo", "eixos", "categoria_veiculo", "estado", "cidade"],
 }
 
 _MIME_POR_EXTENSAO = {
@@ -106,6 +108,7 @@ def _extrair_com_schema(caminho_arquivo: str, prompt: str, schema: dict) -> dict
     with open(caminho_arquivo, "rb") as f:
         dados_arquivo = f.read()
     conteudo = [types.Part.from_bytes(data=dados_arquivo, mime_type=mime_type), prompt]
+    schema = schema_aceito(schema)
     candidatos = [m for m in MODELOS if m not in _modelos_inexistentes] or list(MODELOS)
     ultimo_erro: Exception | None = None
     for modelo in candidatos:
@@ -136,6 +139,20 @@ def _extrair_com_schema(caminho_arquivo: str, prompt: str, schema: dict) -> dict
 
 class RespostaVazia(Exception):
     pass
+
+
+def schema_aceito(schema):
+    """Tira opcao vazia de toda lista (enum). Foi uma opcao "" na marca e na
+    carroceria do CRLV que fez a API recusar TODA leitura com
+    INVALID_ARGUMENT - e tudo caia no OCR local, lento e errado."""
+    if isinstance(schema, dict):
+        limpo = {chave: schema_aceito(valor) for chave, valor in schema.items()}
+        if isinstance(limpo.get("enum"), list):
+            limpo["enum"] = [opcao for opcao in limpo["enum"] if str(opcao).strip()]
+        return limpo
+    if isinstance(schema, list):
+        return [schema_aceito(item) for item in schema]
+    return schema
 
 
 _modelos_inexistentes: set[str] = set()
@@ -234,8 +251,13 @@ def extrair_dados_cnh_com_gemini(caminho_arquivo: str) -> dict:
     return limpar_cnh(_extrair_com_schema(caminho_arquivo, PROMPT_CNH, CNH_SCHEMA))
 
 
+def limpar_crlv(dados: dict) -> dict:
+    """Campo que a IA deixou de fora (marca, carroceria) volta vazio."""
+    return {campo: str((dados or {}).get(campo) or "") for campo in CRLV_SCHEMA["properties"]}
+
+
 def extrair_dados_crlv_com_gemini(caminho_arquivo: str) -> dict:
-    return _extrair_com_schema(caminho_arquivo, PROMPT_CRLV, CRLV_SCHEMA)
+    return limpar_crlv(_extrair_com_schema(caminho_arquivo, PROMPT_CRLV, CRLV_SCHEMA))
 
 
 def ler_documento_com_gemini(caminho_arquivo: str) -> dict:
@@ -270,7 +292,7 @@ def ler_documento_com_gemini(caminho_arquivo: str) -> dict:
     if tipo == "CNH":
         return {"tipo": tipo, "dados": limpar_cnh(resposta.get("cnh") or {})}
     if tipo == "CRLV":
-        return {"tipo": tipo, "dados": resposta.get("crlv") or {}}
+        return {"tipo": tipo, "dados": limpar_crlv(resposta.get("crlv") or {})}
     if tipo == "RNTRC":
         return {"tipo": tipo, "dados": {"rntrc": resposta.get("rntrc") or ""}}
     return {"tipo": "DESCONHECIDO", "dados": {}}

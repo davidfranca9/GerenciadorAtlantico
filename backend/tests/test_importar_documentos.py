@@ -247,7 +247,53 @@ def test_leitura_combinada_devolve_o_bloco_do_tipo(monkeypatch, tmp_path, respos
     if esperado["tipo"] == "CNH":
         # A CNH passa pela conferencia de formato antes de voltar.
         esperado = {"tipo": "CNH", "dados": ocr_gemini.limpar_cnh(CNH)}
+    if esperado["tipo"] == "CRLV":
+        esperado = {"tipo": "CRLV", "dados": ocr_gemini.limpar_crlv(CRLV_CAVALO)}
     assert ocr_gemini.ler_documento_com_gemini(str(arquivo)) == esperado
     assert len(chamadas) == 1
     # As mesmas instrucoes das leituras especificas.
     assert ocr_gemini.PROMPT_CNH in chamadas[0] and ocr_gemini.PROMPT_CRLV in chamadas[0]
+
+
+# --------------------------------------------------------------------------
+# O pedido que vai pro Gemini
+# --------------------------------------------------------------------------
+
+
+def _listas_de_opcoes(schema, caminho="schema"):
+    if isinstance(schema, dict):
+        if "enum" in schema:
+            yield caminho, schema["enum"]
+        for chave, valor in schema.items():
+            yield from _listas_de_opcoes(valor, f"{caminho}.{chave}")
+
+
+def test_nenhuma_lista_de_opcoes_tem_opcao_vazia(monkeypatch, arquivo):
+    # 16/09/2026: "enum[9]: cannot be empty" - a API recusava toda leitura.
+    enviados = []
+
+    def gerar(client, modelo, conteudo, schema):
+        enviados.append(schema)
+        return _Resposta()
+
+    monkeypatch.setattr(ocr_gemini, "_client", lambda: object())
+    monkeypatch.setattr(ocr_gemini, "_gerar", gerar)
+    ocr_gemini.ler_documento_com_gemini(arquivo)
+    ocr_gemini.extrair_dados_cnh_com_gemini(arquivo)
+    ocr_gemini.extrair_dados_crlv_com_gemini(arquivo)
+    listas = [item for schema in enviados for item in _listas_de_opcoes(schema)]
+    assert len(listas) >= 4
+    for caminho, opcoes in listas:
+        assert opcoes and all(str(o).strip() for o in opcoes), caminho
+
+
+def test_campo_com_opcoes_nao_e_obrigatorio():
+    for schema in (ocr_gemini.CNH_SCHEMA, ocr_gemini.CRLV_SCHEMA):
+        obrigatorios = set(schema["required"])
+        com_opcoes = {campo for campo, regra in schema["properties"].items() if "enum" in regra}
+        assert not (obrigatorios & com_opcoes) - {"categoria_veiculo"}
+
+
+def test_crlv_sem_marca_volta_com_campo_vazio():
+    dados = ocr_gemini.limpar_crlv({"placa": "JDA-8A89", "eixos": 4})
+    assert dados["marca"] == "" and dados["tipo_carroceria"] == "" and dados["eixos"] == "4"
