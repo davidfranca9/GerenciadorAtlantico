@@ -385,8 +385,18 @@ def totais_carregamento(c: CarregamentoFinanceiro) -> dict:
         fechado = getattr(c, f"{parte}_total")
         por_ton = getattr(c, f"{parte}_ton")
         totais[parte] = 0.0 if c.cancelado else dinheiro(fechado if fechado is not None else float(por_ton or 0) * peso)
+    # Carga do Bsoft sem o frete do motorista: sem sobra ate completar (contar
+    # o motorista como zero faria a carga parecer render o frete inteiro).
+    completo = not falta_frete_do_motorista(c)
+    if not completo:
+        return {**totais, "liquido": None, "por_tonelada": None, "completo": False}
     liquido = dinheiro(totais["frete_empresa"] - totais["frete_motorista"] - totais["agenciamento"] - totais["comissao"])
-    return {**totais, "liquido": liquido, "por_tonelada": dinheiro(liquido / peso) if peso and not c.cancelado else None}
+    return {**totais, "liquido": liquido, "por_tonelada": dinheiro(liquido / peso) if peso and not c.cancelado else None, "completo": True}
+
+
+def falta_frete_do_motorista(c: CarregamentoFinanceiro) -> bool:
+    return (c.origem == "bsoft" and not c.cancelado
+            and c.frete_motorista_ton is None and c.frete_motorista_total is None)
 
 
 def carregamento_para_dict(c: CarregamentoFinanceiro) -> dict:
@@ -476,11 +486,15 @@ def resultado_mensal(db: Session, competencia: str, hoje: Optional[date] = None)
     carregamentos.sort(key=lambda c: (c.cancelado, c.data_emissao is None, c.data_emissao or date.min, c.id))
     linhas = [carregamento_para_dict(c) for c in carregamentos]
     validos = [l for l in linhas if not l["cancelado"]]
+    # Lucro e margem so das cargas completas; tonelada conta todas (a carga existiu).
+    completos = [l for l in validos if l["totais"]["completo"]]
+    pendentes = [l for l in validos if not l["totais"]["completo"]]
 
     toneladas = round(sum(l["peso"] for l in validos), 2)
-    soma = {p: dinheiro(sum(l["totais"][p] for l in validos)) for p in PARTES}
-    lucro_bruto = dinheiro(sum(l["totais"]["liquido"] for l in validos))
-    media = dinheiro(lucro_bruto / toneladas) if toneladas else None
+    toneladas_completas = round(sum(l["peso"] for l in completos), 2)
+    soma = {p: dinheiro(sum(l["totais"][p] for l in completos)) for p in PARTES}
+    lucro_bruto = dinheiro(sum(l["totais"]["liquido"] for l in completos))
+    media = dinheiro(lucro_bruto / toneladas_completas) if toneladas_completas else None
 
     meta = db.get(MetaMensal, competencia)
     meta_ton = float(meta.meta_toneladas) if meta and meta.meta_toneladas else None
@@ -496,7 +510,7 @@ def resultado_mensal(db: Session, competencia: str, hoje: Optional[date] = None)
 
     def agrupar(campo):
         grupos: dict[str, dict] = {}
-        for l in validos:
+        for l in completos:
             chave = l[campo] or "Sem " + ("contratante" if campo == "contratante" else "fábrica")
             g = grupos.setdefault(chave, {"nome": chave, "carregamentos": 0, "toneladas": 0.0, "lucro": 0.0})
             g["carregamentos"] += 1
@@ -514,9 +528,15 @@ def resultado_mensal(db: Session, competencia: str, hoje: Optional[date] = None)
             "carregamentos": len(validos),
             "cancelados": len(linhas) - len(validos),
             "toneladas": toneladas,
+            "toneladas_completas": toneladas_completas,
             **soma,
             "lucro_bruto": lucro_bruto,
             "lucro_por_tonelada": media,
+            "pendentes": {
+                "carregamentos": len(pendentes),
+                "toneladas": round(sum(l["peso"] for l in pendentes), 2),
+                "frete_empresa": dinheiro(sum(l["totais"]["frete_empresa"] for l in pendentes)),
+            },
         },
         "meta": {
             "toneladas": meta_ton,

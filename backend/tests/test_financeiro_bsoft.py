@@ -225,3 +225,15 @@ def test_rota_puxar_do_bsoft(db, bsoft):
 ])
 def test_nome_curto_da_fabrica(remetente, esperado):
     assert fb.nome_da_fabrica(remetente) == esperado
+
+
+def test_carga_sem_frete_do_motorista_fica_fora_do_lucro(db, bsoft):
+    fb.sincronizar(db, "2026-09", aplicar=True)
+    r = fin.resultado_mensal(db, "2026-09", hoje=date(2026, 9, 16))
+    # 5005/5006 (carta 7.040) e 5122 (carta 8.000) completas; 5121 sem carta; 5123 cancelada.
+    assert (r["resumo"]["carregamentos"], r["resumo"]["cancelados"]) == (3, 1)
+    assert (r["resumo"]["toneladas"], r["resumo"]["toneladas_completas"]) == (104.0, 64.0)
+    assert r["resumo"]["lucro_bruto"] == (9280 - 7040) + (9600 - 8000)
+    assert r["resumo"]["pendentes"] == {"carregamentos": 1, "toneladas": 40.0, "frete_empresa": 12000.0}
+    sem_carta = next(l for l in r["carregamentos"] if l["ctes"] == "5121")
+    assert (sem_carta["totais"]["liquido"], sem_carta["totais"]["completo"]) == (None, False)

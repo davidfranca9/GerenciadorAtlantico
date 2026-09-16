@@ -94,6 +94,16 @@ function CartaoLucro({ resumo }) {
       <p className="fin-kpi-destaque">
         {resumo.lucro_por_tonelada !== null ? <><b>{brl(resumo.lucro_por_tonelada)}</b> por tonelada</> : "Sem carregamentos no mês"}
       </p>
+      {resumo.pendentes?.carregamentos > 0 && (
+        <p className="fin-kpi-pendente">
+          <Icon name="alert" size={13} />
+          <span>
+            {resumo.pendentes.carregamentos} {resumo.pendentes.carregamentos === 1 ? "carga sem" : "cargas sem"} frete do motorista {resumo.pendentes.carregamentos === 1 ? "ficou" : "ficaram"} fora
+            ({toneladas(resumo.pendentes.toneladas)}, {brl(resumo.pendentes.frete_empresa, { centavos: false })} de frete).{" "}
+            <Link className="fin-link" to="/financeiro/carregamentos">Completar</Link>
+          </span>
+        </p>
+      )}
       <p className="fin-kpi-rodape">
         {resumo.carregamentos} {resumo.carregamentos === 1 ? "carregamento" : "carregamentos"} · {toneladas(resumo.toneladas)}
         {resumo.cancelados > 0 && ` · ${resumo.cancelados} cancelado${resumo.cancelados > 1 ? "s" : ""}`}
@@ -156,7 +166,10 @@ function CaminhoDoFrete({ resumo, despesas, lucroReal, sobra }) {
       <div className="fin-caminho-frete">
         <header>
           <h3>Para onde foi o frete</h3>
-          <p>{brl(resumo.frete_empresa)} cobrados em {toneladas(resumo.toneladas)}</p>
+          <p>
+            {brl(resumo.frete_empresa)} cobrados em {toneladas(resumo.toneladas_completas ?? resumo.toneladas)}
+            {resumo.pendentes?.carregamentos > 0 && ` · só as cargas com frete do motorista (${resumo.pendentes.carregamentos} de fora)`}
+          </p>
         </header>
         <div className="fin-caminho-barra" role="img" aria-label="Divisão do frete cobrado">
           {partes.map((p) => p.valor > 0 && (

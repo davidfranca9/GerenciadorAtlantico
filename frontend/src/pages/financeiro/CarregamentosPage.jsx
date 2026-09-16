@@ -158,7 +158,9 @@ function LinhaCarregamento({ carga, aberto, aoAbrir, children }) {
           ))}
         </span>
         <span className="fin-col sobra" data-rotulo="Sobra">
-          {carga.cancelado ? <em>cancelado</em> : (
+          {carga.cancelado ? <em>cancelado</em> : t.liquido === null ? (
+            <em className="fin-sobra-pendente" title="Complete o frete do motorista para ver a sobra">falta o motorista</em>
+          ) : (
             <>
               <Dinheiro valor={t.liquido} tamanho="s" />
               <b className={`fin-margem ${saudeMargem(t.por_tonelada)}`}>{brl(t.por_tonelada)}/t</b>
@@ -195,7 +197,7 @@ function ListaCarregamentos() {
       if (!procurado) return true;
       return semAcento(`${c.motorista} ${c.ctes} ${c.destino} ${c.fabrica} ${c.contratante}`).includes(procurado);
     });
-    if (ordem === "sobra") lista.sort((a, b) => (a.cancelado - b.cancelado) || b.totais.liquido - a.totais.liquido);
+    if (ordem === "sobra") lista.sort((a, b) => (a.cancelado - b.cancelado) || (b.totais.liquido ?? -Infinity) - (a.totais.liquido ?? -Infinity));
     if (ordem === "margem") {
       lista.sort((a, b) => (a.cancelado - b.cancelado) || (a.totais.por_tonelada ?? Infinity) - (b.totais.por_tonelada ?? Infinity));
     }
@@ -203,8 +205,12 @@ function ListaCarregamentos() {
   }, [cargas, termo, fabrica, contratante, ordem]);
 
   const validas = filtradas.filter((c) => !c.cancelado);
-  const soma = (campo) => validas.reduce((total, c) => total + c.totais[campo], 0);
+  // Sobra e custos so das cargas completas (sem o frete do motorista nao da pra saber).
+  const completas = validas.filter((c) => c.totais.completo !== false);
+  const pendentes = validas.length - completas.length;
+  const soma = (campo, lista = completas) => lista.reduce((total, c) => total + (c.totais[campo] || 0), 0);
   const peso = validas.reduce((total, c) => total + c.peso, 0);
+  const pesoCompletas = completas.reduce((total, c) => total + c.peso, 0);
   const sobra = soma("liquido");
 
   // Todos os meses na ordem de data: separa por mes, com o total de cada um.
@@ -239,9 +245,15 @@ function ListaCarregamentos() {
           <section className="fin-resumo-cargas" aria-label="Resumo das cargas listadas">
             <div><span>Cargas</span><strong>{validas.length}</strong><small>{filtradas.length - validas.length ? `+ ${filtradas.length - validas.length} ${filtradas.length - validas.length === 1 ? "cancelada" : "canceladas"}` : todosOsMeses ? "todos os meses" : nomeCompetencia(competencia)}</small></div>
             <div><span>Toneladas</span><strong>{toneladas(peso)}</strong><small>{validas.length ? `${toneladas(peso / validas.length)} por carga` : ""}</small></div>
-            <div><span>Frete cobrado</span><Dinheiro valor={soma("frete_empresa")} tamanho="m" /><small>{peso ? `${brl(soma("frete_empresa") / peso)}/t` : ""}</small></div>
-            <div><span>Custos da carga</span><Dinheiro valor={soma("frete_motorista") + soma("agenciamento") + soma("comissao")} tamanho="m" /><small>motorista, agenciamento e comissão</small></div>
-            <div className="destaque"><span>Sobra</span><Dinheiro valor={sobra} tamanho="m" /><small>{peso ? <b className={`fin-margem ${saudeMargem(sobra / peso)}`}>{brl(sobra / peso)}/t</b> : ""}</small></div>
+            <div><span>Frete cobrado</span><Dinheiro valor={soma("frete_empresa", validas)} tamanho="m" /><small>{peso ? `${brl(soma("frete_empresa", validas) / peso)}/t` : ""}</small></div>
+            <div><span>Custos da carga</span><Dinheiro valor={soma("frete_motorista") + soma("agenciamento") + soma("comissao")} tamanho="m" /><small>{pendentes ? `das ${completas.length} completas` : "motorista, agenciamento e comissão"}</small></div>
+            <div className={`destaque ${pendentes ? "pendente" : ""}`}>
+              <span>Sobra</span><Dinheiro valor={sobra} tamanho="m" />
+              <small>
+                {pesoCompletas ? <b className={`fin-margem ${saudeMargem(sobra / pesoCompletas)}`}>{brl(sobra / pesoCompletas)}/t</b> : ""}
+                {pendentes > 0 && ` · ${pendentes} sem frete do motorista`}
+              </small>
+            </div>
           </section>
 
           <div className="fin-filtros-cargas">

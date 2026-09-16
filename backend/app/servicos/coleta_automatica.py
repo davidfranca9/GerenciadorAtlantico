@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ..config import settings
 from ..database import SessionLocal
@@ -34,6 +34,8 @@ INTERVALO_SEFAZ_SEGUNDOS = 3600
 INTERVALO_ACOMPANHAMENTO_SEGUNDOS = 300
 # Carta frete agendada: confere a cada minuto se alguma chegou na hora.
 INTERVALO_CARTAS_SEGUNDOS = 60
+# Carregamentos do financeiro: CT-es novos do Bsoft entram sozinhos.
+INTERVALO_CARREGAMENTOS_SEGUNDOS = 3600
 
 
 async def _coletar_do_email() -> int:
@@ -123,6 +125,26 @@ async def _acompanhar_ctes() -> int:
     return resultado["autorizadas"]
 
 
+async def _puxar_carregamentos() -> int:
+    """Traz do Bsoft as cargas novas do mes (e do anterior nos primeiros dias,
+    pro CT-e emitido na virada). So cria e atualiza carga que veio do Bsoft;
+    nunca troca valor digitado ou da planilha."""
+    from . import financeiro, financeiro_bsoft
+
+    hoje = datetime.now().date()
+    meses = [financeiro.competencia_de(hoje)]
+    if hoje.day <= 5:
+        meses.append(financeiro.competencia_de(hoje.replace(day=1) - timedelta(days=1)))
+    novas = 0
+    for competencia in meses:
+        with SessionLocal() as db:
+            resultado = await asyncio.to_thread(financeiro_bsoft.sincronizar, db, competencia, aplicar=True)
+        novas += len(resultado["novos"])
+        if resultado["novos"] or resultado["atualizados"]:
+            logger.info("carregamentos %s: %s nova(s), %s atualizada(s)", competencia, len(resultado["novos"]), len(resultado["atualizados"]))
+    return novas
+
+
 async def _repetir(nome: str, tarefa, intervalo: int) -> None:
     """Roda a tarefa em intervalos, sem deixar erro parar o ciclo."""
     while True:
@@ -160,6 +182,7 @@ def iniciar() -> None:
     asyncio.create_task(_repetir("casamento", _casar_notas_soltas, INTERVALO_EMAIL_SEGUNDOS))
     asyncio.create_task(_repetir("CT-e", _acompanhar_ctes, INTERVALO_ACOMPANHAMENTO_SEGUNDOS))
     asyncio.create_task(_repetir("cartas frete", _enviar_cartas_agendadas, INTERVALO_CARTAS_SEGUNDOS))
+    asyncio.create_task(_repetir("carregamentos do Bsoft", _puxar_carregamentos, INTERVALO_CARREGAMENTOS_SEGUNDOS))
     if settings.rascunho_automatico:
         asyncio.create_task(_repetir("rascunho", _preparar_rascunhos, INTERVALO_ACOMPANHAMENTO_SEGUNDOS))
     else:
