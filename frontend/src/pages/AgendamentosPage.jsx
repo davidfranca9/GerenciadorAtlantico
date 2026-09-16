@@ -3,6 +3,7 @@ import * as api from "../api/client";
 import DateField from "../components/DateField";
 import { formatCPF, formatDateInput, formatNome, formatPhone, formatPlaca } from "../utils/format";
 import { MODELOS_VEICULO } from "../utils/vehicleCategory";
+import EmailMotoristaPanel from "../components/EmailMotoristaPanel";
 
 const STATUS_OPTIONS = ["Aguardando Agendamento", "Agendado", "Cancelado", "Carregou"];
 const ITEM_VAZIO = { pedidoId: null, pedido: "", cliente: "", produto: "", cidade: "", embalagem: "", toneladas: "", toneladasMax: 0 };
@@ -94,6 +95,15 @@ function DataAgendadaCell({ agendamento, onSalvo }) {
   );
 }
 
+// Horario gravado em UTC (sem fuso) -> hora local.
+function formatarQuando(iso) {
+  if (!iso) return "";
+  const data = new Date(/Z$|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`);
+  return Number.isNaN(data.getTime())
+    ? iso
+    : data.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
 function semAcentoBusca(texto) {
   return String(texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 }
@@ -139,6 +149,8 @@ export default function AgendamentosPage() {
   const [editError, setEditError] = useState("");
   const [docGerandoId, setDocGerandoId] = useState(null);
   const [verAbertoId, setVerAbertoId] = useState(null);
+  const [motoristaAbertoId, setMotoristaAbertoId] = useState(null);
+  const [avisoEmail, setAvisoEmail] = useState("");
 
   async function carregar() {
     setLoading(true);
@@ -574,6 +586,7 @@ export default function AgendamentosPage() {
       </div>
 
       {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
+      {avisoEmail && <div className="inline-alert info">{avisoEmail}</div>}
 
       <div className="card">
         <table>
@@ -620,12 +633,30 @@ export default function AgendamentosPage() {
                     <button className="btn-secondary" onClick={() => (editId === a.id ? fecharEdicao() : abrirEdicao(a))}>
                       {editId === a.id ? "Fechar" : "Editar"}
                     </button>
+                    <button className="btn-secondary" onClick={() => setMotoristaAbertoId(motoristaAbertoId === a.id ? null : a.id)}>
+                      {motoristaAbertoId === a.id ? "Fechar" : a.driver_name ? "Substituir motorista" : "Incluir motorista"}
+                    </button>
                     <button className="btn-secondary" disabled={docGerandoId === a.id} onClick={() => salvarDocumentos(a)}>
                       {docGerandoId === a.id ? "Gerando..." : "Salvar Documentos"}
                     </button>
                     <button className="btn-ghost" onClick={() => handleExcluir(a)}>Excluir</button>
                   </td>
                 </tr>
+                {motoristaAbertoId === a.id && (
+                  <tr key={`${a.id}-motorista`}>
+                    <td colSpan={9}>
+                      <EmailMotoristaPanel
+                        agendamento={a}
+                        aoFechar={() => setMotoristaAbertoId(null)}
+                        aoEnviar={(email) => {
+                          setMotoristaAbertoId(null);
+                          setAvisoEmail(`E-mail enviado: "${email.assunto}" para ${email.para.join(", ")}.`);
+                          carregar();
+                        }}
+                      />
+                    </td>
+                  </tr>
+                )}
                 {verAbertoId === a.id && (
                   <tr key={`${a.id}-ver`}>
                     <td colSpan={9}>
@@ -658,6 +689,18 @@ export default function AgendamentosPage() {
                             )}
                           </tbody>
                         </table>
+                        {(a.emails || []).length > 0 && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+                            <strong>E-mails de motorista</strong>
+                            {a.emails.map((email, i) => (
+                              <div key={i} style={{ fontSize: 12.5 }}>
+                                {email.tipo === "inclusao" ? "Inclusão" : "Substituição"}
+                                {email.teste ? " (teste)" : ""} · {formatarQuando(email.created_at)} · {email.motorista}
+                                {email.motorista_anterior ? ` no lugar de ${email.motorista_anterior}` : ""} · para {email.destinatarios}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem, CartaFreteEnviada, Pedido
-from ..servicos import carta_frete, saldo_pedidos
+from ..servicos import carta_frete, emails_agendamento, saldo_pedidos
 from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
 from ..servicos.documentos import gerar_autorizacao_xlsx
 from ..servicos.oc_html import gerar_oc_pdf_html
@@ -83,6 +83,9 @@ class OrdemColetaRequest(BaseModel):
     data_carregamento: str = ""
     observacoes: str = ""
     agendamento_id: Optional[int] = None
+    # So pros testes: manda pro endereco de teste em vez da fabrica, com
+    # [TESTE] no assunto. As telas nunca mandam isso.
+    teste: bool = False
 
 class CartaFreteRequest(BaseModel):
     DATA: str = ""
@@ -251,11 +254,20 @@ def gerar_autorizacao_coleta(payload: OrdemColetaRequest, db: Session = Depends(
     )
 
 
+def _assunto_teste(assunto: str, teste: bool) -> str:
+    return f"[TESTE] {assunto}" if teste else assunto
+
+
 @router.post("/ordens-coleta/enviar-autorizacao-email")
 def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(get_db)):
     """Manda a Autorizacao de Coleta (planilha) direto pra Fertimaxi, sem
     passar pela Ordem de Coleta - usado na tela de Contratos, onde o
-    motorista/placa ainda podem nao estar definidos."""
+    motorista/placa ainda podem nao estar definidos.
+
+    Registra o agendamento: e nele que, depois, o motorista e incluido e sai
+    o e-mail de inclusao de placas. Antes nada era gravado aqui, e o pedido
+    enviado sem motorista nao aparecia em Agendamentos.
+    """
     if not payload.produtos:
         raise HTTPException(status_code=400, detail="Selecione ao menos um produto/pedido")
     if payload.template.upper() == "HERINGER":
@@ -269,6 +281,7 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
     xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{nome_documento}.xlsx")
     _gerar_autorizacao(payload, produtos_dict, xlsx_path)
 
+    destinatarios = emails_agendamento.destino(RECIPIENTS_FERTIMAX, True) if payload.teste else RECIPIENTS_FERTIMAX
     vistos: set[tuple[str, str]] = set()
     assuntos_enviados: list[str] = []
     for produto in payload.produtos:
@@ -277,15 +290,21 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
             continue
         vistos.add((cliente, pedido))
         titulo, corpo = montar_autorizacao_agendamento(cliente, pedido, payload.data_carregamento, motorista=payload.nome)
+        titulo = _assunto_teste(titulo, payload.teste)
         try:
-            send_email_message(RECIPIENTS_FERTIMAX, titulo, corpo, [xlsx_path], imagens_inline=imagem_assinatura_inline())
+            send_email_message(destinatarios, titulo, corpo, [xlsx_path], imagens_inline=imagem_assinatura_inline())
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
         assuntos_enviados.append(titulo)
 
     if not assuntos_enviados:
         raise HTTPException(status_code=400, detail="Nenhum produto com cliente e pedido preenchidos pra enviar")
-    return {"ok": True, "email_enviado_para": RECIPIENTS_FERTIMAX}
+
+    agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, {"xlsx": xlsx_path})
+    agendamento.email_subject = "; ".join(assuntos_enviados)[:500]
+    agendamento.email_recipients = ", ".join(destinatarios)[:1000]
+    db.commit()
+    return {"ok": True, "email_enviado_para": destinatarios, "agendamento_id": agendamento.id}
 
 
 class EnviarOrdemColetaRequest(OrdemColetaRequest):
@@ -303,6 +322,8 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
 
     supplier_label = "Heringer" if payload.template.upper() == "HERINGER" else "Fertimaxi"
     recipients = RECIPIENTS_HERINGER if supplier_label == "Heringer" else RECIPIENTS_FERTIMAX
+    if payload.teste:
+        recipients = emails_agendamento.destino(recipients, True)
 
     tmp_dir = tempfile.mkdtemp()
     arquivos = _gerar_oc_arquivos(payload, tmp_dir)
@@ -321,7 +342,7 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
             vistos.add((cliente, pedido))
             titulo, corpo = montar_autorizacao_agendamento(cliente, pedido, payload.data_carregamento, motorista=payload.nome)
             try:
-                send_email_message(recipients, titulo, corpo, anexos, imagens_inline=imagem_assinatura_inline())
+                send_email_message(recipients, _assunto_teste(titulo, payload.teste), corpo, anexos, imagens_inline=imagem_assinatura_inline())
             except Exception as exc:
                 raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
             assuntos_enviados.append(titulo)
@@ -344,7 +365,7 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
         </body></html>
         """
         try:
-            send_email_message(recipients, subject, body, anexos)
+            send_email_message(recipients, _assunto_teste(subject, payload.teste), body, anexos)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
 

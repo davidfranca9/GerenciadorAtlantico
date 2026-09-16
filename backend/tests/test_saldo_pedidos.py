@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.auth import get_current_user  # noqa: E402
 from app.database import get_db  # noqa: E402
-from app.models import Agendamento, AgendamentoItem, Pedido  # noqa: E402
+from app.models import Agendamento, AgendamentoEmail, AgendamentoItem, Pedido  # noqa: E402
 from app.routers import agendamentos as rotas_agendamentos  # noqa: E402
 from app.routers import documentos as rotas_documentos  # noqa: E402
 from app.routers import pedidos as rotas_pedidos  # noqa: E402
@@ -35,7 +35,7 @@ UREIA = "UREIA PRILL MICROGRANULADA 46% N"
 
 @pytest.fixture
 def db():
-    sessao = banco_em_memoria(Pedido, Agendamento, AgendamentoItem)
+    sessao = banco_em_memoria(Pedido, Agendamento, AgendamentoItem, AgendamentoEmail)
     sessao.add_all([
         Pedido(id=1, contrato="040947", cliente="ACACIO TORATTI", produto=SUPER, embalagem="BIG BAG",
                cidade="Ibiai-MG", toneladas_total=180, toneladas_usadas=0),
@@ -192,7 +192,7 @@ def test_conciliacao_aplicada_acerta_e_liga_os_itens(db):
 
 @pytest.fixture
 def cliente(db, monkeypatch):
-    monkeypatch.setattr(rotas_agendamentos, "_enviar_autorizacoes_agendamento_fertimaxi", lambda agendamento: None)
+    monkeypatch.setattr(rotas_agendamentos, "_enviar_autorizacoes_agendamento_fertimaxi", lambda agendamento, **kw: None)
     app = FastAPI()
     for rota in (rotas_agendamentos.router, rotas_documentos.router, rotas_pedidos.router):
         app.include_router(rota)

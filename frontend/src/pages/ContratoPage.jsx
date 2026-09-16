@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as api from "../api/client";
 import DateField from "../components/DateField";
 import { useContrato } from "../context/ContratoContext";
@@ -33,6 +33,9 @@ export default function ContratoPage() {
   const [nomeCondutor, setNomeCondutor] = useState("");
   const [placaCavalo, setPlacaCavalo] = useState("");
   const [modeloVeiculo, setModeloVeiculo] = useState("");
+  // O agendamento que "Gerar" ou "Enviar" registrou pra esta selecao: o
+  // segundo botao atualiza o mesmo, em vez de criar outro.
+  const [agendamentoId, setAgendamentoId] = useState(null);
   const [gerandoAutorizacao, setGerandoAutorizacao] = useState(false);
   const [enviandoAutorizacao, setEnviandoAutorizacao] = useState(false);
 
@@ -82,6 +85,11 @@ export default function ContratoPage() {
     updateRowField(idx, "toneladas", novoTexto);
   }
 
+  const chaveSelecao = selectedRows.map((r) => `${r.contrato}|${r.produto}`).join(",");
+  useEffect(() => {
+    setAgendamentoId(null);
+  }, [chaveSelecao]);
+
   function buildAutorizacaoPayload() {
     return {
       template: supplier,
@@ -100,6 +108,7 @@ export default function ContratoPage() {
       placa1: placaCavalo,
       modelo_veiculo: modeloVeiculo,
       data_carregamento: dataCarregamento,
+      agendamento_id: agendamentoId || undefined,
     };
   }
 
@@ -111,7 +120,8 @@ export default function ContratoPage() {
     }
     setGerandoAutorizacao(true);
     try {
-      await api.gerarAutorizacaoColeta(buildAutorizacaoPayload());
+      const resultado = await api.gerarAutorizacaoColeta(buildAutorizacaoPayload());
+      if (resultado?.agendamentoId) setAgendamentoId(Number(resultado.agendamentoId));
       setStatus("Autorização de carregamento gerada com sucesso.");
     } catch (err) {
       setError(err.message);
@@ -128,8 +138,12 @@ export default function ContratoPage() {
     }
     setEnviandoAutorizacao(true);
     try {
-      await api.enviarAutorizacaoColetaEmail(buildAutorizacaoPayload());
-      setStatus("Autorização de carregamento enviada por e-mail com sucesso.");
+      const resultado = await api.enviarAutorizacaoColetaEmail(buildAutorizacaoPayload());
+      if (resultado?.agendamento_id) setAgendamentoId(resultado.agendamento_id);
+      setStatus(
+        `Autorização enviada por e-mail. Agendamento #${resultado?.agendamento_id} registrado: `
+        + "quando tiver o motorista, é só incluir em Agendamentos."
+      );
     } catch (err) {
       setError(err.message);
     } finally {

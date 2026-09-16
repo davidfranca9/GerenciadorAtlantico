@@ -83,6 +83,14 @@ export function criarAgendamento(payload) {
   return request("/agendamentos", { method: "POST", body: payload });
 }
 
+export function emailMotoristaConfig() {
+  return request("/agendamentos/email-motorista/config");
+}
+
+export function enviarEmailMotorista(agendamentoId, payload) {
+  return request(`/agendamentos/${agendamentoId}/email-motorista`, { method: "POST", body: payload });
+}
+
 export function atualizarStatusAgendamento(id, status) {
   return request(`/agendamentos/${id}/status`, { method: "PATCH", body: { status } });
 }

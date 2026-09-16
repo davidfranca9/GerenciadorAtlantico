@@ -97,6 +97,9 @@ class Agendamento(Base):
     itens: Mapped[list["AgendamentoItem"]] = relationship(
         back_populates="agendamento", cascade="all, delete-orphan"
     )
+    emails: Mapped[list["AgendamentoEmail"]] = relationship(
+        back_populates="agendamento", cascade="all, delete-orphan", order_by="AgendamentoEmail.created_at"
+    )
 
 
 class AgendamentoItem(Base):
@@ -113,6 +116,28 @@ class AgendamentoItem(Base):
     pedido_ref_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
 
     agendamento: Mapped[Agendamento] = relationship(back_populates="itens")
+
+
+class AgendamentoEmail(Base):
+    """E-mail de inclusao ou substituicao de motorista enviado pra fabrica.
+
+    Fica como historico: quem entrou, quem saiu, pra quem foi e se foi teste.
+    """
+
+    __tablename__ = "agendamento_emails"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agendamento_id: Mapped[int] = mapped_column(ForeignKey("agendamentos.id", ondelete="CASCADE"), index=True)
+    tipo: Mapped[str] = mapped_column(String(20), default="")  # inclusao | substituicao
+    assunto: Mapped[str] = mapped_column(String(500), default="")
+    destinatarios: Mapped[str] = mapped_column(String(1000), default="")
+    teste: Mapped[bool] = mapped_column(Boolean, default=False)
+    motorista: Mapped[str] = mapped_column(String(255), default="")
+    motorista_anterior: Mapped[str] = mapped_column(String(255), default="")
+    enviado_por: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    agendamento: Mapped[Agendamento] = relationship(back_populates="emails")
 
 
 class Pedido(Base):

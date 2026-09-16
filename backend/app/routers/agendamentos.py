@@ -10,9 +10,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
+from ..config import settings
 from ..database import get_db
-from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoItem, Pedido
-from ..servicos import saldo_pedidos
+from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoEmail, AgendamentoItem, Pedido
+from ..servicos import emails_agendamento, saldo_pedidos
 from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
 from .documentos import Produto, OrdemColetaRequest, _gerar_oc_arquivos
 
@@ -65,7 +66,7 @@ def _gerar_anexos_oc(agendamento: Agendamento) -> list[str]:
     return [arquivos["xlsx"]] if arquivos.get("xlsx") else []
 
 
-def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento) -> None:
+def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento, teste: bool = False) -> None:
     """Pra cada pedido/cliente distinto do agendamento, manda um e-mail pra
     Fertimaxi solicitando a autorizacao de agendamento, com a Autorizacao
     de Coleta (planilha) anexada. Falha no envio nao derruba a criacao do
@@ -88,8 +89,8 @@ def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento) -> None
         )
         try:
             send_email_message(
-                RECIPIENTES_AUTORIZACAO_FERTIMAXI,
-                titulo,
+                emails_agendamento.destino(RECIPIENTES_AUTORIZACAO_FERTIMAXI, True) if teste else RECIPIENTES_AUTORIZACAO_FERTIMAXI,
+                f"[TESTE] {titulo}" if teste else titulo,
                 corpo,
                 anexos,
                 imagens_inline=imagem_assinatura_inline(),
@@ -126,6 +127,8 @@ class AgendamentoIn(BaseModel):
     contato_cliente: str = ""
     observacoes: str = ""
     itens: list[AgendamentoItemIn] = []
+    # So pros testes: e-mail pro endereco de teste em vez da fabrica.
+    teste: bool = False
 
 
 class AgendamentoStatusIn(BaseModel):
@@ -172,6 +175,19 @@ def _to_dict(a: Agendamento) -> dict:
             }
             for it in a.itens
         ],
+        "emails": [
+            {
+                "tipo": e.tipo,
+                "assunto": e.assunto,
+                "destinatarios": e.destinatarios,
+                "teste": e.teste,
+                "motorista": e.motorista,
+                "motorista_anterior": e.motorista_anterior,
+                "enviado_por": e.enviado_por,
+                "created_at": e.created_at,
+            }
+            for e in a.emails
+        ],
     }
 
 
@@ -188,7 +204,7 @@ def listar_agendamentos(status: Optional[str] = None, db: Session = Depends(get_
 def criar_agendamento(payload: AgendamentoIn, db: Session = Depends(get_db)):
     itens = payload.itens
     agendamento = Agendamento(
-        **payload.model_dump(exclude={"itens"}),
+        **payload.model_dump(exclude={"itens", "teste"}),
         total_items=len(itens),
         total_tons=sum(i.toneladas for i in itens),
     )
@@ -201,7 +217,7 @@ def criar_agendamento(payload: AgendamentoIn, db: Session = Depends(get_db)):
     db.refresh(agendamento)
 
     if _eh_fertimaxi(agendamento.supplier):
-        _enviar_autorizacoes_agendamento_fertimaxi(agendamento)
+        _enviar_autorizacoes_agendamento_fertimaxi(agendamento, teste=payload.teste)
 
     return _to_dict(agendamento)
 
@@ -268,3 +284,171 @@ def atualizar_status(agendamento_id: int, payload: AgendamentoStatusIn, db: Sess
     db.commit()
     db.refresh(agendamento)
     return _to_dict(agendamento)
+
+
+# --------------------------------------------------------------------------
+# Inclusao e substituicao de motorista
+# --------------------------------------------------------------------------
+
+
+class ItemNovoIn(BaseModel):
+    pedido_id: Optional[int] = None
+    pedido: str = ""
+    cliente: str = ""
+    produto: str = ""
+    cidade: str = ""
+    embalagem: str = ""
+    toneladas: float = 0
+
+
+class EmailMotoristaIn(BaseModel):
+    tipo: str
+    driver_name: str = ""
+    driver_cpf: str = ""
+    driver_phone: str = ""
+    cnh: str = ""
+    plate_cavalo: str = ""
+    plate_carreta1: str = ""
+    plate_carreta2: str = ""
+    modelo_veiculo: str = ""
+    novos_itens: list[ItemNovoIn] = []
+    assunto: str = ""
+    mensagem: str = ""
+    teste: bool = False
+
+
+@router.get("/email-motorista/config")
+def config_email_motorista():
+    """Pra tela: pra onde o e-mail vai, se esta em teste, e o texto pronto."""
+    return {
+        "em_teste": settings.emails_motorista_em_teste,
+        "email_teste": settings.email_teste_fabrica,
+        "copia": settings.gmail_sender_email,
+        "destinatarios": {
+            "Fertimaxi": emails_agendamento.destinatarios_da_fabrica("Fertimaxi"),
+            "Heringer": emails_agendamento.destinatarios_da_fabrica("Heringer"),
+        },
+        "modelos": emails_agendamento.MODELOS_MENSAGEM,
+    }
+
+
+@router.post("/{agendamento_id}/email-motorista")
+def enviar_email_motorista(
+    agendamento_id: int,
+    payload: EmailMotoristaIn,
+    db: Session = Depends(get_db),
+    usuario=Depends(get_current_user),
+):
+    """Inclusao ou substituicao de motorista.
+
+    Grava o motorista (e os pedidos que entraram junto) no agendamento e
+    manda um e-mail NOVO pra fabrica, com a autorizacao atualizada em anexo.
+    Se o e-mail nao sair, nada e gravado - da pra tentar de novo.
+    """
+    agendamento = db.get(Agendamento, agendamento_id)
+    if agendamento is None:
+        raise HTTPException(status_code=404, detail="Agendamento nao encontrado")
+
+    tipo = (payload.tipo or "").strip().lower()
+    if tipo not in emails_agendamento.TIPOS:
+        raise HTTPException(status_code=400, detail="Tipo de e-mail invalido: use inclusao ou substituicao")
+    motorista_atual = (agendamento.driver_name or "").strip()
+    if tipo == "inclusao" and motorista_atual:
+        raise HTTPException(status_code=409, detail=f"Este agendamento ja tem motorista ({motorista_atual}): use substituicao.")
+    if tipo == "substituicao" and not motorista_atual:
+        raise HTTPException(status_code=409, detail="Este agendamento ainda nao tem motorista: use inclusao.")
+    if not payload.driver_name.strip():
+        raise HTTPException(status_code=400, detail="Informe o nome do motorista.")
+    if not payload.plate_cavalo.strip():
+        raise HTTPException(status_code=400, detail="Informe a placa do cavalo.")
+
+    anterior = {
+        "nome": agendamento.driver_name, "cpf": agendamento.driver_cpf, "fone": agendamento.driver_phone,
+        "cnh": agendamento.cnh, "placa1": agendamento.plate_cavalo, "placa2": agendamento.plate_carreta1,
+        "placa3": agendamento.plate_carreta2, "modelo": agendamento.modelo_veiculo,
+    }
+    itens = [
+        {"pedido": i.pedido, "cliente": i.cliente, "produto": i.produto, "cidade": i.cidade,
+         "embalagem": i.embalagem, "toneladas": i.toneladas, "pedido_id": i.pedido_ref_id}
+        for i in agendamento.itens
+    ]
+    itens += [
+        i.model_dump() for i in payload.novos_itens
+        if (i.pedido.strip() or i.pedido_id) and i.toneladas > 0
+    ]
+
+    agendamento.driver_name = payload.driver_name.strip()
+    agendamento.driver_cpf = payload.driver_cpf.strip()
+    agendamento.driver_phone = payload.driver_phone.strip()
+    agendamento.cnh = payload.cnh.strip()
+    agendamento.plate_cavalo = payload.plate_cavalo.strip()
+    agendamento.plate_carreta1 = payload.plate_carreta1.strip()
+    agendamento.plate_carreta2 = payload.plate_carreta2.strip()
+    agendamento.modelo_veiculo = payload.modelo_veiculo.strip()
+    # Pedidos que entraram junto descontam o saldo; os que ja estavam, nao.
+    saldo_pedidos.gravar_itens(db, agendamento, itens)
+    agendamento.total_items = len(agendamento.itens)
+    agendamento.total_tons = sum(i.toneladas for i in agendamento.itens)
+    agendamento.updated_at = datetime.utcnow()
+
+    novo = {
+        "nome": agendamento.driver_name, "cpf": agendamento.driver_cpf, "fone": agendamento.driver_phone,
+        "cnh": agendamento.cnh, "placa1": agendamento.plate_cavalo, "placa2": agendamento.plate_carreta1,
+        "placa3": agendamento.plate_carreta2, "modelo": agendamento.modelo_veiculo,
+    }
+    template = "HERINGER" if (agendamento.supplier or "").strip().lower() == "heringer" else "AFL"
+    documento = OrdemColetaRequest(
+        template=template,
+        produtos=[
+            Produto(contrato=i.pedido, produto=i.produto, embalagem=i.embalagem, toneladas=str(i.toneladas),
+                    cidade=i.cidade, cliente=i.cliente, pedido_id=i.pedido_ref_id)
+            for i in agendamento.itens
+        ],
+        cpf=agendamento.driver_cpf, nome=agendamento.driver_name, cnh=agendamento.cnh, fone=agendamento.driver_phone,
+        placa1=agendamento.plate_cavalo, placa2=agendamento.plate_carreta1, placa3=agendamento.plate_carreta2,
+        modelo_veiculo=agendamento.modelo_veiculo, data_carregamento=agendamento.loading_date,
+        observacoes=agendamento.observacoes,
+    )
+    try:
+        arquivos = _gerar_oc_arquivos(documento, tempfile.mkdtemp())
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Falha ao gerar a autorizacao: {exc}. Nada foi alterado.")
+    anexos = [arquivos["xlsx"]] if template == "AFL" and arquivos.get("xlsx") else [arquivos["pdf"]]
+
+    teste = payload.teste or settings.emails_motorista_em_teste
+    reais = emails_agendamento.destinatarios_da_fabrica(agendamento.supplier)
+    para = emails_agendamento.destino(reais, teste)
+    assunto = payload.assunto.strip() or emails_agendamento.assunto_padrao(tipo, agendamento.driver_name, agendamento.itens)
+    if teste:
+        assunto = f"[TESTE] {assunto}"
+    mensagem = payload.mensagem.strip() or emails_agendamento.mensagem_padrao(
+        tipo, agendamento.itens, agendamento.data_agendada or agendamento.loading_date, anterior["nome"]
+    )
+    corpo = emails_agendamento.montar_corpo(
+        tipo, mensagem, novo, agendamento.itens,
+        anterior=anterior if tipo == "substituicao" else None,
+        iria_para=reais if teste else None,
+    )
+    try:
+        send_email_message(para, assunto, corpo, anexos, imagens_inline=imagem_assinatura_inline())
+    except Exception as exc:
+        db.rollback()
+        logger.warning("E-mail de %s do agendamento %s nao saiu: %s", tipo, agendamento_id, str(exc)[:200])
+        raise HTTPException(status_code=502, detail=f"O e-mail nao saiu ({exc}). Nada foi alterado no agendamento.")
+
+    agendamento.email_subject = assunto[:500]
+    agendamento.email_recipients = ", ".join(para)[:1000]
+    db.add(AgendamentoEmail(
+        agendamento_id=agendamento.id,
+        tipo=tipo,
+        assunto=assunto[:500],
+        destinatarios=", ".join(para)[:1000],
+        teste=teste,
+        motorista=agendamento.driver_name,
+        motorista_anterior=(anterior["nome"] or "") if tipo == "substituicao" else "",
+        enviado_por=getattr(usuario, "email", "") or "",
+    ))
+    db.commit()
+    db.refresh(agendamento)
+    return {"agendamento": _to_dict(agendamento), "email": {"tipo": tipo, "assunto": assunto, "para": para, "teste": teste}}
