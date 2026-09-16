@@ -83,20 +83,39 @@ def test_arquivo_com_erro_nao_derruba_os_outros(cliente, monkeypatch):
     assert [v["placa"] for v in corpo["veiculos"]] == ["NZB4H89"]
 
 
-def test_se_a_ia_falha_le_sem_ia_e_avisa_qual_arquivo(cliente, monkeypatch):
-    # O caminho antigo de duas chamadas saiu: falhava igual e dobrava a espera.
-    segunda_chamada = []
+def test_se_a_ia_falha_nao_preenche_chute_e_avisa_qual_arquivo(cliente, monkeypatch):
+    # 16/09/2026: com a IA fora, o OCR local trocou registro e seguro da CNH
+    # e levou 30 s. Agora o arquivo fica de fora, com aviso pra reenviar.
+    ocr_local, segunda_chamada = [], []
     monkeypatch.setattr(ocr_gemini, "ler_documento_com_gemini", leitura_simulada(falhar=("cavalo",)))
     monkeypatch.setattr(ocr_gemini, "classificar_e_extrair_documento_com_gemini", lambda c: segunda_chamada.append(c))
-    monkeypatch.setattr(rotas_bsoft, "_classificar_e_extrair_fallback", leitura_simulada())
+    monkeypatch.setattr(rotas_bsoft, "_classificar_e_extrair_fallback", lambda c: ocr_local.append(c))
     corpo = enviar(cliente, "cnh", "cavalo").json()
-    assert segunda_chamada == []
-    assert [v["placa"] for v in corpo["veiculos"]] == ["PFJ2I64"]
+    assert ocr_local == [] and segunda_chamada == []
+    assert corpo["veiculos"] == [] and corpo["motorista"]["nome"] == CNH["nome"]
     leituras = {l["arquivo"]: l for l in corpo["leituras"]}
     assert leituras["cnh.pdf"]["metodo"] == "ia" and leituras["cnh.pdf"]["aviso"] == ""
-    assert leituras["cavalo.pdf"]["metodo"] == "ocr_local" and leituras["cavalo.pdf"]["aviso"] == "a IA não respondeu"
+    assert leituras["cavalo.pdf"]["metodo"] == "falhou" and leituras["cavalo.pdf"]["aviso"] == "a IA não conseguiu ler o arquivo"
     assert leituras["cavalo.pdf"]["erro_ia"] == "RuntimeError: IA fora do ar" and leituras["cnh.pdf"]["erro_ia"] == ""
     assert all(isinstance(l["segundos"], float) for l in corpo["leituras"])
+
+
+def test_ia_ocupada_avisa_pra_tentar_de_novo(cliente, monkeypatch):
+    def ocupada(caminho):
+        raise ocr_gemini.genai_errors.ServerError(503, {"error": {"code": 503, "message": "high demand", "status": "UNAVAILABLE"}})
+    monkeypatch.setattr(ocr_gemini, "ler_documento_com_gemini", ocupada)
+    leitura = enviar(cliente, "cnh").json()["leituras"][0]
+    assert (leitura["metodo"], leitura["aviso"]) == ("falhou", "a IA está ocupada agora")
+
+
+def test_sem_ia_configurada_usa_o_ocr_local_com_aviso(cliente, monkeypatch):
+    def sem_chave(caminho):
+        raise ocr_gemini.GeminiIndisponivel("GEMINI_API_KEY nao configurada")
+    monkeypatch.setattr(ocr_gemini, "ler_documento_com_gemini", sem_chave)
+    monkeypatch.setattr(rotas_bsoft, "_classificar_e_extrair_fallback", leitura_simulada())
+    corpo = enviar(cliente, "cavalo").json()
+    assert [v["placa"] for v in corpo["veiculos"]] == ["PFJ2I64"]
+    assert (corpo["leituras"][0]["metodo"], corpo["leituras"][0]["aviso"]) == ("ocr_local", "IA não configurada")
 
 
 # --------------------------------------------------------------------------

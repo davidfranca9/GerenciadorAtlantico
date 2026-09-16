@@ -24,9 +24,10 @@ from ..config import settings
 from .bsoft_lookup import BSOFT_CATEGORIAS_VEICULO, BSOFT_SIMPLE_BRANDS_LIST, BSOFT_TIPOS_CARROCERIA_NOMES
 
 # Em ordem de preferencia. O Google aposenta modelo (o 2.0-flash saiu em
-# 08/2026): se um nao existir mais ou estiver sem cota, vai pro proximo em
-# vez de cair direto no OCR local, que erra muito mais.
-MODELOS = ("gemini-3.6-flash", "gemini-flash-latest", "gemini-2.5-flash")
+# 08/2026 e o 2.5-flash "nao esta mais disponivel pra novos usuarios"): se
+# um nao existir ou estiver ocupado, vai pro proximo. Os "-latest" sao
+# apelidos que o Google aponta pro modelo atual.
+MODELOS = ("gemini-3.6-flash", "gemini-flash-latest", "gemini-flash-lite-latest")
 MODELO = MODELOS[0]
 # Ler documento nao pede raciocinio longo. No padrao do modelo um CRLV de
 # 80 KB levava ~29 s e uma foto de CNH ~16 s - quase tudo "pensando".

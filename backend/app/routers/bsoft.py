@@ -194,30 +194,35 @@ def _classificar_e_extrair_fallback(path: str) -> dict:
 
 
 def _ler_documento(path: str) -> dict:
-    """Um arquivo: IA numa chamada so. Se a IA falhar, OCR local - COM
-    AVISO, porque ele erra bem mais (foi dele o "OL RE" antes do nome).
+    """Um arquivo: IA numa chamada so (com troca de modelo quando um esta
+    ocupado). Se a IA falhar, NAO preenche nada: o OCR local lia a CNH
+    trocando campos ("OL RE" antes do nome, registro no lugar do seguro,
+    categoria "X") e levava ~30 s. Melhor avisar pra tentar de novo.
 
-    O caminho antigo de duas chamadas a IA saiu: quando a combinada falhava,
-    ele falhava igual e so dobrava a espera. Erro num arquivo vira
-    DESCONHECIDO, pra nao derrubar os outros que foram enviados junto."""
+    O OCR local so entra quando a IA nem esta configurada. Erro num arquivo
+    nao derruba os outros que foram enviados junto."""
     inicio = time.perf_counter()
     aviso = ""
     erro_ia = ""
     try:
         resultado = ocr_gemini.ler_documento_com_gemini(path)
         metodo = "ia"
-    except Exception as exc:
-        aviso = "IA não configurada" if isinstance(exc, ocr_gemini.GeminiIndisponivel) else "a IA não respondeu"
-        # Motivo curto (tipo e codigo do erro da API), sem nada do documento.
-        codigo = getattr(exc, "code", None)
-        erro_ia = f"{type(exc).__name__}{f' {codigo}' if codigo else ''}: {str(exc)[:240]}"
-        logger.warning("importar-documentos: leitura pela IA falhou (%s)", erro_ia)
+    except ocr_gemini.GeminiIndisponivel:
+        aviso = "IA não configurada"
         try:
             resultado = _classificar_e_extrair_fallback(path)
             metodo = "ocr_local"
         except Exception:
             resultado = {"tipo": "DESCONHECIDO", "dados": {}}
             metodo = "falhou"
+    except Exception as exc:
+        codigo = getattr(exc, "code", None)
+        aviso = "a IA está ocupada agora" if codigo in (429, 500, 503) else "a IA não conseguiu ler o arquivo"
+        # Motivo curto (tipo e codigo do erro da API), sem nada do documento.
+        erro_ia = f"{type(exc).__name__}{f' {codigo}' if codigo else ''}: {str(exc)[:240]}"
+        logger.warning("importar-documentos: leitura pela IA falhou (%s)", erro_ia)
+        resultado = {"tipo": "DESCONHECIDO", "dados": {}}
+        metodo = "falhou"
     resultado = {**resultado, "metodo": metodo, "segundos": round(time.perf_counter() - inicio, 1), "aviso": aviso, "erro_ia": erro_ia}
     logger.info("importar-documentos: %s lido por %s em %.1f s", resultado["tipo"], metodo, resultado["segundos"])
     return resultado

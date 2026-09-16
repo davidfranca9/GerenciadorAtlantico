@@ -195,11 +195,15 @@ export default function BsoftPage() {
     setStatus(files.length > 1 ? `Lendo ${files.length} documentos ao mesmo tempo...` : "Lendo o documento...");
     try {
       const { motorista: dadosMotorista, veiculos: dadosVeiculos, leituras = [] } = await api.bsoftImportarDocumentos(files);
-      // Leitura sem a IA (OCR local) erra mais: o aviso diz qual arquivo conferir.
-      const semIa = leituras.filter((l) => l.metodo !== "ia");
-      const avisoLeitura = semIa.length
-        ? ` Atenção: ${semIa.map((l) => l.arquivo).join(", ")} ${semIa.length > 1 ? "foram lidos" : "foi lido"} sem a IA (${semIa[0].aviso || "falha na leitura"}). Confira os campos.`
-        : "";
+      // Arquivo que a IA nao leu fica de fora (nada e preenchido com chute):
+      // o aviso diz qual mandar de novo. Leitura sem IA (so quando ela nem
+      // esta configurada) erra mais: pede pra conferir.
+      const falharam = leituras.filter((l) => l.metodo === "falhou");
+      const semIa = leituras.filter((l) => l.metodo === "ocr_local");
+      const avisoLeitura = [
+        falharam.length ? ` Não consegui ler ${falharam.map((l) => l.arquivo).join(", ")}: ${falharam[0].aviso}. Envie ${falharam.length > 1 ? "esses arquivos" : "esse arquivo"} de novo.` : "",
+        semIa.length ? ` Atenção: ${semIa.map((l) => l.arquivo).join(", ")} ${semIa.length > 1 ? "foram lidos" : "foi lido"} sem a IA. Confira os campos.` : "",
+      ].join("");
       const maisDemorado = Math.max(0, ...leituras.map((l) => l.segundos || 0));
       const tempoLeitura = maisDemorado ? ` Leitura em ${Math.round(maisDemorado)} s.` : "";
       const temMotorista = Boolean(dadosMotorista && Object.keys(dadosMotorista).length > 0);
