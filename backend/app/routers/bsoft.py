@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import tempfile
+import time
 from typing import Optional
 
 import requests
@@ -28,6 +30,8 @@ from ..servicos.bsoft_lookup import (
     BSOFT_TIPOS_EQUIPAMENTO,
     BSOFT_TIPOS_RODADO_NOMES,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/bsoft", tags=["bsoft"], dependencies=[Depends(get_current_user)])
 
@@ -190,22 +194,29 @@ def _classificar_e_extrair_fallback(path: str) -> dict:
 
 
 def _ler_documento(path: str) -> dict:
-    """Um arquivo: IA numa chamada so; se ela falhar, o caminho antigo em
-    duas chamadas; sem IA, o OCR local. Erro num arquivo vira DESCONHECIDO,
-    pra nao derrubar os outros que foram enviados junto."""
+    """Um arquivo: IA numa chamada so. Se a IA falhar, OCR local - COM
+    AVISO, porque ele erra bem mais (foi dele o "OL RE" antes do nome).
+
+    O caminho antigo de duas chamadas a IA saiu: quando a combinada falhava,
+    ele falhava igual e so dobrava a espera. Erro num arquivo vira
+    DESCONHECIDO, pra nao derrubar os outros que foram enviados junto."""
+    inicio = time.perf_counter()
+    aviso = ""
     try:
-        return ocr_gemini.ler_documento_com_gemini(path)
-    except ocr_gemini.GeminiIndisponivel:
-        pass
-    except Exception:
+        resultado = ocr_gemini.ler_documento_com_gemini(path)
+        metodo = "ia"
+    except Exception as exc:
+        aviso = "IA não configurada" if isinstance(exc, ocr_gemini.GeminiIndisponivel) else "a IA não respondeu"
+        logger.warning("importar-documentos: leitura pela IA falhou (%s: %s)", type(exc).__name__, str(exc)[:200])
         try:
-            return ocr_gemini.classificar_e_extrair_documento_com_gemini(path)
+            resultado = _classificar_e_extrair_fallback(path)
+            metodo = "ocr_local"
         except Exception:
-            pass
-    try:
-        return _classificar_e_extrair_fallback(path)
-    except Exception:
-        return {"tipo": "DESCONHECIDO", "dados": {}}
+            resultado = {"tipo": "DESCONHECIDO", "dados": {}}
+            metodo = "falhou"
+    resultado = {**resultado, "metodo": metodo, "segundos": round(time.perf_counter() - inicio, 1), "aviso": aviso}
+    logger.info("importar-documentos: %s lido por %s em %.1f s", resultado["tipo"], metodo, resultado["segundos"])
+    return resultado
 
 
 @router.post("/importar-documentos")
@@ -229,13 +240,18 @@ async def importar_documentos(files: list[UploadFile]):
 
     driver_data: dict = {}
     vehicle_docs: list[dict] = []
+    # Como cada arquivo foi lido: a tela avisa quando nao foi pela IA.
+    leituras = [
+        {"arquivo": file.filename or "", "tipo": r["tipo"], "metodo": r["metodo"], "segundos": r["segundos"], "aviso": r["aviso"]}
+        for file, r in zip(files, resultados)
+    ]
     for resultado in resultados:
         if resultado["tipo"] in ("CNH", "RNTRC"):
             # So o que veio preenchido: o RNTRC nao apaga o nome lido da CNH.
             driver_data.update({campo: valor for campo, valor in (resultado["dados"] or {}).items() if valor})
         elif resultado["tipo"] == "CRLV":
             vehicle_docs.append(resultado["dados"])
-    return {"motorista": driver_data, "veiculos": vehicle_docs}
+    return {"motorista": driver_data, "veiculos": vehicle_docs, "leituras": leituras}
 
 
 class VeiculoIn(BaseModel):

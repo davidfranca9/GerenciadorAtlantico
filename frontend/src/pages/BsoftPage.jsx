@@ -194,11 +194,18 @@ export default function BsoftPage() {
     setLoadingAction("docs");
     setStatus(files.length > 1 ? `Lendo ${files.length} documentos ao mesmo tempo...` : "Lendo o documento...");
     try {
-      const { motorista: dadosMotorista, veiculos: dadosVeiculos } = await api.bsoftImportarDocumentos(files);
+      const { motorista: dadosMotorista, veiculos: dadosVeiculos, leituras = [] } = await api.bsoftImportarDocumentos(files);
+      // Leitura sem a IA (OCR local) erra mais: o aviso diz qual arquivo conferir.
+      const semIa = leituras.filter((l) => l.metodo !== "ia");
+      const avisoLeitura = semIa.length
+        ? ` Atenção: ${semIa.map((l) => l.arquivo).join(", ")} ${semIa.length > 1 ? "foram lidos" : "foi lido"} sem a IA (${semIa[0].aviso || "falha na leitura"}). Confira os campos.`
+        : "";
+      const maisDemorado = Math.max(0, ...leituras.map((l) => l.segundos || 0));
+      const tempoLeitura = maisDemorado ? ` Leitura em ${Math.round(maisDemorado)} s.` : "";
       const temMotorista = Boolean(dadosMotorista && Object.keys(dadosMotorista).length > 0);
       const veiculosLidos = dadosVeiculos || [];
       if (!temMotorista && veiculosLidos.length === 0) {
-        setStatus("Os documentos foram lidos, mas nenhum dado útil foi encontrado.");
+        setStatus(`Os documentos foram lidos, mas nenhum dado útil foi encontrado.${avisoLeitura}`);
         return;
       }
 
@@ -272,7 +279,7 @@ export default function BsoftPage() {
       if (temMotorista) partes.push("motorista");
       if (destinos.length) partes.push(destinos.join(", "));
       const aviso = semVaga ? ` ${semVaga} CRLV sem vaga livre (limpe um veículo para trocar).` : "";
-      setStatus(`Documentos lidos e somados ao formulário: ${partes.join(" e ") || "nada novo"}.${aviso}`);
+      setStatus(`Documentos lidos e somados ao formulário: ${partes.join(" e ") || "nada novo"}.${aviso}${tempoLeitura}${avisoLeitura}`);
     } catch (err) {
       setError(`Erro no OCR: ${err.message}`);
     } finally {
