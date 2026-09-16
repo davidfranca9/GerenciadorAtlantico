@@ -574,3 +574,71 @@ export function listarCartasFrete() {
 export function excluirCartaFrete(id) {
   return request(`/cartas-frete/${id}`, { method: "DELETE" });
 }
+
+// --------------------------------------------------------------------------
+// Financeiro (so administrador)
+// --------------------------------------------------------------------------
+
+function consulta(params) {
+  const busca = new URLSearchParams();
+  Object.entries(params || {}).forEach(([chave, valor]) => {
+    if (valor !== undefined && valor !== null && valor !== "") busca.set(chave, valor);
+  });
+  const texto = busca.toString();
+  return texto ? `?${texto}` : "";
+}
+
+async function enviarArquivoFinanceiro(path, arquivo) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("arquivo", arquivo);
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || "Não foi possível ler o arquivo");
+  }
+  return res.json();
+}
+
+export const financeiro = {
+  contas: () => request("/financeiro/contas"),
+  criarConta: (dados) => request("/financeiro/contas", { method: "POST", body: dados }),
+  atualizarConta: (id, dados) => request(`/financeiro/contas/${id}`, { method: "PATCH", body: dados }),
+  importarExtrato: (contaId, arquivo, aplicar) =>
+    enviarArquivoFinanceiro(`/financeiro/contas/${contaId}/importar-extrato${consulta({ aplicar })}`, arquivo),
+
+  caixa: (inicio, fim, contaId) => request(`/financeiro/caixa${consulta({ inicio, fim, conta_id: contaId })}`),
+  criarLancamento: (dados) => request("/financeiro/lancamentos", { method: "POST", body: dados }),
+  atualizarLancamento: (id, dados) => request(`/financeiro/lancamentos/${id}`, { method: "PATCH", body: dados }),
+  excluirLancamento: (id) => request(`/financeiro/lancamentos/${id}`, { method: "DELETE" }),
+
+  resultado: (competencia) => request(`/financeiro/resultado${consulta({ competencia })}`),
+  criarCarregamento: (dados) => request("/financeiro/carregamentos", { method: "POST", body: dados }),
+  atualizarCarregamento: (id, dados) => request(`/financeiro/carregamentos/${id}`, { method: "PUT", body: dados }),
+  excluirCarregamento: (id) => request(`/financeiro/carregamentos/${id}`, { method: "DELETE" }),
+  definirMeta: (competencia, metaToneladas) =>
+    request(`/financeiro/metas/${competencia}`, { method: "PUT", body: { meta_toneladas: metaToneladas } }),
+
+  agenda: (competencia) => request(`/financeiro/agenda${consulta({ competencia })}`),
+  pagar: (dados) => request("/financeiro/agenda/pagar", { method: "POST", body: dados }),
+  desfazerPagamento: (dados) => request("/financeiro/agenda/desfazer", { method: "POST", body: dados }),
+  pagarVencidas: (competencia, ate) => request("/financeiro/agenda/pagar-vencidas", { method: "POST", body: { competencia, ate } }),
+  despesas: (competencia) => request(`/financeiro/despesas${consulta({ competencia })}`),
+  criarDespesa: (dados) => request("/financeiro/despesas", { method: "POST", body: dados }),
+  atualizarDespesa: (id, dados) => request(`/financeiro/despesas/${id}`, { method: "PUT", body: dados }),
+  excluirDespesa: (id) => request(`/financeiro/despesas/${id}`, { method: "DELETE" }),
+  criarAvulsa: (dados) => request("/financeiro/contas-avulsas", { method: "POST", body: dados }),
+  excluirAvulsa: (id) => request(`/financeiro/contas-avulsas/${id}`, { method: "DELETE" }),
+  dividas: () => request("/financeiro/dividas"),
+  criarDivida: (dados) => request("/financeiro/dividas", { method: "POST", body: dados }),
+  atualizarDivida: (id, dados) => request(`/financeiro/dividas/${id}`, { method: "PUT", body: dados }),
+  parcelaPaga: (id) => request(`/financeiro/dividas/${id}/parcela-paga`, { method: "POST" }),
+  excluirDivida: (id) => request(`/financeiro/dividas/${id}`, { method: "DELETE" }),
+
+  importarPlanilha: (arquivo, aplicar, competencia) =>
+    enviarArquivoFinanceiro(`/financeiro/importar-planilha${consulta({ aplicar, competencia })}`, arquivo),
+};

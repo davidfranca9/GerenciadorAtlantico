@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Float, ForeignKey, Integer, LargeBinary, String, Text, DateTime, Boolean, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -344,4 +344,155 @@ class NotaFiscalRecebida(Base):
     # O que aconteceu na tentativa de rascunho automatico (ver
     # servicos/rascunho_automatico.py): vazio = nao tentou.
     rascunho_resultado: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# --------------------------------------------------------------------------
+# Financeiro: caixa dos bancos, resultado dos carregamentos e contas a pagar.
+# Substitui as planilhas "Fluxo Caixa" e "Controle de carregamentos".
+# Dinheiro em Numeric (centavo exato no banco), lido como float.
+# --------------------------------------------------------------------------
+
+def _dinheiro():
+    return Numeric(14, 2, asdecimal=False)
+
+
+class ContaBancaria(Base):
+    __tablename__ = "contas_bancarias"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nome: Mapped[str] = mapped_column(String(80))  # "Nubank"
+    instituicao: Mapped[str] = mapped_column(String(120), default="")  # "Nu Pagamentos"
+    cor: Mapped[str] = mapped_column(String(9), default="")
+    # Saldo no COMECO do dia `saldo_inicial_em`: lancamentos desse dia em
+    # diante mexem no saldo; os de antes sao historia (ja estao nele).
+    saldo_inicial: Mapped[float] = mapped_column(_dinheiro(), default=0)
+    saldo_inicial_em: Mapped[date] = mapped_column(Date)
+    ativa: Mapped[bool] = mapped_column(Boolean, default=True)
+    ordem: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class LancamentoCaixa(Base):
+    __tablename__ = "lancamentos_caixa"
+    # O mesmo FITID do extrato (ou a mesma linha da planilha) nao entra duas vezes.
+    __table_args__ = (UniqueConstraint("conta_id", "id_externo", name="uq_lancamento_conta_externo"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    conta_id: Mapped[int] = mapped_column(ForeignKey("contas_bancarias.id"), index=True)
+    data: Mapped[date] = mapped_column(Date, index=True)
+    tipo: Mapped[str] = mapped_column(String(10))  # entrada | saida
+    forma: Mapped[str] = mapped_column(String(20), default="OUTRO")  # PIX, TRANSFERENCIA, BOLETO...
+    descricao: Mapped[str] = mapped_column(String(255), default="")
+    valor: Mapped[float] = mapped_column(_dinheiro())  # sempre positivo; o tipo da o sinal
+    # Transferencia entre contas proprias: o mesmo codigo nas duas pontas.
+    transferencia: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    origem: Mapped[str] = mapped_column(String(20), default="manual")  # manual | planilha | extrato | agenda
+    id_externo: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    criado_por: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class MetaMensal(Base):
+    __tablename__ = "metas_mensais"
+
+    competencia: Mapped[str] = mapped_column(String(7), primary_key=True)  # "2026-09"
+    meta_toneladas: Mapped[float] = mapped_column(Float, default=0)
+
+
+class CarregamentoFinanceiro(Base):
+    """Uma linha da aba LUCRO BRUTO: quanto a carga rendeu.
+
+    Cada parte do frete pode vir por tonelada (multiplica pelo peso) ou ja
+    como total fechado - o total, quando existe, manda."""
+
+    __tablename__ = "carregamentos_financeiros"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    competencia: Mapped[str] = mapped_column(String(7), index=True)
+    ctes: Mapped[str] = mapped_column(String(120), default="")
+    data_emissao: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    motorista: Mapped[str] = mapped_column(String(255), default="")
+    fabrica: Mapped[str] = mapped_column(String(120), default="")
+    destino: Mapped[str] = mapped_column(String(160), default="")
+    contratante: Mapped[str] = mapped_column(String(120), default="")
+    peso: Mapped[float] = mapped_column(Float, default=0)
+    frete_empresa_ton: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    frete_empresa_total: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    frete_motorista_ton: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    frete_motorista_total: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    agenciamento_ton: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    agenciamento_total: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    comissao_ton: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    comissao_total: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    cancelado: Mapped[bool] = mapped_column(Boolean, default=False)
+    observacao: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Despesa(Base):
+    """Conta fixa do mes (abas GASTOS EMPRESA / GASTOS PESSOAIS).
+
+    Parcelada: `parcela_inicial` e a parcela de `competencia_inicio`; nos
+    meses seguintes a parcela anda sozinha e some depois da ultima."""
+
+    __tablename__ = "despesas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    escopo: Mapped[str] = mapped_column(String(10), index=True)  # empresa | pessoal
+    grupo: Mapped[str] = mapped_column(String(80), default="")
+    descricao: Mapped[str] = mapped_column(String(160))
+    dia_vencimento: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    valor: Mapped[float] = mapped_column(_dinheiro(), default=0)
+    parcela_inicial: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    parcelas_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    competencia_inicio: Mapped[str] = mapped_column(String(7))
+    # Entra no "lucro real" do mes. Seguros e Buonny, por exemplo, so
+    # entram na precificacao do CT-e.
+    conta_no_resultado: Mapped[bool] = mapped_column(Boolean, default=True)
+    entra_precificacao: Mapped[bool] = mapped_column(Boolean, default=False)
+    ativa: Mapped[bool] = mapped_column(Boolean, default=True)
+    ordem: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ContaAvulsa(Base):
+    """Pagamento que nao se repete: posto, cheque, acerto."""
+
+    __tablename__ = "contas_avulsas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    escopo: Mapped[str] = mapped_column(String(10), default="empresa")
+    data: Mapped[date] = mapped_column(Date, index=True)
+    descricao: Mapped[str] = mapped_column(String(160))
+    valor: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)  # vazio = valor a definir
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PagamentoAgenda(Base):
+    __tablename__ = "pagamentos_agenda"
+    __table_args__ = (UniqueConstraint("origem", "origem_id", "competencia", name="uq_pagamento_agenda"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    origem: Mapped[str] = mapped_column(String(10))  # despesa | avulsa
+    origem_id: Mapped[int] = mapped_column(Integer)
+    competencia: Mapped[str] = mapped_column(String(7), index=True)
+    valor: Mapped[float] = mapped_column(_dinheiro())
+    pago_em: Mapped[date] = mapped_column(Date)
+    conta_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    lancamento_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Divida(Base):
+    __tablename__ = "dividas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    credor: Mapped[str] = mapped_column(String(120))
+    valor_total: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)  # vazio = a organizar
+    parcelas_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    parcelas_pagas: Mapped[int] = mapped_column(Integer, default=0)
+    valor_parcela: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    observacao: Mapped[str] = mapped_column(String(300), default="")
+    quitada: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

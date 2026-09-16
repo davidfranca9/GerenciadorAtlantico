@@ -15,7 +15,13 @@ export const NAV_SECTIONS = [
     { to: "/analise-fretes", label: "Análise de fretes", icon: "chart", description: "Histórico e comparação de valores" },
     { to: "/documentos-fiscais", label: "Documentos fiscais", icon: "file", description: "CT-e e CIOT emitidos, vindos do Bsoft" },
   ]},
-  { title: "Financeiro", items: [{ to: "/carta-frete", label: "Carta frete", icon: "wallet", description: "Geração de autorizações financeiras" }] },
+  { title: "Financeiro", items: [
+    // Caixa, resultado e contas: so administrador (saldo de banco, gastos pessoais e dividas).
+    { to: "/financeiro/caixa", label: "Caixa", icon: "wallet", description: "Saldo dos bancos e movimentações do dia", adminOnly: true },
+    { to: "/financeiro/resultado", label: "Resultado do mês", icon: "trend", description: "Lucro dos carregamentos, meta e custo por tonelada", adminOnly: true },
+    { to: "/financeiro/contas", label: "Contas a pagar", icon: "calendar", description: "Vencimentos, despesas fixas e dívidas", adminOnly: true },
+    { to: "/carta-frete", label: "Carta frete", icon: "file", description: "Geração de autorizações financeiras" },
+  ] },
   { title: "Comunicação", items: [
     { to: "/emails", label: "E-mails", icon: "mail", description: "Caixa de entrada do Gmail" },
     { to: "/whatsapp", label: "WhatsApp", icon: "chat", description: "Conversas e pedidos recebidos pelo WhatsApp" },
@@ -25,8 +31,9 @@ export const NAV_SECTIONS = [
   ]},
   { title: "Cadastros", items: [{ to: "/clientes", label: "Clientes", icon: "users", description: "Base de clientes e contatos" }] },
 ];
-export const PAGINAS_BLOQUEAVEIS = NAV_SECTIONS.flatMap((section) => section.items);
-const ALL_ITEMS = PAGINAS_BLOQUEAVEIS.concat([
+// Pagina so de administrador nao entra na lista de bloqueio por usuario.
+export const PAGINAS_BLOQUEAVEIS = NAV_SECTIONS.flatMap((section) => section.items).filter((item) => !item.adminOnly);
+const ALL_ITEMS = NAV_SECTIONS.flatMap((section) => section.items).concat([
   { to: "/admin", label: "Administração", icon: "settings", description: "Usuários e permissões do sistema" },
   { to: "/trocar-senha", label: "Segurança", icon: "key", description: "Atualize sua senha de acesso" },
 ]);
@@ -120,7 +127,7 @@ export default function Layout() {
   const bloqueadas = user?.role === "admin" ? [] : (user?.paginas_bloqueadas || "").split(",").filter(Boolean);
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => !bloqueadas.includes(item.to)),
+    items: section.items.filter((item) => !bloqueadas.includes(item.to) && (!item.adminOnly || user?.role === "admin")),
   })).filter((section) => section.items.length > 0);
   const sectionsExibidas = user?.role === "admin" ? [...sections, { title: "Sistema", items: [ALL_ITEMS.find((item) => item.to === "/admin")] }] : sections;
   const current = ALL_ITEMS.find((item) => item.to === location.pathname) || ALL_ITEMS[1];

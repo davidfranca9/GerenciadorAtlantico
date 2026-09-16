@@ -32,7 +32,7 @@ MODELO = MODELOS[0]
 # Ler documento nao pede raciocinio longo. No padrao do modelo um CRLV de
 # 80 KB levava ~29 s e uma foto de CNH ~16 s - quase tudo "pensando".
 NIVEL_RACIOCINIO = types.ThinkingLevel.LOW
-# Chamada presa nao segura a tela: desiste e cai no OCR local, com aviso.
+# Chamada presa nao segura a tela: desiste e a tela avisa pra reenviar.
 TEMPO_LIMITE_MS = 45_000
 
 logger = logging.getLogger(__name__)
