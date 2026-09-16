@@ -282,3 +282,4 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .acoes-agendamento .icon-btn:hover:not(:disabled),.acoes-agendamento .icon-btn.ativo{color:var(--accent);border-color:var(--accent);background:var(--row-selected)}
 .acoes-agendamento .icon-btn.perigo:hover:not(:disabled){color:var(--danger);border-color:var(--danger);background:color-mix(in srgb,var(--danger) 7%,transparent)}
 .tabela-agendamentos .link-motorista:focus-visible,.acoes-agendamento .icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:1320px){.tabela-agendamentos th,.tabela-agendamentos td{padding:10px 5px}.tabela-agendamentos select{width:188px;font-size:11.5px;padding-left:8px;padding-right:26px;background-position:right 8px center}.acoes-agendamento{gap:3px}.acoes-agendamento .icon-btn{width:30px;height:30px;min-height:30px}}
