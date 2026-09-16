@@ -38,6 +38,7 @@ TEMPO_LIMITE_MS = 45_000
 logger = logging.getLogger(__name__)
 
 CATEGORIAS_CNH = ["A", "B", "C", "D", "E", "AB", "AC", "AD", "AE"]
+LINHAS_TABELA_CNH = ["ACC", "A", "A1", "B", "B1", "C", "C1", "D", "D1", "BE", "CE", "C1E", "DE", "D1E"]
 
 CNH_SCHEMA = {
     "type": "object",
@@ -52,6 +53,11 @@ CNH_SCHEMA = {
         "dtExpedicao": {"type": "string", "description": "data de emissao no formato dd/mm/aaaa"},
         "dtPrimeiraExpedicao": {"type": "string", "description": "data da 1a habilitacao no formato dd/mm/aaaa"},
         "dtNascimento": {"type": "string", "description": "data de nascimento no formato dd/mm/aaaa"},
+        "categorias_na_tabela": {
+            "type": "array",
+            "items": {"type": "string", "enum": LINHAS_TABELA_CNH},
+            "description": "linhas da tabela de categorias (campos 9 a 12) que tem data de validade preenchida",
+        },
     },
     # Campo com lista de opcoes fica fora do "required": sem ele legivel, a IA
     # deixa de fora (a API do Gemini recusa opcao vazia na lista).
@@ -188,7 +194,9 @@ PROMPT_CNH = (
         "ou letras soltas antes do nome.\n"
         "- cpf: campo '4d CPF'.\n"
         "- numero: campo '5 N REGISTRO' (11 digitos, geralmente em vermelho).\n"
-        "- categoria: campo '9 CAT. HAB.'. Nao confunda com a letra ao lado do campo ACC.\n"
+        "- categoria: campo '9 CAT. HAB.'. Nao confunda com a letra impressa ao lado do quadro ACC.\n"
+        "- categorias_na_tabela: na tabela de categorias (ACC, A, A1, B, B1, C, C1, D, D1, BE, CE, C1E, DE, D1E), "
+        "as linhas que tem data de validade preenchida. Vazio se o documento nao tiver a tabela.\n"
         "- seguro: numero de seguranca de 11 digitos perto de 'ASSINATURA DO EMISSOR', logo acima "
         "do codigo que comeca com a UF (ex.: RS258235683).\n"
         "- protocolo: numero do espelho, impresso na VERTICAL na margem esquerda. NAO e o "
@@ -223,6 +231,24 @@ def _so_digitos(valor) -> str:
     return re.sub(r"\D", "", str(valor or ""))
 
 
+def categoria_pela_tabela(linhas) -> str:
+    """ ["B", "C", "D", "BE", "CE", "DE"] -> "E";  ["A", "B"] -> "AB";  [] -> "". """
+    datadas = {str(l).upper().strip() for l in (linhas or [])}
+    if datadas & {"BE", "CE", "C1E", "DE", "D1E"}:
+        letra = "E"
+    elif datadas & {"D", "D1"}:
+        letra = "D"
+    elif datadas & {"C", "C1"}:
+        letra = "C"
+    elif datadas & {"B", "B1"}:
+        letra = "B"
+    else:
+        letra = ""
+    moto = "A" if datadas & {"A", "A1"} else ""
+    categoria = f"{moto}{letra}" if letra else moto
+    return categoria if categoria in CATEGORIAS_CNH else ""
+
+
 def limpar_cnh(dados: dict) -> dict:
     """Confere o que a IA devolveu antes de ir pra tela: campo fora do
     formato vira vazio (melhor em branco que errado)."""
@@ -236,6 +262,11 @@ def limpar_cnh(dados: dict) -> dict:
 
     categoria = re.sub(r"\s", "", str(d.get("categoria") or "")).upper()
     d["categoria"] = categoria if categoria in CATEGORIAS_CNH else ""
+    # A tabela de categorias (linhas com validade) confirma a letra: a IA as
+    # vezes le o "D" impresso ao lado do quadro ACC como categoria.
+    pela_tabela = categoria_pela_tabela(d.pop("categorias_na_tabela", None))
+    if pela_tabela:
+        d["categoria"] = pela_tabela
 
     cpf = _so_digitos(d.get("cpf"))
     d["cpf"] = f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}" if len(cpf) == 11 else ""

@@ -316,3 +316,26 @@ def test_campo_com_opcoes_nao_e_obrigatorio():
 def test_crlv_sem_marca_volta_com_campo_vazio():
     dados = ocr_gemini.limpar_crlv({"placa": "JDA-8A89", "eixos": 4})
     assert dados["marca"] == "" and dados["tipo_carroceria"] == "" and dados["eixos"] == "4"
+
+
+@pytest.mark.parametrize("linhas, esperado", [
+    (["B", "C", "D", "BE", "CE", "DE"], "E"),  # a CNH da foto do WhatsApp
+    (["B"], "B"),                               # CNH digital com "D" ao lado do ACC
+    (["A", "B"], "AB"),
+    (["ACC", "A"], "A"),
+    (["C", "C1"], "C"),
+    ([], ""),
+    (None, ""),
+])
+def test_categoria_sai_da_tabela_de_validades(linhas, esperado):
+    assert ocr_gemini.categoria_pela_tabela(linhas) == esperado
+
+
+def test_tabela_corrige_a_letra_do_acc_lida_como_categoria():
+    # Leitura real de 16/09/2026: a IA devolveu "D" pra uma CNH categoria B.
+    limpo = ocr_gemini.limpar_cnh({"categoria": "D", "categorias_na_tabela": ["B"]})
+    assert limpo["categoria"] == "B" and "categorias_na_tabela" not in limpo
+
+
+def test_sem_tabela_vale_o_campo_da_categoria():
+    assert ocr_gemini.limpar_cnh({"categoria": "AE", "categorias_na_tabela": []})["categoria"] == "AE"
