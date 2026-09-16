@@ -663,7 +663,7 @@ export default function AgendamentosPage() {
                     {a.observacoes || "-"}
                   </td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    <select value={a.status} onChange={(e) => handleStatus(a.id, e.target.value)}>
+                    <select style={{ minWidth: 190 }} value={a.status} onChange={(e) => handleStatus(a.id, e.target.value)}>
                       {STATUS_OPTIONS.map((s) => (
                         <option key={s} value={s}>{s}</option>
                       ))}
