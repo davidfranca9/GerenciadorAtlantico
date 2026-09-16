@@ -173,12 +173,23 @@ def ler_xml_cte(xml: str) -> dict:
     }
 
 
+_PALAVRAS_DE_RAZAO_SOCIAL = {
+    "ltda", "s/a", "sa", "s.a.", "s.a", "eireli", "me", "epp", "industria", "comercio", "e", "de", "do", "da", "dos",
+    "das", "fertilizantes", "importacao", "exportacao", "agroindustria", "cia", "companhia",
+}
+
+
 def nome_da_fabrica(remetente: str) -> str:
+    """ "MM AGRICOLA E COMERCIO LTDA" -> "MM Agricola"; "OLMA INDUSTRIA E..." -> "Olma"."""
     chave = fin.sem_acento(remetente)
     for trecho, nome in FABRICAS:
         if trecho in chave:
             return nome
-    return nome_legivel(" ".join(str(remetente or "").split()[:3]))
+    palavras = [p for p in str(remetente or "").split() if fin.sem_acento(p) not in _PALAVRAS_DE_RAZAO_SOCIAL]
+    if not palavras:
+        return nome_legivel(remetente)
+    escolhidas = palavras[:2] if len(palavras[0]) <= 3 else palavras[:1]
+    return nome_legivel(" ".join(escolhidas))
 
 
 # --------------------------------------------------------------------------
@@ -209,6 +220,12 @@ def cargas_do_periodo(db: Session, inicio: date, fim: date) -> dict:
     lidos = {numero: ler_xml_cte((xmls.get(c["chaveAcesso"]) or {}).get("autorizacao")) for numero, c in por_numero.items()}
     cancelados = {numero for numero, c in por_numero.items() if (xmls.get(c["chaveAcesso"]) or {}).get("cancelamento")}
 
+    # Todos os contratos que citam cada CT-e (pra conferencia do frete do motorista).
+    contratos_do_cte: dict[str, list] = {}
+    for contrato in contratos:
+        for n in contrato.get("nrosCTe") or []:
+            contratos_do_cte.setdefault(str(n), []).append(contrato)
+
     grupos, usados = [], set()
     for contrato in sorted(contratos, key=lambda c: int(c["id"]) if str(c.get("id", "")).isdigit() else 0):
         numeros = [str(n) for n in contrato.get("nrosCTe") or [] if str(n) in por_numero and str(n) not in usados]
@@ -237,6 +254,24 @@ def cargas_do_periodo(db: Session, inicio: date, fim: date) -> dict:
         peso = round(sum(pesos), 3) if pesos else _numero((valor or {}).get("pesoColeta"))
         datas = [d for d in (_data(doc.get("dtEmissao")) for doc in docs) if d]
         tarifa = _numero((valor or {}).get("tarifaMotoristaDigitada"))
+        citados = {}
+        for n in numeros:
+            for c in contratos_do_cte.get(n, []):
+                citados[str(c.get("id"))] = c
+        detalhe_contratos = []
+        for c in citados.values():
+            v = valores.get(str(c.get("id"))) or {}
+            detalhe_contratos.append({
+                "numero": str(c.get("numeroCF") or ""), "emissao": str(c.get("dtEmissao") or "")[:16],
+                "motorista": " ".join(str(c.get("motorista") or "").split()), "ctes": [str(x) for x in c.get("nrosCTe") or []],
+                "valor_total_origem": _numero(v.get("valorTotalOrigem") or c.get("valorTotalOrigem")),
+                "frete_liquido": _numero(v.get("freteLiquido")), "tarifa": _numero(v.get("tarifaMotoristaDigitada")),
+                "tarifa_calculada": _numero(v.get("tarifaMotoristaCalculada")), "peso_coleta": _numero(v.get("pesoColeta")),
+                "adiantamento": _numero(v.get("valorAdiantamento") or c.get("valorAdiantamento")), "saldo": _numero(v.get("saldo") or c.get("saldo")),
+                "combustivel": _numero(v.get("valorCombustivel")), "pedagio": _numero(v.get("valorPedagio")),
+                "descontos": _numero(v.get("outrosDescontos")), "acrescimos": _numero(v.get("outrosAcrescimos")),
+                "tem_valores": bool(v),
+            })
         cargas.append({
             "numeros": numeros,
             "ctes": "/".join(numeros),
@@ -253,6 +288,7 @@ def cargas_do_periodo(db: Session, inicio: date, fim: date) -> dict:
             "frete_motorista_ton": fin.dinheiro(tarifa) if tarifa else None,
             "contrato": str(contrato.get("numeroCF") or "") if contrato else "",
             "cancelado": all(n in cancelados for n in numeros),
+            "contratos_detalhe": detalhe_contratos,
         })
     return {"cargas": cargas, "ctes": len(por_numero), "contratos": len(contratos)}
 
@@ -284,6 +320,7 @@ def _resumo(carga: dict) -> dict:
         "motorista": carga["motorista"], "fabrica": carga["fabrica"], "destino": carga["destino"],
         "peso": carga["peso"], "frete_empresa": carga["frete_empresa_total"], "frete_motorista": carga["frete_motorista_total"],
         "cancelado": carga["cancelado"], "sem_contrato": not carga["contrato"],
+        "contratos": carga.get("contratos_detalhe", []),
     }
 
 
@@ -336,7 +373,8 @@ def sincronizar(db: Session, competencia: str, *, aplicar: bool = False, lido: O
                 if no_bsoft is not None and abs(float(no_sistema) - float(no_bsoft)) > 0.01:
                     diferencas[rotulo] = {"controle": no_sistema, "bsoft": no_bsoft}
             if diferencas:
-                divergencias.append({"ctes": alvo.ctes, "motorista": alvo.motorista, "diferencas": diferencas})
+                divergencias.append({"ctes": alvo.ctes, "motorista": alvo.motorista, "diferencas": diferencas,
+                                     "contratos": carga.get("contratos_detalhe", [])})
         db.flush()
         if aplicar:
             db.commit()

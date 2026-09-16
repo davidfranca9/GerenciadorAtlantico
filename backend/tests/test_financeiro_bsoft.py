@@ -163,7 +163,9 @@ def test_carga_da_planilha_nao_tem_valor_trocado(db, bsoft):
     assert (planilha.frete_empresa_ton, planilha.agenciamento_ton, planilha.contratante) == (280, 20, "Queiroz")
     assert planilha.destino == "Teófilo Otoni MG" and planilha.contrato_frete == "2290"  # so completa o vazio
     assert feito["divergencias"] == [{"ctes": "5005/5006", "motorista": "LINDOMAR DA SILVA",
-                                      "diferencas": {"frete cobrado": {"controle": 8960.0, "bsoft": 9280.0}}}]
+                                      "diferencas": {"frete cobrado": {"controle": 8960.0, "bsoft": 9280.0}},
+                                      "contratos": feito["divergencias"][0]["contratos"]}]
+    assert [c["numero"] for c in feito["divergencias"][0]["contratos"]] == ["2290"]
 
 
 def test_carga_do_bsoft_e_atualizada_mas_mantem_o_que_foi_completado(db, bsoft):
@@ -198,3 +200,15 @@ def test_rota_puxar_do_bsoft(db, bsoft):
     previa = http.post("/financeiro/carregamentos/bsoft", params={"competencia": "2026-09"})
     assert previa.status_code == 200 and len(previa.json()["novos"]) == 4
     assert http.post("/financeiro/carregamentos/bsoft", params={"competencia": "2026-13"}).status_code == 400
+
+
+@pytest.mark.parametrize("remetente, esperado", [
+    ("MM AGRICOLA E COMERCIO LTDA", "MM Agricola"),
+    ("OLMA INDUSTRIA E COMERCIO DE FERTILIZANTES", "Olma"),
+    ("XILOLITE S/A", "Xilolite"),
+    ("QUIMIVITA FERTILIZANTES LTDA", "Quimivita"),
+    ("FERTILIZANTES HERINGER S.A.", "Heringer"),
+    ("TIMAC AGRO INDUSTRIA E COMERCIO DE FERTI LIZANTES LTDA", "Timac"),
+])
+def test_nome_curto_da_fabrica(remetente, esperado):
+    assert fb.nome_da_fabrica(remetente) == esperado
