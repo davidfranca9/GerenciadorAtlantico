@@ -427,6 +427,11 @@ class CarregamentoFinanceiro(Base):
     comissao_total: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
     cancelado: Mapped[bool] = mapped_column(Boolean, default=False)
     observacao: Mapped[str] = mapped_column(String(500), default="")
+    # manual | planilha | bsoft. A do Bsoft e atualizada sozinha; as outras
+    # nunca tem valor trocado pela sincronizacao.
+    origem: Mapped[str] = mapped_column(String(20), default="manual")
+    cliente: Mapped[str] = mapped_column(String(255), default="")
+    contrato_frete: Mapped[str] = mapped_column(String(40), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

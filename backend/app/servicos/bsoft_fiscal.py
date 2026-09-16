@@ -120,10 +120,12 @@ def obter_xml_ctes_emitidos(chaves: list[str], incluir_eventos: bool = False) ->
     """LEITURA. XML autorizado dos CT-e. Maximo de 50 chaves por requisicao."""
     if len(chaves) > 50:
         raise ValueError("A consulta aceita no maximo 50 chaves por requisicao")
+    # O campo e `chaveAcesso` (lista). Com `chaves` o Bsoft respondia 400
+    # "O campo chaveAcesso e obrigatorio".
     _, corpo = chamar(
         "POST",
         "/eDoc/v1/XMLDocumentosFiscais/CTesEmitidos",
-        json_body={"chaves": chaves, "obterXmlEventos": "S" if incluir_eventos else "N"},
+        json_body={"chaveAcesso": chaves, "obterXmlEventos": "S" if incluir_eventos else "N"},
     )
     return corpo
 

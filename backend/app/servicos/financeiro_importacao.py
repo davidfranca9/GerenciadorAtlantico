@@ -325,6 +325,7 @@ def _importar_controle(db: Session, formulas, valores, nome_arquivo: str, compet
             peso=_numero(folha_v.cell(linha, 6).value) or 0,
             contratante=nome_legivel(folha_v.cell(linha, 17).value),
             cancelado=cancelado,
+            origem="planilha",
             **{f"{p}_ton": v[0] for p, v in partes.items()},
             **{f"{p}_total": v[1] for p, v in partes.items()},
         )

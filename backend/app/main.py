@@ -84,6 +84,9 @@ def on_startup():
             conn.execute(text("ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS cidades_candidatas VARCHAR(1000) DEFAULT ''"))
             conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS modelo_veiculo VARCHAR(40) DEFAULT ''"))
             conn.execute(text("ALTER TABLE dividas ADD COLUMN IF NOT EXISTS proximo_pagamento DATE"))
+            conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS origem VARCHAR(20) DEFAULT 'manual'"))
+            conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS cliente VARCHAR(255) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS contrato_frete VARCHAR(40) DEFAULT ''"))
             # operacoes_fiscais e tabela nova (criada pelo create_all); o indice
             # unico abaixo e a protecao contra emitir dois CT-e pra mesma carga.
             conn.execute(text(

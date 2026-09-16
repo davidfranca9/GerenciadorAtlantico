@@ -404,6 +404,12 @@ def carregamento_para_dict(c: CarregamentoFinanceiro) -> dict:
         **{f"{p}_fechado": (dinheiro(getattr(c, f"{p}_total")) if getattr(c, f"{p}_total") is not None else None) for p in PARTES},
         "cancelado": c.cancelado,
         "observacao": c.observacao,
+        "origem": c.origem or "manual",
+        "cliente": c.cliente or "",
+        "contrato_frete": c.contrato_frete or "",
+        # Veio do Bsoft e ainda falta o que so a operacao sabe.
+        "a_completar": (c.origem == "bsoft" and not c.cancelado
+                        and c.agenciamento_ton is None and c.agenciamento_total is None and not c.contratante),
         "totais": totais_carregamento(c),
     }
 

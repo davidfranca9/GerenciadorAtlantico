@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
-import { Dinheiro } from "./comum";
+import { Aviso, Dinheiro, Modal } from "./comum";
 import { brl, diaCurto, nomeCompetencia, toneladas } from "./formato";
 import { Moldura, useCompetencia, useDados } from "./PaginasFinanceiro";
 import { Composicao, EditorCarregamento, saudeMargem } from "./ResultadoPage";
@@ -35,6 +35,95 @@ function semAcento(texto) {
   return String(texto || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
+// Le o mes no Bsoft, mostra o que entraria e so grava quando confirmar.
+function PuxarDoBsoft({ competencia, aoFechar, aoTrazer }) {
+  const [previa, setPrevia] = useState(null);
+  const [feito, setFeito] = useState(null);
+  const [erro, setErro] = useState("");
+  const [trazendo, setTrazendo] = useState(false);
+  const mes = nomeCompetencia(competencia).toLowerCase();
+
+  useEffect(() => {
+    let vivo = true;
+    api.puxarDoBsoft(competencia, false)
+      .then((r) => vivo && setPrevia(r))
+      .catch((e) => vivo && setErro(e.message));
+    return () => { vivo = false; };
+  }, [competencia]);
+
+  async function trazer() {
+    setTrazendo(true);
+    setErro("");
+    try {
+      const r = await api.puxarDoBsoft(competencia, true);
+      setFeito(r);
+      aoTrazer();
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setTrazendo(false);
+    }
+  }
+
+  const r = feito || previa;
+  return (
+    <Modal titulo="Puxar carregamentos do Bsoft" subtitulo={`CT-es e contratos de frete de ${mes}. Nada é alterado no Bsoft.`} aoFechar={aoFechar} largura={720}>
+      {!r && !erro && <Aviso>Lendo os CT-es de {mes} no Bsoft. Pode levar alguns segundos...</Aviso>}
+      {erro && <Aviso tipo="error">{erro}</Aviso>}
+      {r && (
+        <div className="fin-previa">
+          <p className="fin-previa-titulo">
+            No Bsoft: <strong>{r.ctes_no_bsoft} CT-es</strong> em <strong>{r.cargas_no_bsoft} cargas</strong>.{" "}
+            {feito ? "Trazidas:" : "Vão entrar:"} <strong>{r.novos.length} {r.novos.length === 1 ? "carga nova" : "cargas novas"}</strong>
+            {r.atualizados.length > 0 && `, ${r.atualizados.length} atualizada(s)`}
+            {r.ja_existiam > 0 && ` · ${r.ja_existiam} já estavam no controle`}.
+          </p>
+          {r.sem_contrato > 0 && (
+            <Aviso tipo="warning">{r.sem_contrato} {r.sem_contrato === 1 ? "carga ainda não tem" : "cargas ainda não têm"} contrato de frete no Bsoft: o frete do motorista fica para completar.</Aviso>
+          )}
+          {r.divergencias.length > 0 && (
+            <>
+              <p className="fin-previa-titulo">Cargas da planilha com valor diferente do Bsoft (o controle não foi alterado):</p>
+              <ul className="fin-conferido">
+                {r.divergencias.map((d) => (
+                  <li key={d.ctes} className="diverge">
+                    <span>CT-e {d.ctes} · {d.motorista}</span>
+                    <span className="fin-conferido-valores">
+                      {Object.entries(d.diferencas).map(([campo, v]) => (
+                        <small key={campo}>{campo}: controle {campo === "peso" ? toneladas(v.controle) : brl(v.controle)} · Bsoft {campo === "peso" ? toneladas(v.bsoft) : brl(v.bsoft)}</small>
+                      ))}
+                    </span>
+                    <Icon name="alert" size={15} />
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {!feito && r.novos.length > 0 && (
+            <ul className="fin-previa-lista fin-previa-cargas">
+              {r.novos.map((c) => (
+                <li key={c.ctes}>
+                  <span>{c.data_emissao ? diaCurto(c.data_emissao) : "—"}</span>
+                  <span><b>{c.motorista || "Sem motorista"}</b> · CT-e {c.ctes} · {c.fabrica} → {c.destino}{c.cancelado ? " · cancelado" : ""}</span>
+                  <span>{toneladas(c.peso)} · {brl(c.frete_empresa)}{c.frete_motorista !== null ? ` · motorista ${brl(c.frete_motorista)}` : ""}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      <footer className="fin-modal-rodape">
+        <button type="button" className="btn-secondary" onClick={aoFechar}>{feito ? "Fechar" : "Cancelar"}</button>
+        {!feito && (
+          <button type="button" className="btn-primary" disabled={!previa || trazendo || (!previa.novos.length && !previa.atualizados.length)} onClick={trazer}>
+            {trazendo ? "Trazendo..." : previa && previa.novos.length ? `Trazer ${previa.novos.length} ${previa.novos.length === 1 ? "carga" : "cargas"}` : "Nada novo"}
+          </button>
+        )}
+      </footer>
+    </Modal>
+  );
+}
+
 function LinhaCarregamento({ carga, aberto, aoAbrir, children }) {
   const t = carga.totais;
   const rota = [carga.fabrica, carga.destino].filter(Boolean).join(" → ");
@@ -43,8 +132,11 @@ function LinhaCarregamento({ carga, aberto, aoAbrir, children }) {
       <button type="button" className="fin-linha-carga-botao" onClick={aoAbrir} aria-expanded={aberto}>
         <span className="fin-carga-data">{carga.data_emissao ? diaCurto(carga.data_emissao) : "—"}</span>
         <span className="fin-linha-carga-quem">
-          <strong>{carga.cancelado ? "Cancelado" : carga.motorista || "Sem motorista"}</strong>
-          <small>{[carga.ctes && `CT-e ${carga.ctes}`, rota, carga.contratante].filter(Boolean).join(" · ")}</small>
+          <strong>
+            {carga.cancelado ? "Cancelado" : carga.motorista || "Sem motorista"}
+            {carga.a_completar && <em className="fin-tag-completar" title="Veio do Bsoft: falta agenciamento, comissão e contratante">a completar</em>}
+          </strong>
+          <small>{[carga.ctes && `CT-e ${carga.ctes}`, rota, carga.cliente && `cliente ${carga.cliente}`, carga.contratante].filter(Boolean).join(" · ")}</small>
           {!carga.cancelado && <Composicao totais={t} />}
         </span>
         <span className="fin-linha-carga-custos">
@@ -86,6 +178,7 @@ function ListaCarregamentos() {
   const [contratante, setContratante] = useState("");
   const [ordem, setOrdem] = useState("recentes");
   const [abertoId, setAbertoId] = useState(null);
+  const [puxando, setPuxando] = useState(false);
 
   const cargas = dados?.carregamentos || [];
   const fabricas = [...new Set(cargas.map((c) => c.fabrica).filter(Boolean))].sort();
@@ -170,6 +263,12 @@ function ListaCarregamentos() {
             </select>
             {filtrando && <button type="button" className="fin-link" onClick={() => { setTermo(""); setFabrica(""); setContratante(""); }}>Limpar filtros</button>}
             <span className="fin-espaco" />
+            <button
+              type="button" className="btn-secondary" disabled={todosOsMeses} onClick={() => setPuxando(true)}
+              title={todosOsMeses ? "Escolha um mês para puxar do Bsoft" : "Traz os CT-es e contratos de frete do mês"}
+            >
+              <Icon name="refresh" size={15} /> Puxar do Bsoft
+            </button>
             <button type="button" className="btn-primary" onClick={() => setAbertoId(abertoId === "novo" ? null : "novo")}><Icon name="plus" size={15} /> Carregamento</button>
           </div>
 
@@ -191,7 +290,7 @@ function ListaCarregamentos() {
             {filtradas.length === 0 ? (
               <div className="fin-sem-itens">
                 <Icon name="truck" size={22} />
-                <p>{cargas.length ? "Nenhum carregamento com esses filtros." : `Nenhum carregamento ${todosOsMeses ? "cadastrado" : `em ${nomeCompetencia(competencia).toLowerCase()}`}. Importe a planilha do Controle de Carregamentos ou lance a primeira carga.`}</p>
+                <p>{cargas.length ? "Nenhum carregamento com esses filtros." : `Nenhum carregamento ${todosOsMeses ? "cadastrado" : `em ${nomeCompetencia(competencia).toLowerCase()}`}. Use "Puxar do Bsoft" para trazer os CT-es do mês, importe a planilha ou lance a carga.`}</p>
               </div>
             ) : grupos.map((grupo) => {
               const doMes = grupo.cargas.filter((c) => !c.cancelado);
@@ -223,6 +322,7 @@ function ListaCarregamentos() {
               );
             })}
           </section>
+          {puxando && <PuxarDoBsoft competencia={competencia} aoFechar={() => setPuxando(false)} aoTrazer={carregar} />}
         </>
       )}
     </Moldura>

@@ -228,6 +228,22 @@ def resultado(competencia: str, db: Session = Depends(get_db)):
         raise _erro(exc)
 
 
+@router.post("/carregamentos/bsoft")
+def puxar_do_bsoft(competencia: str, aplicar: bool = False, db: Session = Depends(get_db)):
+    """Le os CT-es e contratos de frete do mes no Bsoft (so leitura la) e
+    mostra o que entraria. Com `aplicar`, grava."""
+    from ..servicos import financeiro_bsoft
+    from ..servicos.bsoft_client import BsoftError
+
+    try:
+        fin.validar_competencia(competencia)
+        return financeiro_bsoft.sincronizar(db, competencia, aplicar=aplicar)
+    except fin.ErroFinanceiro as exc:
+        raise _erro(exc)
+    except BsoftError as exc:
+        raise HTTPException(status_code=502, detail=f"O Bsoft não respondeu: {str(exc)[:200]}")
+
+
 @router.get("/carregamentos")
 def listar_carregamentos(competencia: Optional[str] = None, db: Session = Depends(get_db)):
     """Todos os carregamentos (ou os do mes), com frete, custos e sobra de cada um."""
