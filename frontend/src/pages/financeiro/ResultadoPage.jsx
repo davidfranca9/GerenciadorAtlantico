@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
-import { Aviso, CampoValor, Dinheiro, ImportarPlanilha, NavegadorMes } from "./comum";
+import { Aviso, CampoValor, Dinheiro } from "./comum";
 import { brl, competenciaDe, diaCurto, hojeIso, numeroBr, toneladas, valorParaCampo } from "./formato";
-import "./financeiro.css";
 
 const PARTES = [
   { chave: "frete_motorista", rotulo: "Motorista" },
@@ -344,113 +343,86 @@ function Contratantes({ grupos }) {
   );
 }
 
-export default function ResultadoPage() {
-  const [competencia, setCompetencia] = useState(competenciaDe(hojeIso()));
-  const [dados, setDados] = useState(null);
-  const [erro, setErro] = useState("");
+// Aba "Lucro bruto" do Controle de carregamentos.
+export function AbaLucroBruto({ competencia, dados, recarregar }) {
   const [abertoId, setAbertoId] = useState(null);
-  const [modal, setModal] = useState(null);
-
-  const carregar = useCallback(async () => {
-    setErro("");
-    try {
-      setDados(await api.resultado(competencia));
-    } catch (err) {
-      setErro(err.message);
-    }
-  }, [competencia]);
-
-  useEffect(() => { setAbertoId(null); carregar(); }, [carregar]);
-
-  const vazio = dados && dados.carregamentos.length === 0;
+  useEffect(() => setAbertoId(null), [competencia]);
+  const vazio = dados.carregamentos.length === 0;
 
   return (
-    <div className="ops-page fin-pagina">
-      <div className="fin-barra">
-        <NavegadorMes competencia={competencia} aoMudar={setCompetencia} />
-        <span className="fin-espaco" />
-        <button type="button" className="btn-secondary" onClick={() => setModal("planilha")}><Icon name="upload" size={15} /> Importar planilha</button>
-        <button type="button" className="btn-primary" onClick={() => setAbertoId("novo")}><Icon name="plus" size={15} /> Carregamento</button>
+    <>
+      <div className="fin-kpis">
+        <CartaoMeta competencia={competencia} resumo={dados.resumo} meta={dados.meta} aoSalvarMeta={async (t) => { await api.definirMeta(competencia, t); await recarregar(); }} />
+        <CartaoLucro resumo={dados.resumo} />
+        <CartaoCustoFixo precificacao={dados.precificacao} resumo={dados.resumo} />
       </div>
 
-      {erro && <Aviso tipo="error">{erro}</Aviso>}
-      {!dados && !erro && <Aviso>Carregando o resultado...</Aviso>}
+      {!vazio && <CaminhoDoFrete resumo={dados.resumo} despesas={dados.despesas} lucroReal={dados.lucro_real} sobra={dados.sobra} />}
 
-      {dados && (
-        <>
-          <div className="fin-kpis">
-            <CartaoMeta competencia={competencia} resumo={dados.resumo} meta={dados.meta} aoSalvarMeta={async (t) => { await api.definirMeta(competencia, t); await carregar(); }} />
-            <CartaoLucro resumo={dados.resumo} />
-            <CartaoCustoFixo precificacao={dados.precificacao} resumo={dados.resumo} />
-          </div>
-
-          {!vazio && <CaminhoDoFrete resumo={dados.resumo} despesas={dados.despesas} lucroReal={dados.lucro_real} sobra={dados.sobra} />}
-
-          <div className="fin-resultado-grade">
-            <section className="card fin-carregamentos">
-              <header className="fin-extrato-topo">
-                <div><h3>Carregamentos</h3><p>Clique numa carga para ver e ajustar os valores</p></div>
-                <div className="fin-legenda">
-                  <span><i className="motorista" />Motorista</span><span><i className="agenciamento" />Agenciamento</span>
-                  <span><i className="comissao" />Comissão</span><span><i className="sobra" />Sobra</span>
-                </div>
-              </header>
-              {abertoId === "novo" && (
-                <div className="fin-carga aberto">
-                  <EditorCarregamento
-                    competencia={competencia}
-                    aoFechar={() => setAbertoId(null)}
-                    aoSalvar={async (p) => { await api.criarCarregamento(p); setAbertoId(null); await carregar(); }}
-                  />
-                </div>
-              )}
-              {vazio && abertoId !== "novo" ? (
-                <div className="fin-sem-itens">
-                  <Icon name="truck" size={22} />
-                  <p>Nenhum carregamento em {competencia.split("-").reverse().join("/")}. Importe a planilha do Controle de Carregamentos ou lance a primeira carga.</p>
-                </div>
-              ) : (
-                <ul>
-                  {dados.carregamentos.map((c) => (
-                    <li key={c.id} className={`fin-carga ${c.cancelado ? "cancelado" : ""} ${abertoId === c.id ? "aberto" : ""}`}>
-                      <button type="button" className="fin-carga-linha" onClick={() => setAbertoId(abertoId === c.id ? null : c.id)} aria-expanded={abertoId === c.id}>
-                        <span className="fin-carga-data">{c.data_emissao ? diaCurto(c.data_emissao) : "—"}</span>
-                        <span className="fin-carga-texto">
-                          <strong>{c.cancelado ? "Cancelado" : c.motorista || "Sem motorista"}</strong>
-                          <small>
-                            {c.ctes && `CT-e ${c.ctes}`}{c.fabrica && ` · ${c.fabrica}`}{c.destino && ` → ${c.destino}`}{c.contratante && ` · ${c.contratante}`}
-                          </small>
-                          {!c.cancelado && <Composicao totais={c.totais} />}
-                        </span>
-                        <span className="fin-carga-numeros">
-                          {c.cancelado ? <em>cancelado</em> : (
-                            <>
-                              <Dinheiro valor={c.totais.liquido} tamanho="s" />
-                              <small>{toneladas(c.peso)} · <b className={`fin-margem ${saudeMargem(c.totais.por_tonelada)}`}>{brl(c.totais.por_tonelada)}/t</b></small>
-                            </>
-                          )}
-                        </span>
-                      </button>
-                      {abertoId === c.id && (
-                        <EditorCarregamento
-                          competencia={competencia}
-                          carregamento={c}
-                          aoFechar={() => setAbertoId(null)}
-                          aoSalvar={async (p) => { await api.atualizarCarregamento(c.id, p); setAbertoId(null); await carregar(); }}
-                          aoExcluir={async () => { await api.excluirCarregamento(c.id); setAbertoId(null); await carregar(); }}
-                        />
+      <div className="fin-resultado-grade">
+        <section className="card fin-carregamentos">
+          <header className="fin-extrato-topo">
+            <div><h3>Carregamentos</h3><p>Clique numa carga para ver e ajustar os valores</p></div>
+            <div className="fin-carregamentos-acoes">
+              <div className="fin-legenda">
+                <span><i className="motorista" />Motorista</span><span><i className="agenciamento" />Agenciamento</span>
+                <span><i className="comissao" />Comissão</span><span><i className="sobra" />Sobra</span>
+              </div>
+              <button type="button" className="btn-primary" onClick={() => setAbertoId("novo")}><Icon name="plus" size={14} /> Carregamento</button>
+            </div>
+          </header>
+          {abertoId === "novo" && (
+            <div className="fin-carga aberto">
+              <EditorCarregamento
+                competencia={competencia}
+                aoFechar={() => setAbertoId(null)}
+                aoSalvar={async (p) => { await api.criarCarregamento(p); setAbertoId(null); await recarregar(); }}
+              />
+            </div>
+          )}
+          {vazio && abertoId !== "novo" ? (
+            <div className="fin-sem-itens">
+              <Icon name="truck" size={22} />
+              <p>Nenhum carregamento em {competencia.split("-").reverse().join("/")}. Importe a planilha do Controle de Carregamentos ou lance a primeira carga.</p>
+            </div>
+          ) : (
+            <ul>
+              {dados.carregamentos.map((c) => (
+                <li key={c.id} className={`fin-carga ${c.cancelado ? "cancelado" : ""} ${abertoId === c.id ? "aberto" : ""}`}>
+                  <button type="button" className="fin-carga-linha" onClick={() => setAbertoId(abertoId === c.id ? null : c.id)} aria-expanded={abertoId === c.id}>
+                    <span className="fin-carga-data">{c.data_emissao ? diaCurto(c.data_emissao) : "—"}</span>
+                    <span className="fin-carga-texto">
+                      <strong>{c.cancelado ? "Cancelado" : c.motorista || "Sem motorista"}</strong>
+                      <small>
+                        {c.ctes && `CT-e ${c.ctes}`}{c.fabrica && ` · ${c.fabrica}`}{c.destino && ` → ${c.destino}`}{c.contratante && ` · ${c.contratante}`}
+                      </small>
+                      {!c.cancelado && <Composicao totais={c.totais} />}
+                    </span>
+                    <span className="fin-carga-numeros">
+                      {c.cancelado ? <em>cancelado</em> : (
+                        <>
+                          <Dinheiro valor={c.totais.liquido} tamanho="s" />
+                          <small>{toneladas(c.peso)} · <b className={`fin-margem ${saudeMargem(c.totais.por_tonelada)}`}>{brl(c.totais.por_tonelada)}/t</b></small>
+                        </>
                       )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-            <Contratantes grupos={dados.por_contratante} />
-          </div>
-        </>
-      )}
-
-      {modal === "planilha" && <ImportarPlanilha aoFechar={() => setModal(null)} aoImportar={(r) => { if (r.competencia) setCompetencia(r.competencia); carregar(); }} />}
-    </div>
+                    </span>
+                  </button>
+                  {abertoId === c.id && (
+                    <EditorCarregamento
+                      competencia={competencia}
+                      carregamento={c}
+                      aoFechar={() => setAbertoId(null)}
+                      aoSalvar={async (p) => { await api.atualizarCarregamento(c.id, p); setAbertoId(null); await recarregar(); }}
+                      aoExcluir={async () => { await api.excluirCarregamento(c.id); setAbertoId(null); await recarregar(); }}
+                    />
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <Contratantes grupos={dados.por_contratante} />
+      </div>
+    </>
   );
 }

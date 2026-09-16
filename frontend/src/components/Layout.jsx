@@ -18,8 +18,7 @@ export const NAV_SECTIONS = [
   { title: "Financeiro", items: [
     // Caixa, resultado e contas: so administrador (saldo de banco, gastos pessoais e dividas).
     { to: "/financeiro/caixa", label: "Caixa", icon: "wallet", description: "Saldo dos bancos e movimentações do dia", adminOnly: true },
-    { to: "/financeiro/resultado", label: "Resultado do mês", icon: "trend", description: "Lucro dos carregamentos, meta e custo por tonelada", adminOnly: true },
-    { to: "/financeiro/contas", label: "Contas a pagar", icon: "calendar", description: "Vencimentos, despesas fixas e dívidas", adminOnly: true },
+    { to: "/financeiro/carregamentos", label: "Controle de carregamentos", icon: "trend", description: "Lucro bruto, gastos, precificação, pagamentos e dívidas do mês", adminOnly: true },
     { to: "/carta-frete", label: "Carta frete", icon: "file", description: "Geração de autorizações financeiras" },
   ] },
   { title: "Comunicação", items: [

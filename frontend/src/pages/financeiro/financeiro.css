@@ -339,13 +339,17 @@
 .fin-comecando svg { color: var(--warning); }
 .fin-comecando p { flex: 1; min-width: 240px; margin: 0; font-size: 12.5px; line-height: 1.5; }
 
-.fin-agenda { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-.fin-calendario { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.fin-agenda { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); gap: 16px; align-items: start; }
+.fin-calendario { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(64px, .95fr); gap: 6px; }
+.fin-cal-semana-total { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 2px; min-height: 74px; padding: 6px 8px; border-radius: 10px; background: var(--panel-soft); border: 1px dashed var(--border); font-variant-numeric: tabular-nums; color: var(--muted-soft); font-size: 12px; }
+.fin-cal-semana-total b { font: 800 12px Manrope, sans-serif; color: var(--text); white-space: nowrap; }
+.fin-cal-semana-total small { font-size: 10px; color: var(--warning); white-space: nowrap; }
+.fin-cal-semana-total.quitada small { color: var(--fin-entrada); }
 .fin-cal-semana { padding-bottom: 4px; text-align: center; font-size: 10px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: var(--muted-soft); }
 .fin-cal-dia { position: relative; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 2px; min-height: 74px; padding: 7px 8px; border-radius: 10px; border: 1px solid var(--border-soft); background: var(--panel); color: var(--text); text-align: left; font-weight: 400; }
 .fin-cal-dia:hover { border-color: var(--border); background: var(--panel-soft); }
 .fin-cal-numero { font: 700 12.5px Manrope, sans-serif; }
-.fin-cal-total { font-size: 10.5px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.fin-cal-total { font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .fin-cal-pontos { display: flex; gap: 3px; }
 .fin-cal-pontos i, .fin-cal-legenda i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-soft); }
 .fin-cal-pontos i.atrasado, .fin-cal-legenda i.atrasado { background: var(--fin-saida); }
@@ -401,6 +405,45 @@
 .fin-despesas-topo { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
 .fin-despesas-topo > div { display: flex; flex-direction: column; gap: 4px; }
 .fin-despesas-topo small { color: var(--muted); font-size: 11.5px; }
+.fin-despesas-topo > div:first-child { margin-right: auto; }
+.fin-fechamento { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 26px; margin: 0; padding: 0 6px 2px 24px; border-left: 1px solid var(--border); }
+.fin-fechamento div { display: flex; flex-direction: column; gap: 2px; }
+.fin-fechamento dt { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+.fin-fechamento dd { margin: 0; }
+.fin-fechamento .negativo .fin-inteiro, .fin-fechamento dd .fin-dinheiro.negativo .fin-sinal { color: var(--fin-saida); }
+
+.fin-abas { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--border); scrollbar-width: thin; }
+.fin-abas button { display: inline-flex; align-items: center; gap: 7px; min-height: 42px; padding: 0 14px; border: 0; border-bottom: 2px solid transparent; border-radius: 9px 9px 0 0; margin-bottom: -1px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.fin-abas button:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.fin-abas button.ativa { color: var(--accent); border-bottom-color: var(--accent); background: var(--panel); }
+.fin-abas button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.fin-carregamentos-acoes { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.fin-carregamentos-acoes .btn-primary { min-height: 34px; padding: 0 12px; }
+
+.fin-numero-grande { font: 800 28px Manrope, sans-serif; letter-spacing: -.8px; font-variant-numeric: tabular-nums; }
+.fin-preco-grade { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, 1fr); gap: 16px; align-items: start; }
+.fin-preco-lista { padding: 0; overflow: hidden; }
+.fin-preco-lista ul { margin: 0; padding: 0; list-style: none; }
+.fin-preco-lista li { display: grid; grid-template-columns: minmax(0, 1fr) auto 76px; align-items: center; gap: 12px; padding: 9px 20px; border-bottom: 1px solid var(--border-soft); }
+.fin-preco-lista li.fora { opacity: .78; }
+.fin-preco-lista li button { min-height: 30px; padding: 0 10px; font-size: 12px; }
+.fin-preco-lista details { padding-top: 6px; }
+.fin-preco-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fin-preco-texto strong { font-size: 13px; font-weight: 600; }
+.fin-preco-texto small { font-size: 11px; color: var(--muted); }
+.fin-simulador { display: flex; flex-direction: column; gap: 12px; padding: 20px; position: sticky; top: 124px; }
+.fin-simulador header p { margin: 3px 0 0; color: var(--muted); font-size: 11.5px; }
+.fin-simulacao { display: flex; flex-direction: column; margin: 4px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--panel-soft); border: 1px solid var(--border-soft); }
+.fin-simulacao div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 12.5px; }
+.fin-simulacao dt { color: var(--muted); }
+.fin-simulacao dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+.fin-simulacao div.positivo dd { color: var(--fin-entrada); }
+.fin-simulacao div.negativo dd { color: var(--fin-saida); }
+.fin-simulacao div:nth-child(3) { border-top: 1px dashed var(--border); margin-top: 3px; padding-top: 8px; }
+.fin-frete-minimo { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 9%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); }
+.fin-frete-minimo span { font-size: 12px; font-weight: 700; color: var(--text); }
+.fin-frete-minimo strong { font: 800 20px Manrope, sans-serif; color: var(--accent); font-variant-numeric: tabular-nums; }
+.fin-simulador .btn-ghost { align-self: flex-start; }
 .fin-despesas > .card:not(.fin-sem-itens) { padding: 0; overflow: hidden; }
 .fin-grupos { columns: 2 380px; column-gap: 14px; }
 .fin-grupo { break-inside: avoid; margin-bottom: 14px; padding: 0; overflow: hidden; }
@@ -446,7 +489,9 @@
 }
 @media (max-width: 1100px) {
   .fin-hero { grid-template-columns: 1fr; }
-  .fin-caixa-grade, .fin-resultado-grade, .fin-agenda, .fin-caminho { grid-template-columns: 1fr; }
+  .fin-caixa-grade, .fin-resultado-grade, .fin-agenda, .fin-caminho, .fin-preco-grade { grid-template-columns: 1fr; }
+  .fin-simulador { position: static; }
+  .fin-fechamento { border-left: 0; padding-left: 0; }
   .fin-caminho-conta { border-left: 0; border-top: 1px solid var(--border-soft); }
   .fin-composer { position: static; }
   .fin-kpis, .fin-resumo-contas { grid-template-columns: 1fr 1fr; }
@@ -461,6 +506,12 @@
   .fin-caminho-trilho { grid-column: 1 / -1; grid-row: 2; }
   .fin-form-dupla { grid-template-columns: 1fr; }
   .fin-cal-dia { min-height: 52px; padding: 5px; }
+  .fin-calendario { grid-template-columns: repeat(7, minmax(0, 1fr)) 48px; gap: 4px; }
+  .fin-cal-semana-total { min-height: 52px; padding: 4px; }
+  .fin-cal-semana-total b { font-size: 10px; }
+  .fin-cal-semana-total small { display: none; }
+  .fin-preco-lista li { grid-template-columns: minmax(0, 1fr) auto; }
+  .fin-preco-lista li button { grid-column: 1 / -1; justify-self: end; }
   .fin-cal-total { display: none; }
   .fin-conta-linha { grid-template-columns: minmax(0, 1fr) auto; }
   .fin-conta-acoes { grid-column: 1 / -1; justify-content: flex-end; }

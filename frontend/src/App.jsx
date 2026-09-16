@@ -20,8 +20,7 @@ import PedidosPage from "./pages/PedidosPage";
 import TrocarSenhaPage from "./pages/TrocarSenhaPage";
 import WhatsAppPage from "./pages/WhatsAppPage";
 import CaixaPage from "./pages/financeiro/CaixaPage";
-import ContasPagarPage from "./pages/financeiro/ContasPagarPage";
-import ResultadoPage from "./pages/financeiro/ResultadoPage";
+import ControleCarregamentosPage from "./pages/financeiro/ControleCarregamentosPage";
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -56,8 +55,10 @@ function AppRoutes() {
         <Route path="/ordem-coleta" element={<OrdemColetaPage />} />
         <Route path="/carta-frete" element={<CartaFretePage />} />
         <Route path="/financeiro/caixa" element={<AdminRoute><CaixaPage /></AdminRoute>} />
-        <Route path="/financeiro/resultado" element={<AdminRoute><ResultadoPage /></AdminRoute>} />
-        <Route path="/financeiro/contas" element={<AdminRoute><ContasPagarPage /></AdminRoute>} />
+        <Route path="/financeiro/carregamentos" element={<AdminRoute><ControleCarregamentosPage /></AdminRoute>} />
+        {/* Endereços antigos (antes das abas iguais às da planilha). */}
+        <Route path="/financeiro/resultado" element={<Navigate to="/financeiro/carregamentos" replace />} />
+        <Route path="/financeiro/contas" element={<Navigate to="/financeiro/carregamentos?aba=pagamentos" replace />} />
         <Route path="/agendamentos" element={<AgendamentosPage />} />
         <Route path="/analise-fretes" element={<AnaliseFretesPage />} />
         <Route path="/documentos-fiscais" element={<DocumentosFiscaisPage />} />

@@ -1,16 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
-import { Aviso, CampoValor, Dinheiro, ImportarPlanilha, Modal, NavegadorMes } from "./comum";
+import { Aviso, CampoValor, Dinheiro, Modal } from "./comum";
 import { brl, brlCurto, competenciaDe, diaBr, diaPorExtenso, diasAte, hojeIso, isoDe, numeroBr, valorParaCampo } from "./formato";
-import "./financeiro.css";
-
-const ABAS = [
-  { valor: "agenda", rotulo: "Agenda" },
-  { valor: "empresa", rotulo: "Empresa" },
-  { valor: "pessoal", rotulo: "Pessoal" },
-  { valor: "dividas", rotulo: "Dívidas" },
-];
 
 const SITUACAO = {
   pago: { rotulo: "Pago", classe: "pago" },
@@ -48,7 +40,6 @@ function Calendario({ competencia, itens, hoje, selecionado, aoSelecionar }) {
   const [ano, mes] = competencia.split("-").map(Number);
   const primeiro = new Date(ano, mes - 1, 1);
   const ultimoDia = new Date(ano, mes, 0).getDate();
-  const vazios = (primeiro.getDay() + 6) % 7;
   const porDia = useMemo(() => {
     const mapa = {};
     for (const item of itens) {
@@ -58,36 +49,57 @@ function Calendario({ competencia, itens, hoje, selecionado, aoSelecionar }) {
     return mapa;
   }, [itens]);
 
-  const celulas = [];
-  for (let i = 0; i < vazios; i += 1) celulas.push(<span key={`v${i}`} className="fin-cal-vazio" />);
-  for (let d = 1; d <= ultimoDia; d += 1) {
-    const iso = isoDe(new Date(ano, mes - 1, d));
-    const doDia = porDia[iso] || [];
-    const aberto = doDia.filter((i) => i.situacao !== "pago");
-    const total = aberto.reduce((soma, i) => soma + (i.valor || 0), 0);
-    const estado = doDia.length === 0 ? "" : aberto.length === 0 ? "quitado" : aberto.some((i) => i.situacao === "atrasado") ? "atrasado" : "aberto";
-    celulas.push(
-      <button
-        key={iso}
-        type="button"
-        className={`fin-cal-dia ${estado} ${iso === hoje ? "hoje" : ""} ${iso === selecionado ? "selecionado" : ""}`}
-        onClick={() => aoSelecionar(iso)}
-        aria-label={`${diaPorExtenso(iso)}: ${doDia.length} contas`}
-      >
-        <span className="fin-cal-numero">{d}</span>
-        {doDia.length > 0 && (
-          <>
-            <span className="fin-cal-total">{aberto.length ? (total ? brlCurto(total) : "a definir") : <Icon name="check" size={13} />}</span>
-            <span className="fin-cal-pontos">{doDia.slice(0, 5).map((i) => <i key={`${i.origem}${i.id}`} className={SITUACAO[i.situacao].classe} />)}</span>
-          </>
-        )}
-      </button>,
-    );
-  }
+  const dias = Array((primeiro.getDay() + 6) % 7).fill(null);
+  for (let d = 1; d <= ultimoDia; d += 1) dias.push(isoDe(new Date(ano, mes - 1, d)));
+  while (dias.length % 7) dias.push(null);
+  const semanas = [];
+  for (let i = 0; i < dias.length; i += 7) semanas.push(dias.slice(i, i + 7));
+  const valor = (i) => i.pagamento?.valor ?? i.valor ?? 0;
+
   return (
     <div className="fin-calendario">
-      {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => <span key={d} className="fin-cal-semana">{d}</span>)}
-      {celulas}
+      {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom", "Semana"].map((d) => <span key={d} className="fin-cal-semana">{d}</span>)}
+      {semanas.map((semana, n) => {
+        const daSemana = semana.flatMap((iso) => (iso ? porDia[iso] || [] : []));
+        const total = daSemana.reduce((s, i) => s + valor(i), 0);
+        const falta = daSemana.filter((i) => i.situacao !== "pago").reduce((s, i) => s + valor(i), 0);
+        return (
+          <Fragment key={n}>
+            {semana.map((iso, i) => {
+              if (!iso) return <span key={`v${n}-${i}`} className="fin-cal-vazio" />;
+              const doDia = porDia[iso] || [];
+              const aberto = doDia.filter((item) => item.situacao !== "pago");
+              const totalDia = aberto.reduce((soma, item) => soma + (item.valor || 0), 0);
+              const estado = doDia.length === 0 ? "" : aberto.length === 0 ? "quitado" : aberto.some((item) => item.situacao === "atrasado") ? "atrasado" : "aberto";
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  className={`fin-cal-dia ${estado} ${iso === hoje ? "hoje" : ""} ${iso === selecionado ? "selecionado" : ""}`}
+                  onClick={() => aoSelecionar(iso)}
+                  aria-label={`${diaPorExtenso(iso)}: ${doDia.length} contas`}
+                >
+                  <span className="fin-cal-numero">{Number(iso.slice(8))}</span>
+                  {doDia.length > 0 && (
+                    <>
+                      <span className="fin-cal-total">{aberto.length ? (totalDia ? brlCurto(totalDia) : "a definir") : <Icon name="check" size={13} />}</span>
+                      <span className="fin-cal-pontos">{doDia.slice(0, 5).map((item) => <i key={`${item.origem}${item.id}`} className={SITUACAO[item.situacao].classe} />)}</span>
+                    </>
+                  )}
+                </button>
+              );
+            })}
+            <span className={`fin-cal-semana-total ${total && !falta ? "quitada" : ""}`} title={total ? `Semana: ${brl(total)}${falta ? ` · a pagar ${brl(falta)}` : " · tudo pago"}` : "Nada na semana"}>
+              {total ? (
+                <>
+                  <b>{brlCurto(total)}</b>
+                  <small>{falta ? (falta < total ? `falta ${brlCurto(falta)}` : "a pagar") : "pago"}</small>
+                </>
+              ) : "—"}
+            </span>
+          </Fragment>
+        );
+      })}
     </div>
   );
 }
@@ -356,7 +368,7 @@ function EditorDespesa({ escopo, competencia, despesa, grupos, aoSalvar, aoExclu
   );
 }
 
-function Despesas({ escopo, competencia, despesas, recarregar }) {
+export function Despesas({ escopo, competencia, despesas, recarregar, fechamento = [] }) {
   const [aberto, setAberto] = useState(null);
   const minhas = despesas.filter((d) => d.escopo === escopo);
   const grupos = [...new Set(minhas.map((d) => d.grupo))];
@@ -378,6 +390,16 @@ function Despesas({ escopo, competencia, despesas, recarregar }) {
           <Dinheiro valor={total} tamanho="l" />
           <small>{doMes.length} contas fixas em {grupos.length} grupos</small>
         </div>
+        {fechamento.length > 0 && (
+          <dl className="fin-fechamento">
+            {fechamento.map((f) => (
+              <div key={f.rotulo} className={f.destaque ? "destaque" : ""}>
+                <dt>{f.rotulo}</dt>
+                <dd><Dinheiro valor={f.valor} tamanho={f.destaque ? "m" : "s"} /></dd>
+              </div>
+            ))}
+          </dl>
+        )}
         <button type="button" className="btn-primary" onClick={() => setAberto(aberto === "nova" ? null : "nova")}><Icon name="plus" size={14} /> Despesa</button>
       </div>
       {aberto === "nova" && (
@@ -505,7 +527,7 @@ function DataPagamento({ dia }) {
   );
 }
 
-function Dividas({ dividas, recarregar }) {
+export function Dividas({ dividas, recarregar }) {
   const [aberto, setAberto] = useState(null);
   const [erro, setErro] = useState("");
   const emAberto = dividas.filter((d) => !d.quitada);
@@ -586,41 +608,20 @@ function Dividas({ dividas, recarregar }) {
   );
 }
 
-export default function ContasPagarPage() {
-  const [competencia, setCompetencia] = useState(competenciaDe(hojeIso()));
-  const [aba, setAba] = useState("agenda");
-  const [agenda, setAgenda] = useState(null);
-  const [despesas, setDespesas] = useState([]);
-  const [dividas, setDividas] = useState([]);
-  const [contas, setContas] = useState([]);
-  const [erro, setErro] = useState("");
-  const [modal, setModal] = useState(false);
+// Aba "Pagamentos": o calendario do mes, montado pelos vencimentos.
+export function AbaPagamentos({ competencia, agenda, contas, recarregar }) {
   const [marcando, setMarcando] = useState(false);
-
-  const carregar = useCallback(async () => {
-    setErro("");
-    try {
-      const [a, d, dv, c] = await Promise.all([api.agenda(competencia), api.despesas(competencia), api.dividas(), api.contas()]);
-      setAgenda(a);
-      setDespesas(d);
-      setDividas(dv);
-      setContas(c.filter((conta) => conta.ativa));
-    } catch (err) {
-      setErro(err.message);
-    }
-  }, [competencia]);
-
-  useEffect(() => { carregar(); }, [carregar]);
-
+  const [erro, setErro] = useState("");
   // Primeira vez no mes (nada pago ainda e varias vencidas): oferece marcar
   // o que ja passou como pago, pra agenda nao abrir cheia de "atrasado".
-  const comecando = agenda && agenda.totais.pago === 0 && agenda.totais.atrasados >= 3;
+  const comecando = agenda.totais.pago === 0 && agenda.totais.atrasados >= 3;
 
   async function marcarVencidas() {
     setMarcando(true);
+    setErro("");
     try {
       await api.pagarVencidas(competencia, agenda.hoje);
-      await carregar();
+      await recarregar();
     } catch (err) {
       setErro(err.message);
     } finally {
@@ -629,39 +630,17 @@ export default function ContasPagarPage() {
   }
 
   return (
-    <div className="ops-page fin-pagina">
-      <div className="fin-barra">
-        <NavegadorMes competencia={competencia} aoMudar={setCompetencia} />
-        <div className="fin-segmentado" role="tablist">
-          {ABAS.map((a) => (
-            <button key={a.valor} type="button" role="tab" aria-selected={aba === a.valor} className={aba === a.valor ? "ativo" : ""} onClick={() => setAba(a.valor)}>{a.rotulo}</button>
-          ))}
-        </div>
-        <span className="fin-espaco" />
-        <button type="button" className="btn-secondary" onClick={() => setModal(true)}><Icon name="upload" size={15} /> Importar planilha</button>
-      </div>
-
+    <>
+      <Resumo totais={agenda.totais} />
       {erro && <Aviso tipo="error">{erro}</Aviso>}
-      {!agenda && !erro && <Aviso>Carregando as contas...</Aviso>}
-
-      {agenda && (
-        <>
-          <Resumo totais={agenda.totais} />
-          {comecando && aba === "agenda" && (
-            <div className="fin-comecando">
-              <Icon name="calendar" size={18} />
-              <p><b>{agenda.totais.atrasados} contas aparecem atrasadas.</b> Se você já pagou as que venceram antes de hoje, marque todas de uma vez. Não lança nada no caixa; as de hoje continuam em aberto.</p>
-              <button type="button" className="btn-secondary" disabled={marcando} onClick={marcarVencidas}>{marcando ? "Marcando..." : `Marcar as ${agenda.totais.atrasados} atrasadas como pagas`}</button>
-            </div>
-          )}
-          {aba === "agenda" && <Agenda competencia={competencia} dados={agenda} contas={contas} recarregar={carregar} />}
-          {aba === "empresa" && <Despesas escopo="empresa" competencia={competencia} despesas={despesas} recarregar={carregar} />}
-          {aba === "pessoal" && <Despesas escopo="pessoal" competencia={competencia} despesas={despesas} recarregar={carregar} />}
-          {aba === "dividas" && <Dividas dividas={dividas} recarregar={carregar} />}
-        </>
+      {comecando && (
+        <div className="fin-comecando">
+          <Icon name="calendar" size={18} />
+          <p><b>{agenda.totais.atrasados} contas aparecem atrasadas.</b> Se você já pagou as que venceram antes de hoje, marque todas de uma vez. Não lança nada no caixa; as de hoje continuam em aberto.</p>
+          <button type="button" className="btn-secondary" disabled={marcando} onClick={marcarVencidas}>{marcando ? "Marcando..." : `Marcar as ${agenda.totais.atrasados} atrasadas como pagas`}</button>
+        </div>
       )}
-
-      {modal && <ImportarPlanilha aoFechar={() => setModal(false)} aoImportar={(r) => { if (r.competencia) setCompetencia(r.competencia); carregar(); }} />}
-    </div>
+      <Agenda competencia={competencia} dados={agenda} contas={contas} recarregar={recarregar} />
+    </>
   );
 }
