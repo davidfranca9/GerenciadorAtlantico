@@ -150,6 +150,7 @@ export default function AgendamentosPage() {
   const [docGerandoId, setDocGerandoId] = useState(null);
   const [verAbertoId, setVerAbertoId] = useState(null);
   const [motoristaAbertoId, setMotoristaAbertoId] = useState(null);
+  const [pedidosEdicao, setPedidosEdicao] = useState([]);
   const [avisoEmail, setAvisoEmail] = useState("");
 
   async function carregar() {
@@ -286,7 +287,11 @@ export default function AgendamentosPage() {
     setEditForm(null);
     setEditLoading(true);
     try {
-      const full = await api.obterAgendamento(a.id);
+      const [full, listaPedidos] = await Promise.all([
+        api.obterAgendamento(a.id),
+        api.listarPedidos(true).catch(() => []),
+      ]);
+      setPedidosEdicao(listaPedidos);
       setEditForm({
         template: templateFromSupplierLabel(full.supplier),
         loading_date: full.loading_date || "",
@@ -308,6 +313,9 @@ export default function AgendamentosPage() {
               embalagem: it.embalagem || "",
               toneladas: String(it.toneladas ?? ""),
               pedido_id: it.pedido_id ?? null,
+              // O que o item ja ocupava: volta a ficar disponivel pra ele mesmo.
+              pedidoOriginalId: it.pedido_id ?? null,
+              toneladasOriginal: parseNumero(it.toneladas),
             }))
           : [{ ...OC_ITEM_VAZIO }],
       });
@@ -341,6 +349,38 @@ export default function AgendamentosPage() {
     setEditForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  // Tonelada que o item pode usar do pedido: o saldo restante, mais o que
+  // ele mesmo ja ocupava (senao editar um item que usou o pedido inteiro
+  // nao deixaria nem manter o valor).
+  function disponivelNaEdicao(it) {
+    const pedido = pedidosEdicao.find((p) => String(p.id) === String(it.pedido_id));
+    if (!pedido) return null;
+    const proprio = String(it.pedidoOriginalId) === String(it.pedido_id) ? it.toneladasOriginal || 0 : 0;
+    return pedido.toneladas_restante + proprio;
+  }
+
+  function selecionarPedidoNaEdicao(idx, pedidoId) {
+    const pedido = pedidosEdicao.find((p) => String(p.id) === String(pedidoId));
+    setEditForm((prev) => ({
+      ...prev,
+      itens: prev.itens.map((it, i) => {
+        if (i !== idx) return it;
+        if (!pedido) return { ...it, pedido_id: null };
+        const voltouAoOriginal = String(it.pedidoOriginalId) === String(pedido.id);
+        return {
+          ...it,
+          pedido_id: pedido.id,
+          contrato: pedido.contrato,
+          cliente: pedido.cliente,
+          produto: pedido.produto,
+          cidade: pedido.cidade,
+          embalagem: pedido.embalagem,
+          toneladas: voltouAoOriginal ? String(it.toneladasOriginal) : String(pedido.toneladas_restante),
+        };
+      }),
+    }));
+  }
+
   function updateEditItem(idx, field, value) {
     setEditForm((prev) => ({
       ...prev,
@@ -358,7 +398,7 @@ export default function AgendamentosPage() {
     try {
       const payload = {
         template: editForm.template,
-        produtos: editForm.itens,
+        produtos: editForm.itens.filter((it) => it.pedido_id || String(it.contrato || "").trim()),
         cpf: editForm.driver_cpf,
         nome: editForm.driver_name,
         cnh: editForm.cnh,
@@ -773,12 +813,37 @@ export default function AgendamentosPage() {
                             <tbody>
                               {editForm.itens.map((it, idx) => (
                                 <tr key={idx}>
-                                  <td><input value={it.contrato} onChange={(e) => updateEditItem(idx, "contrato", e.target.value)} /></td>
-                                  <td><input value={it.produto} onChange={(e) => updateEditItem(idx, "produto", e.target.value)} /></td>
-                                  <td><input value={it.embalagem} onChange={(e) => updateEditItem(idx, "embalagem", e.target.value)} /></td>
-                                  <td><input value={it.toneladas} onChange={(e) => updateEditItem(idx, "toneladas", e.target.value)} /></td>
-                                  <td><input value={it.cidade} onChange={(e) => updateEditItem(idx, "cidade", e.target.value)} /></td>
-                                  <td><input value={it.cliente} onChange={(e) => updateEditItem(idx, "cliente", e.target.value)} /></td>
+                                  <td style={{ minWidth: 280 }}>
+                                    <select value={it.pedido_id ?? ""} onChange={(e) => selecionarPedidoNaEdicao(idx, e.target.value)}>
+                                      <option value="">
+                                        {it.contrato ? `${it.contrato} (sem vínculo) — escolha o pedido` : "Selecione um pedido cadastrado"}
+                                      </option>
+                                      {pedidosEdicao
+                                        .filter((p) => p.toneladas_restante > 0.001 || String(p.id) === String(it.pedido_id))
+                                        .map((p) => (
+                                          <option key={p.id} value={p.id}>
+                                            {p.novo ? "NOVO · " : ""}{p.contrato || "s/nº"} · {p.cliente} · {p.produto} · {formatTon(p.toneladas_restante)} t restantes
+                                          </option>
+                                        ))}
+                                    </select>
+                                  </td>
+                                  <td>{it.produto || "-"}</td>
+                                  <td>{it.embalagem || "-"}</td>
+                                  <td>
+                                    <input
+                                      style={{ width: 96 }}
+                                      value={it.toneladas}
+                                      disabled={!it.pedido_id && !String(it.contrato || "").trim()}
+                                      title={disponivelNaEdicao(it) !== null ? `Disponível: ${formatTon(disponivelNaEdicao(it))} t` : ""}
+                                      onChange={(e) => {
+                                        const maximo = disponivelNaEdicao(it);
+                                        if (e.target.value !== "" && maximo !== null && parseNumero(e.target.value) > maximo + 0.0001) return;
+                                        updateEditItem(idx, "toneladas", e.target.value);
+                                      }}
+                                    />
+                                  </td>
+                                  <td>{it.cidade || "-"}</td>
+                                  <td>{it.cliente || "-"}</td>
                                   <td>
                                     <button
                                       type="button"
