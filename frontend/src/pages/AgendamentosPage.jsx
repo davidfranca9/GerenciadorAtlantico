@@ -4,6 +4,7 @@ import DateField from "../components/DateField";
 import { formatCPF, formatDateInput, formatNome, formatPhone, formatPlaca } from "../utils/format";
 import { MODELOS_VEICULO } from "../utils/vehicleCategory";
 import EmailMotoristaPanel from "../components/EmailMotoristaPanel";
+import Icon from "../components/Icon";
 
 const STATUS_OPTIONS = ["Aguardando Agendamento", "Agendado", "Cancelado", "Carregou"];
 const ITEM_VAZIO = { pedidoId: null, pedido: "", cliente: "", produto: "", cidade: "", embalagem: "", toneladas: "", toneladasMax: 0 };
@@ -629,18 +630,20 @@ export default function AgendamentosPage() {
       {avisoEmail && <div className="inline-alert info">{avisoEmail}</div>}
 
       <div className="card" style={{ overflowX: "auto" }}>
-        <table>
+        {/* Compacta pra caber em notebook (1366 px) sem rolar de lado: itens e
+            toneladas numa coluna so, motorista com a acao dele na propria
+            celula e as demais acoes como icones. */}
+        <table className="tabela-agendamentos">
           <thead>
             <tr>
               <th>Fornecedor</th>
               <th>Solicitada</th>
               <th>Agendada</th>
               <th>Motorista</th>
-              <th>Itens</th>
-              <th>Toneladas</th>
+              <th>Carga</th>
               <th>Observações</th>
               <th>Status</th>
-              <th></th>
+              <th><span className="sr-only">Ações</span></th>
             </tr>
           </thead>
           <tbody>
@@ -656,39 +659,60 @@ export default function AgendamentosPage() {
                   <td onClick={(e) => e.stopPropagation()}>
                     <DataAgendadaCell agendamento={a} onSalvo={carregar} />
                   </td>
-                  <td>{a.driver_name}</td>
-                  <td>{a.total_items}</td>
-                  <td>{a.total_tons}</td>
-                  <td style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.observacoes}>
+                  <td className="celula-motorista">
+                    {a.driver_name && <span>{a.driver_name}</span>}
+                    <button
+                      className="link-motorista"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMotoristaAbertoId(motoristaAbertoId === a.id ? null : a.id);
+                      }}
+                    >
+                      {motoristaAbertoId === a.id ? "Fechar" : a.driver_name ? "Substituir motorista" : "+ Incluir motorista"}
+                    </button>
+                  </td>
+                  <td className="celula-carga">
+                    <strong>{a.total_tons} t</strong>
+                    <span>{a.total_items} {Number(a.total_items) === 1 ? "item" : "itens"}</span>
+                  </td>
+                  <td style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.observacoes}>
                     {a.observacoes || "-"}
                   </td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    <select style={{ minWidth: 190 }} value={a.status} onChange={(e) => handleStatus(a.id, e.target.value)}>
+                    <select value={a.status} onChange={(e) => handleStatus(a.id, e.target.value)}>
                       {STATUS_OPTIONS.map((s) => (
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
                   </td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    {/* Botoes em ate duas linhas: em uma so, empurravam a tabela
-                        pra fora do quadro e o "Excluir" ficava cortado. */}
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxWidth: 260 }}>
-                    <button className="btn-secondary" onClick={() => (editId === a.id ? fecharEdicao() : abrirEdicao(a))}>
-                      {editId === a.id ? "Fechar" : "Editar"}
-                    </button>
-                    <button className="btn-secondary" onClick={() => setMotoristaAbertoId(motoristaAbertoId === a.id ? null : a.id)}>
-                      {motoristaAbertoId === a.id ? "Fechar" : a.driver_name ? "Substituir motorista" : "Incluir motorista"}
-                    </button>
-                    <button className="btn-secondary" disabled={docGerandoId === a.id} onClick={() => salvarDocumentos(a)}>
-                      {docGerandoId === a.id ? "Gerando..." : "Salvar Documentos"}
-                    </button>
-                    <button className="btn-ghost" onClick={() => handleExcluir(a)}>Excluir</button>
+                    <div className="acoes-agendamento">
+                      <button
+                        className={`icon-btn${editId === a.id ? " ativo" : ""}`}
+                        title={editId === a.id ? "Fechar edição" : "Editar"}
+                        aria-label={editId === a.id ? "Fechar edição" : "Editar"}
+                        onClick={() => (editId === a.id ? fecharEdicao() : abrirEdicao(a))}
+                      >
+                        <Icon name={editId === a.id ? "close" : "edit"} size={15} />
+                      </button>
+                      <button
+                        className="icon-btn"
+                        title={docGerandoId === a.id ? "Gerando documentos..." : "Salvar documentos"}
+                        aria-label="Salvar documentos"
+                        disabled={docGerandoId === a.id}
+                        onClick={() => salvarDocumentos(a)}
+                      >
+                        <Icon name={docGerandoId === a.id ? "refresh" : "download"} size={15} />
+                      </button>
+                      <button className="icon-btn perigo" title="Excluir" aria-label="Excluir" onClick={() => handleExcluir(a)}>
+                        <Icon name="trash" size={15} />
+                      </button>
                     </div>
                   </td>
                 </tr>
                 {motoristaAbertoId === a.id && (
                   <tr key={`${a.id}-motorista`}>
-                    <td colSpan={9}>
+                    <td colSpan={8}>
                       <EmailMotoristaPanel
                         agendamento={a}
                         aoFechar={() => setMotoristaAbertoId(null)}
@@ -703,7 +727,7 @@ export default function AgendamentosPage() {
                 )}
                 {verAbertoId === a.id && (
                   <tr key={`${a.id}-ver`}>
-                    <td colSpan={9}>
+                    <td colSpan={8}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 4px" }}>
                         <strong>Itens agendados</strong>
                         <table>
@@ -751,7 +775,7 @@ export default function AgendamentosPage() {
                 )}
                 {editId === a.id && (
                   <tr key={`${a.id}-edit`}>
-                    <td colSpan={9}>
+                    <td colSpan={8}>
                       {editLoading && <div style={{ padding: 12, color: "var(--muted)" }}>Carregando...</div>}
                       {!editLoading && editForm && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "12px 4px" }}>
@@ -896,7 +920,7 @@ export default function AgendamentosPage() {
             ))}
             {!loading && agendamentosExibidos.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ color: "var(--muted)" }}>
+                <td colSpan={8} style={{ color: "var(--muted)" }}>
                   {diaSelecionado ? `Nenhum agendamento em ${diaSelecionado}.` : "Nenhum agendamento encontrado."}
                 </td>
               </tr>

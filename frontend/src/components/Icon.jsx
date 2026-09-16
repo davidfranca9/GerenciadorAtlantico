@@ -17,6 +17,8 @@ const paths = {
   file: <><path d="M6 2h9l5 5v15H6zM14 2v6h6"/><path d="M9 13h8M9 17h6"/></>,
   route: <><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M8.5 17.5 16 7M9 5H6a3 3 0 0 0 0 6h12a3 3 0 0 1 0 6h-3"/></>,
   mail: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></>,
+  edit: <><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></>,
+  download: <><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></>,
   trash: <><path d="M3 6h18M8 6V3h8v3M19 6l-1 15H6L5 6M10 11v5M14 11v5"/></>,
   search: <><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></>,
   chat: <><path d="M21 11.5a8.4 8.4 0 0 1-8.9 8.4 8.5 8.5 0 0 1-4-1L3 20l1.1-4.5A8.4 8.4 0 1 1 21 11.5z"/></>,
