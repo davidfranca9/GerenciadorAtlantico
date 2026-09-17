@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem, CartaFreteEnviada, Pedido
-from ..servicos import carta_frete, emails_agendamento, saldo_pedidos
+from ..servicos import carta_frete, respostas_fabrica, emails_agendamento, saldo_pedidos
 from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
 from ..servicos.documentos import gerar_autorizacao_xlsx
 from ..servicos.oc_html import gerar_oc_pdf_html
@@ -284,6 +284,7 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
     destinatarios = emails_agendamento.destino(RECIPIENTS_FERTIMAX, True) if payload.teste else RECIPIENTS_FERTIMAX
     vistos: set[tuple[str, str]] = set()
     assuntos_enviados: list[str] = []
+    message_ids: list[str] = []
     for produto in payload.produtos:
         cliente, pedido = produto.cliente.strip(), produto.contrato.strip()
         if not cliente or not pedido or (cliente, pedido) in vistos:
@@ -292,7 +293,7 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
         titulo, corpo = montar_autorizacao_agendamento(cliente, pedido, payload.data_carregamento, motorista=payload.nome)
         titulo = _assunto_teste(titulo, payload.teste)
         try:
-            send_email_message(destinatarios, titulo, corpo, [xlsx_path], imagens_inline=imagem_assinatura_inline())
+            message_ids.append(send_email_message(destinatarios, titulo, corpo, [xlsx_path], imagens_inline=imagem_assinatura_inline()))
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
         assuntos_enviados.append(titulo)
@@ -303,6 +304,8 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
     agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, {"xlsx": xlsx_path})
     agendamento.email_subject = "; ".join(assuntos_enviados)[:500]
     agendamento.email_recipients = ", ".join(destinatarios)[:1000]
+    for message_id in message_ids:
+        respostas_fabrica.registrar_envio(agendamento, message_id)
     db.commit()
     return {"ok": True, "email_enviado_para": destinatarios, "agendamento_id": agendamento.id}
 
@@ -327,6 +330,7 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
 
     tmp_dir = tempfile.mkdtemp()
     arquivos = _gerar_oc_arquivos(payload, tmp_dir)
+    message_ids: list[str] = []
 
     if supplier_label == "Fertimaxi":
         # Mesmo modelo (cliente + pedido + assinatura) usado no "Novo
@@ -342,7 +346,7 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
             vistos.add((cliente, pedido))
             titulo, corpo = montar_autorizacao_agendamento(cliente, pedido, payload.data_carregamento, motorista=payload.nome)
             try:
-                send_email_message(recipients, _assunto_teste(titulo, payload.teste), corpo, anexos, imagens_inline=imagem_assinatura_inline())
+                message_ids.append(send_email_message(recipients, _assunto_teste(titulo, payload.teste), corpo, anexos, imagens_inline=imagem_assinatura_inline()))
             except Exception as exc:
                 raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
             assuntos_enviados.append(titulo)
@@ -365,12 +369,14 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
         </body></html>
         """
         try:
-            send_email_message(recipients, _assunto_teste(subject, payload.teste), body, anexos)
+            message_ids.append(send_email_message(recipients, _assunto_teste(subject, payload.teste), body, anexos))
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
 
     produtos_dict = [p.model_dump() for p in payload.produtos]
     agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, arquivos)
+    for message_id in message_ids:
+        respostas_fabrica.registrar_envio(agendamento, message_id)
     agendamento.roteiro = payload.roteiro.strip()
     agendamento.localizador = payload.localizador.strip()
     agendamento.contato_cliente = payload.contato_cliente.strip()

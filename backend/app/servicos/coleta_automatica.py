@@ -47,6 +47,18 @@ async def _coletar_do_email() -> int:
     return len(guardadas)
 
 
+async def _ler_respostas_da_fabrica() -> int:
+    """Respostas da fabrica aos e-mails de agendamento: confirmacao vira
+    Agendado; pergunta e problema so aparecem na tela."""
+    from . import respostas_fabrica
+
+    def ler() -> int:
+        with SessionLocal() as db:
+            return respostas_fabrica.ler_da_caixa(db, dias=3, aplicar=True)["lidas"]
+
+    return await asyncio.to_thread(ler)
+
+
 async def _casar_notas_soltas() -> int:
     """Tenta de novo o casamento das notas ainda sem agendamento.
 
@@ -171,6 +183,10 @@ def _escutar_email_em_tempo_real() -> None:
             asyncio.run(_coletar_do_email())
         except Exception as exc:
             logger.warning("coleta apos aviso de e-mail falhou: %s", str(exc)[:150])
+        try:
+            asyncio.run(_ler_respostas_da_fabrica())
+        except Exception as exc:
+            logger.warning("respostas da fabrica apos aviso de e-mail falharam: %s", str(exc)[:150])
 
     email_inbox.escutar_novas_mensagens(ao_chegar)
 
@@ -180,6 +196,7 @@ def iniciar() -> None:
     threading.Thread(target=_escutar_email_em_tempo_real, daemon=True).start()
     asyncio.create_task(_repetir("e-mail", _coletar_do_email, INTERVALO_EMAIL_SEGUNDOS))
     asyncio.create_task(_repetir("casamento", _casar_notas_soltas, INTERVALO_EMAIL_SEGUNDOS))
+    asyncio.create_task(_repetir("respostas da fabrica", _ler_respostas_da_fabrica, INTERVALO_ACOMPANHAMENTO_SEGUNDOS))
     asyncio.create_task(_repetir("CT-e", _acompanhar_ctes, INTERVALO_ACOMPANHAMENTO_SEGUNDOS))
     asyncio.create_task(_repetir("autorizacoes de abastecimento", _enviar_cartas_agendadas, INTERVALO_CARTAS_SEGUNDOS))
     asyncio.create_task(_repetir("carregamentos do Bsoft", _puxar_carregamentos, INTERVALO_CARREGAMENTOS_SEGUNDOS))

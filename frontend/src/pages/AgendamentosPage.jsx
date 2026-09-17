@@ -96,6 +96,33 @@ function DataAgendadaCell({ agendamento, onSalvo }) {
   );
 }
 
+// Resposta da fabrica lida da caixa. So a confirmacao mexe no agendamento;
+// pergunta ("confirma?") e problema ficam aqui pra quem opera decidir.
+const RESPOSTA_TIPO = {
+  confirmado: "Confirmou",
+  aguardando: "Aguardando confirmação",
+  problema: "Problema",
+  outro: "Resposta",
+};
+
+function resumoDaResposta(r) {
+  const dia = r.data ? r.data.slice(0, 5) : "";
+  if (r.tipo === "confirmado") return dia ? `Fábrica confirmou ${dia}` : "Fábrica respondeu ok";
+  if (r.tipo === "aguardando") return dia ? `Fábrica propôs ${dia}` : "Fábrica perguntou";
+  if (r.tipo === "problema") return "Fábrica apontou problema";
+  return "Fábrica respondeu";
+}
+
+function RespostaFabricaChip({ respostas, onAbrir }) {
+  const ultima = (respostas || [])[(respostas || []).length - 1];
+  if (!ultima) return null;
+  return (
+    <button type="button" className={`resposta-fabrica-chip ${ultima.tipo}`} title={ultima.texto} onClick={onAbrir}>
+      {resumoDaResposta(ultima)}
+    </button>
+  );
+}
+
 // Horario gravado em UTC (sem fuso) -> hora local.
 function formatarQuando(iso) {
   if (!iso) return "";
@@ -684,6 +711,7 @@ export default function AgendamentosPage() {
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
+                    <RespostaFabricaChip respostas={a.respostas_fabrica} onAbrir={() => setVerAbertoId(a.id)} />
                   </td>
                   <td onClick={(e) => e.stopPropagation()}>
                     <div className="acoes-agendamento">
@@ -757,6 +785,23 @@ export default function AgendamentosPage() {
                             )}
                           </tbody>
                         </table>
+                        {(a.respostas_fabrica || []).length > 0 && (
+                          <div className="respostas-fabrica">
+                            <strong>Respostas da fábrica</strong>
+                            {[...a.respostas_fabrica].reverse().map((r) => (
+                              <div key={r.id} className="resposta-fabrica">
+                                <div className="resposta-fabrica-topo">
+                                  <span className={`resposta-fabrica-chip ${r.tipo}`}>
+                                    {RESPOSTA_TIPO[r.tipo] || "Resposta"}{r.data ? ` · ${r.data}` : ""}
+                                  </span>
+                                  <span>{formatarQuando(r.recebido_em)}</span>
+                                  {r.aplicada && <span className="resposta-fabrica-aplicada">data e status atualizados</span>}
+                                </div>
+                                <p>{r.texto || "(sem texto)"}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         {(a.emails || []).length > 0 && (
                           <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
                             <strong>E-mails de motorista</strong>

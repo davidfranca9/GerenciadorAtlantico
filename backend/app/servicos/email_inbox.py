@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import email
+import html
 import imaplib
 import logging
 import socket
@@ -15,6 +16,7 @@ import time
 import re
 import threading
 from email.header import decode_header
+from datetime import timezone
 from email.utils import parsedate_to_datetime
 
 from ..config import settings
@@ -299,6 +301,88 @@ def obter_thread(msg_id: str) -> list:
         if status != "OK" or not resultado or not resultado[0]:
             return [msg_id]
         return [i.decode() for i in resultado[0].split()]
+
+
+def _texto_simples(msg) -> str:
+    """Corpo em texto: o text/plain quando existe, senao o HTML sem tags."""
+    texto_plano, texto_html = "", ""
+    partes = msg.walk() if msg.is_multipart() else [msg]
+    for parte in partes:
+        if "attachment" in str(parte.get("Content-Disposition", "")):
+            continue
+        tipo = parte.get_content_type()
+        if tipo not in ("text/plain", "text/html"):
+            continue
+        payload = parte.get_payload(decode=True)
+        if payload is None:
+            continue
+        conteudo = payload.decode(parte.get_content_charset() or "utf-8", errors="replace")
+        if tipo == "text/plain" and not texto_plano:
+            texto_plano = conteudo
+        elif tipo == "text/html" and not texto_html:
+            texto_html = conteudo
+    if texto_plano.strip():
+        return texto_plano
+    semi = re.sub(r"(?is)<(style|script)[^>]*>.*?</\1>", " ", texto_html)
+    semi = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</tr>|</li>|</td>|</h\d>", "\n", semi)
+    return html.unescape(re.sub(r"<[^>]+>", " ", semi))
+
+
+def mensagens_para_ler(busca: str, ja_lidas: set[str], limite: int = 60) -> list[dict]:
+    """Mensagens da busca que ainda nao foram lidas pelo sistema, completas.
+
+    Pra leitura automatica (respostas da fabrica). BODY.PEEK nao marca como
+    lida na caixa de quem usa o Gmail. `ja_lidas` sao Message-IDs ja
+    processados: esses nem tem o corpo baixado.
+    """
+    with _lock:
+        conexao = _obter_conexao()
+        if conexao.select("INBOX", readonly=True)[0] != "OK":
+            raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
+        status, dados = conexao.search(None, "X-GM-RAW", _consulta_gmail(busca))
+        if status != "OK":
+            raise InboxIndisponivel("Nao foi possivel buscar as mensagens")
+        ids = (dados[0] or b"").split()[-limite:]
+        if not ids:
+            return []
+
+        status, cabecalhos = conexao.fetch(b",".join(ids), "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+        novos = []
+        for item in cabecalhos if status == "OK" else []:
+            if not isinstance(item, tuple):
+                continue
+            numero = re.match(rb"(\d+) \(", item[0])
+            message_id = (email.message_from_bytes(item[1]).get("Message-ID") or "").strip()
+            if numero and message_id and message_id not in ja_lidas:
+                novos.append(numero.group(1))
+
+        mensagens = []
+        for numero in novos:
+            status, partes = conexao.fetch(numero, "(X-GM-THRID BODY.PEEK[])")
+            if status != "OK":
+                continue
+            bruto = next((p for p in partes if isinstance(p, tuple)), None)
+            if bruto is None:
+                continue
+            conversa = re.search(rb"X-GM-THRID (\d+)", bruto[0])
+            msg = email.message_from_bytes(bruto[1])
+            try:
+                recebido = parsedate_to_datetime(msg.get("Date"))
+                if recebido.tzinfo is not None:
+                    recebido = recebido.astimezone(timezone.utc).replace(tzinfo=None)
+            except (TypeError, ValueError):
+                recebido = None
+            mensagens.append({
+                "message_id": (msg.get("Message-ID") or "").strip(),
+                "in_reply_to": msg.get("In-Reply-To") or "",
+                "references": msg.get("References") or "",
+                "conversa": conversa.group(1).decode() if conversa else "",
+                "remetente": _extrair_remetente(msg).get("email", ""),
+                "assunto": _decodificar(msg.get("Subject", "")),
+                "recebido_em": recebido,
+                "texto": _texto_simples(msg),
+            })
+        return mensagens
 
 
 def contar_desde(epoch: int) -> int:

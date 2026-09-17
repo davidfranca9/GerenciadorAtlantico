@@ -79,8 +79,11 @@ def send_email_message(
     corpo: str,
     anexos: list[str] | None = None,
     imagens_inline: dict[str, str] | None = None,
-) -> bool:
-    """imagens_inline mapeia um Content-ID (sem os "<>") pro caminho de uma
+) -> str:
+    """Devolve o Message-ID do e-mail que saiu: a resposta cita ele, e e
+    assim que ela volta pro agendamento certo.
+
+    imagens_inline mapeia um Content-ID (sem os "<>") pro caminho de uma
     imagem no disco - referencie no HTML do corpo via <img src="cid:o_id">
     pra ela aparecer embutida na mensagem, tipo uma assinatura."""
     anexos = anexos or []
@@ -126,4 +129,4 @@ def send_email_message(
     finally:
         server.quit()
 
-    return True
+    return msg["Message-ID"]

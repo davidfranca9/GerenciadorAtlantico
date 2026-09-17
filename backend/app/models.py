@@ -100,6 +100,12 @@ class Agendamento(Base):
     emails: Mapped[list["AgendamentoEmail"]] = relationship(
         back_populates="agendamento", cascade="all, delete-orphan", order_by="AgendamentoEmail.created_at"
     )
+    # Message-ID dos e-mails que sairam deste agendamento, separados por
+    # espaco: a resposta da fabrica cita um deles e e assim que ela e ligada.
+    email_message_ids: Mapped[str] = mapped_column(Text, default="")
+    respostas: Mapped[list["RespostaFabrica"]] = relationship(
+        back_populates="agendamento", cascade="all, delete-orphan", order_by="RespostaFabrica.recebido_em"
+    )
 
 
 class AgendamentoItem(Base):
@@ -138,6 +144,36 @@ class AgendamentoEmail(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     agendamento: Mapped[Agendamento] = relationship(back_populates="emails")
+
+
+class RespostaFabrica(Base):
+    """Resposta da fabrica a um e-mail de agendamento, lida da caixa.
+
+    Confirmou (com data) -> o agendamento vira Agendado sozinho. Perguntou
+    ("confirma?") ou apontou problema -> so aparece na tela. Uma resposta que
+    nao deu pra ligar a um agendamento fica gravada sem ele, so pra nao ser
+    lida de novo.
+    """
+
+    __tablename__ = "respostas_fabrica"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    message_id: Mapped[str] = mapped_column(String(500), index=True)
+    agendamento_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("agendamentos.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    conversa: Mapped[str] = mapped_column(String(40), default="")  # X-GM-THRID do Gmail
+    recebido_em: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    remetente: Mapped[str] = mapped_column(String(255), default="")
+    assunto: Mapped[str] = mapped_column(String(500), default="")
+    texto: Mapped[str] = mapped_column(String(4000), default="")
+    tipo: Mapped[str] = mapped_column(String(20), default="outro")  # confirmado | aguardando | problema | outro
+    data: Mapped[str] = mapped_column(String(10), default="")  # dd/mm/aaaa
+    como_ligou: Mapped[str] = mapped_column(String(20), default="")  # resposta | horario | conversa
+    aplicada: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    agendamento: Mapped[Optional[Agendamento]] = relationship(back_populates="respostas")
 
 
 class Pedido(Base):

@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.auth import get_current_user  # noqa: E402
 from app.database import get_db  # noqa: E402
-from app.models import Agendamento, AgendamentoEmail, AgendamentoItem, Pedido  # noqa: E402
+from app.models import Agendamento, AgendamentoEmail, AgendamentoItem, Pedido, RespostaFabrica  # noqa: E402
 from app.routers import agendamentos as rotas_agendamentos  # noqa: E402
 from app.routers import documentos as rotas_documentos  # noqa: E402
 from app.routers import pedidos as rotas_pedidos  # noqa: E402
@@ -35,7 +35,7 @@ UREIA = "UREIA PRILL MICROGRANULADA 46% N"
 
 @pytest.fixture
 def db():
-    sessao = banco_em_memoria(Pedido, Agendamento, AgendamentoItem, AgendamentoEmail)
+    sessao = banco_em_memoria(Pedido, Agendamento, AgendamentoItem, AgendamentoEmail, RespostaFabrica)
     sessao.add_all([
         Pedido(id=1, contrato="040947", cliente="ACACIO TORATTI", produto=SUPER, embalagem="BIG BAG",
                cidade="Ibiai-MG", toneladas_total=180, toneladas_usadas=0),

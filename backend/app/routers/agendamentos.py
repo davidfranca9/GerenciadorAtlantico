@@ -13,7 +13,7 @@ from ..auth import get_current_user
 from ..config import settings
 from ..database import get_db
 from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoEmail, AgendamentoItem, Cidade, Pedido
-from ..servicos import emails_agendamento, ocr, saldo_pedidos
+from ..servicos import emails_agendamento, ocr, respostas_fabrica, saldo_pedidos
 from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
 from .documentos import Produto, OrdemColetaRequest, _gerar_oc_arquivos
 
@@ -88,13 +88,13 @@ def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento, teste: 
             cliente, pedido, agendamento.loading_date, motorista=agendamento.driver_name
         )
         try:
-            send_email_message(
+            respostas_fabrica.registrar_envio(agendamento, send_email_message(
                 emails_agendamento.destino(RECIPIENTES_AUTORIZACAO_FERTIMAXI, True) if teste else RECIPIENTES_AUTORIZACAO_FERTIMAXI,
                 f"[TESTE] {titulo}" if teste else titulo,
                 corpo,
                 anexos,
                 imagens_inline=imagem_assinatura_inline(),
-            )
+            ))
         except Exception:
             logger.exception("Falha ao enviar e-mail de autorizacao de agendamento pra Fertimaxi (pedido %s)", pedido)
 
@@ -188,6 +188,7 @@ def _to_dict(a: Agendamento) -> dict:
             }
             for e in a.emails
         ],
+        "respostas_fabrica": [respostas_fabrica.para_tela(r) for r in a.respostas],
     }
 
 
@@ -218,8 +219,21 @@ def criar_agendamento(payload: AgendamentoIn, db: Session = Depends(get_db)):
 
     if _eh_fertimaxi(agendamento.supplier):
         _enviar_autorizacoes_agendamento_fertimaxi(agendamento, teste=payload.teste)
+        db.commit()  # guarda os Message-ID de quem saiu
 
     return _to_dict(agendamento)
+
+
+@router.post("/respostas-fabrica/ler")
+def ler_respostas_da_fabrica(dias: int = 3, aplicar: bool = False, db: Session = Depends(get_db)):
+    """Le da caixa as respostas da fabrica. Sem `aplicar`, so mostra o que
+    faria - nada e gravado. A leitura tambem roda sozinha quando chega e-mail."""
+    from ..servicos.email_inbox import InboxIndisponivel
+
+    try:
+        return respostas_fabrica.ler_da_caixa(db, dias=max(1, min(dias, 30)), aplicar=aplicar)
+    except InboxIndisponivel as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 @router.get("/{agendamento_id}")
@@ -467,7 +481,7 @@ def enviar_email_motorista(
         iria_para=reais if teste else None,
     )
     try:
-        send_email_message(para, assunto, corpo, anexos, imagens_inline=imagem_assinatura_inline())
+        message_id = send_email_message(para, assunto, corpo, anexos, imagens_inline=imagem_assinatura_inline())
     except Exception as exc:
         db.rollback()
         logger.warning("E-mail de %s do agendamento %s nao saiu: %s", tipo, agendamento_id, str(exc)[:200])
@@ -475,6 +489,7 @@ def enviar_email_motorista(
 
     agendamento.email_subject = assunto[:500]
     agendamento.email_recipients = ", ".join(para)[:1000]
+    respostas_fabrica.registrar_envio(agendamento, message_id)
     db.add(AgendamentoEmail(
         agendamento_id=agendamento.id,
         tipo=tipo,

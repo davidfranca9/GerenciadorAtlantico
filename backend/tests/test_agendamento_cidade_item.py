@@ -22,13 +22,13 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.auth import get_current_user  # noqa: E402
 from app.database import get_db  # noqa: E402
-from app.models import Agendamento, AgendamentoEmail, AgendamentoItem, Cidade, Pedido  # noqa: E402
+from app.models import Agendamento, AgendamentoEmail, AgendamentoItem, Cidade, Pedido, RespostaFabrica  # noqa: E402
 from app.routers import agendamentos as rotas_agendamentos  # noqa: E402
 
 
 @pytest.fixture
 def db():
-    sessao = banco_em_memoria(Pedido, Cidade, Agendamento, AgendamentoItem, AgendamentoEmail)
+    sessao = banco_em_memoria(Pedido, Cidade, Agendamento, AgendamentoItem, AgendamentoEmail, RespostaFabrica)
     sessao.add_all([
         Cidade(nome="Capitão", uf="RS", ibge="4304697"),
         Cidade(nome="Capitão Enéas", uf="MG", ibge="3112703"),
