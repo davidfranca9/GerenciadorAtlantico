@@ -63,12 +63,12 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .inbox-busca input{height:34px;font-size:12.5px;padding-left:34px}
 .inbox-busca .btn-ghost{min-height:34px;padding:0 10px;font-size:12px}
 .inbox-messages{list-style:none;margin:0;padding:0;overflow-y:auto;flex:1}
-.inbox-message{width:100%;text-align:left;display:flex;flex-direction:column;gap:5px;padding:13px 20px;background:transparent;border:0;border-bottom:1px solid var(--panel-border);cursor:pointer;transition:.15s}
+.inbox-message{width:100%;min-width:0;text-align:left;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:5px;padding:13px 20px;background:transparent;border:0;border-bottom:1px solid var(--panel-border);cursor:pointer;transition:.15s}
 .inbox-message:hover{background:var(--panel-soft)}
 .inbox-message.active{background:var(--row-selected)}
 .inbox-message.unread .inbox-message-top strong,.inbox-message.unread .inbox-message-subject{font-weight:700;color:var(--text)}
 .inbox-message-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;color:var(--muted)}
-.inbox-message-top strong{color:var(--text);font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-message-top strong{min-width:0;color:var(--text);font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inbox-message-top span{font-size:11px;flex-shrink:0}
 .inbox-message-subject{font-size:12.5px;color:var(--muted);overflow-wrap:break-word;line-height:1.4}
 .inbox-load-more{margin:12px;border-radius:10px;border:1px solid var(--panel-border)}
