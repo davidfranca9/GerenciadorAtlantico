@@ -34,7 +34,6 @@ RECIPIENTS_HERINGER = [
 ]
 RECIPIENTS_FERTIMAX = [
     "agendamento@fertimaxi.com.br",
-    "luan.santos@fertimaxi.com.br",
     "paulo.moura@fertimaxi.com.br",
 ]
 

@@ -23,7 +23,6 @@ router = APIRouter(prefix="/agendamentos", tags=["agendamentos"], dependencies=[
 
 RECIPIENTES_AUTORIZACAO_FERTIMAXI = [
     "atlanticofertlog.comercial@gmail.com",
-    "luan.santos@fertimaxi.com.br",
     "paulo.moura@fertimaxi.com.br",
 ]
 
