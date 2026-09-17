@@ -369,6 +369,12 @@ def normalizar_texto_sem_acento(texto: str) -> str:
     return "".join(c for c in nfkd_form if not unicodedata.combining(c)).upper().strip()
 
 
+UFS = {
+    "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA",
+    "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
+}
+
+
 def encontrar_cidades_candidatas(texto_pdf: str, cidades: list[tuple[str, str]]) -> list[tuple[str, str]]:
     """cidades: lista de (nome, uf) vinda do banco."""
     lista_plana = [(normalizar_texto_sem_acento(nome), uf, nome) for nome, uf in cidades]
@@ -394,8 +400,14 @@ def encontrar_cidades_candidatas(texto_pdf: str, cidades: list[tuple[str, str]])
         padrao = r"\b" + re.escape(cidade_norm) + r"[\s/-]+" + re.escape(uf) + r"\b"
         match = re.search(padrao, texto_normalizado)
         if match:
-            encontradas.append((match.start(), (cidade_orig, uf)))
-    filtradas = filtrar_jacuipe([c for _p, c in sorted(encontradas, key=lambda x: x[0])])
+            encontradas.append((match.start(), match.end(), (cidade_orig, uf)))
+    # Uma cidade escrita dentro de outra ("CONQUISTA - BA" no meio de
+    # "VITORIA DA CONQUISTA - BA") nao e outra candidata.
+    encontradas = [
+        e for e in encontradas
+        if not any(o is not e and o[0] <= e[0] and e[1] <= o[1] and (o[1] - o[0]) > (e[1] - e[0]) for o in encontradas)
+    ]
+    filtradas = filtrar_jacuipe([c for _i, _f, c in sorted(encontradas, key=lambda x: x[0])])
     if filtradas:
         return filtradas
 
@@ -407,11 +419,19 @@ def encontrar_cidades_candidatas(texto_pdf: str, cidades: list[tuple[str, str]])
     # vale a de nome mais longo, senao "SANTA MARIA" competiria com "SANTA
     # MARIA DA VITORIA" e a leitura desistiria por ambiguidade. Empate de
     # tamanho e homonimo em outro estado: ai continua em duvida, de verdade.
+    #
+    # Se logo depois do nome vem mais palavra e a UF ("CIDADE CAPITAO ENEAS
+    # - MG"), o nome casado e so o comeco do verdadeiro: "CAPITAO" sozinho e
+    # Capitao-RS, e o pedido saia pro estado errado. Com a UF escrita, so vale
+    # cidade daquela UF.
     por_inicio: dict[int, tuple[int, list]] = {}
     for cidade_norm, uf, cidade_orig in lista_ordenada:
         padrao = r"(?:CIDADE|MUNICIPIO)\s*:?\s*(" + re.escape(cidade_norm) + r")\b"
         for match in re.finditer(padrao, texto_normalizado):
             inicio, fim = match.start(1), match.end(1)
+            depois = re.match(r"([A-Z' ]*?)\s*[-/]\s*([A-Z]{2})\b", texto_normalizado[fim:])
+            if depois and depois.group(2) in UFS and (depois.group(1).strip() or depois.group(2) != uf):
+                continue
             fim_atual, cidades_no_ponto = por_inicio.get(inicio, (-1, []))
             if fim > fim_atual:
                 por_inicio[inicio] = (fim, [(cidade_orig, uf)])
@@ -440,13 +460,47 @@ def candidatas_para_guardar(resultado: dict) -> str:
     )
 
 
+def texto_com_cliente_separado(pdf) -> str:
+    """Texto do pedido com o quadro do CLIENTE lido sozinho.
+
+    No contrato da Fertimaxi o quadro da empresa e o do cliente ficam lado a
+    lado, e a leitura linha a linha intercala os dois. Quando a cidade do
+    cliente quebra de linha, o resto do nome cai depois do endereco da
+    fabrica: "Cidade CAPITAO" / "Conceicao do Jacuipe - BA ..., ENEAS - MG".
+    Ai so "CAPITAO" era achado e o pedido ia pra Capitao-RS (e "VITORIA DA /
+    CONQUISTA - BA" virava Vitoria-ES). Lido so o quadro do cliente, o nome
+    volta inteiro.
+
+    Devolve "" quando o PDF nao tem esse quadro; quem chama usa o texto todo.
+    """
+    for indice, pagina in enumerate(pdf.pages):
+        palavras = pagina.extract_words(x_tolerance=2, y_tolerance=3)
+        rotulo = next((p for p in palavras if p["text"].upper().startswith("CLIENTE:")), None)
+        if rotulo is None:
+            continue
+        # O quadro termina na linha do CNPJ/CPF do cliente, na mesma coluna.
+        fim = next(
+            (p["bottom"] for p in palavras
+             if p["top"] > rotulo["top"] and p["x0"] >= rotulo["x0"] - 2 and p["text"].upper().startswith("CNPJ")),
+            None,
+        )
+        if fim is None:
+            return ""
+        quadro = pagina.within_bbox((max(0, rotulo["x0"] - 2), max(0, rotulo["top"] - 2), pagina.width, fim + 1))
+        abaixo = pagina.within_bbox((0, fim + 1, pagina.width, pagina.height))
+        partes = [quadro, abaixo, *pdf.pages[indice + 1:]]
+        return "\n".join((p.extract_text(x_tolerance=2, y_tolerance=3) or "") for p in partes)
+    return ""
+
+
 def parse_pdf_fields(pdf_path: str, cidades: list[tuple[str, str]]) -> dict:
     """Retorna {"produtos": [...], "cidades_candidatas": [...]} deixando a
     escolha final da cidade (quando ambigua) para o frontend."""
     with pdfplumber.open(pdf_path) as pdf:
         text = "\n".join((p.extract_text(x_tolerance=2, y_tolerance=3) or "") for p in pdf.pages)
+        texto_cliente = texto_com_cliente_separado(pdf)
 
-    candidatas = encontrar_cidades_candidatas(text, cidades)
+    candidatas = encontrar_cidades_candidatas(texto_cliente or text, cidades)
     cidade = ""
     if len(candidatas) == 1:
         nome, uf = candidatas[0]
