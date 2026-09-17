@@ -152,6 +152,7 @@ export default function PedidosPage() {
 
   const [selecionados, setSelecionados] = useState({}); // { [pedidoId]: quantidade }
   const [retirado, setRetirado] = useState(null); // { contrato, ids } do ultimo tirado da lista
+  const [baixa, setBaixa] = useState(null); // { pedidoId, toneladas, motivo, erro, salvando }
   const [expandidos, setExpandidos] = useState({}); // { [chaveGrupo]: true }
 
   async function carregar() {
@@ -202,6 +203,38 @@ export default function PedidosPage() {
         const { [pedido.id]: _removido, ...resto } = prev;
         return resto;
       });
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  // Baixa manual: tonelada que saiu do pedido sem agendamento (carregou fora
+  // do sistema, ou a fabrica cortou).
+  function abrirBaixa(pedido) {
+    setBaixa({ pedidoId: pedido.id, toneladas: formatTon(pedido.toneladas_restante), motivo: "", erro: "", salvando: false });
+  }
+
+  async function confirmarBaixa(pedido) {
+    const toneladas = parseNumero(baixa.toneladas);
+    if (!Number.isFinite(toneladas) || toneladas <= 0) {
+      setBaixa({ ...baixa, erro: "Informe quantas toneladas dar baixa." });
+      return;
+    }
+    setBaixa({ ...baixa, erro: "", salvando: true });
+    try {
+      const atualizado = await api.darBaixaPedido(pedido.id, toneladas, baixa.motivo.trim());
+      setPedidos((prev) => prev.map((p) => (p.id === atualizado.id ? atualizado : p)));
+      setBaixa(null);
+    } catch (err) {
+      setBaixa((atual) => ({ ...atual, erro: err.message, salvando: false }));
+    }
+  }
+
+  async function desfazerBaixa(registro) {
+    setError("");
+    try {
+      const atualizado = await api.desfazerBaixaPedido(registro.id);
+      setPedidos((prev) => prev.map((p) => (p.id === atualizado.id ? atualizado : p)));
     } catch (err) {
       setError(err.message);
     }
@@ -428,6 +461,16 @@ export default function PedidosPage() {
                         <strong>{p.produto || "Produto"}</strong>
                         <div className="pedido-item-actions">
                           <span className="pedido-embalagem"><Icon name="truck" size={12} />{p.embalagem || "-"}</span>
+                          {!p.fechado && (
+                            <button
+                              className="icon-btn"
+                              title="Dar baixa manual (carregou fora do sistema ou a fábrica cortou)"
+                              aria-label="Dar baixa manual"
+                              onClick={() => (baixa?.pedidoId === p.id ? setBaixa(null) : abrirBaixa(p))}
+                            >
+                              <Icon name={baixa?.pedidoId === p.id ? "close" : "check"} size={13} />
+                            </button>
+                          )}
                           <button className="icon-btn" title="Excluir produto" onClick={() => handleExcluir(p)}><Icon name="trash" size={13} /></button>
                         </div>
                       </div>
@@ -443,6 +486,41 @@ export default function PedidosPage() {
                           )}
                         </div>
                       </div>
+
+                      {(p.baixas || []).map((registro) => (
+                        <div key={registro.id} className="pedido-baixa-feita">
+                          <span>
+                            Baixa manual · {formatTon(registro.toneladas)} t
+                            {registro.motivo ? ` · ${registro.motivo}` : ""}
+                          </span>
+                          <button type="button" className="btn-ghost" onClick={() => desfazerBaixa(registro)}>Desfazer</button>
+                        </div>
+                      ))}
+
+                      {baixa?.pedidoId === p.id && (
+                        <div className="pedido-baixa">
+                          <div className="pedido-baixa-campos">
+                            <input
+                              className="pedido-qtd-input"
+                              value={baixa.toneladas}
+                              onChange={(e) => setBaixa({ ...baixa, toneladas: e.target.value, erro: "" })}
+                              aria-label="Toneladas da baixa"
+                              autoFocus
+                            />
+                            <span>t</span>
+                            <input
+                              value={baixa.motivo}
+                              onChange={(e) => setBaixa({ ...baixa, motivo: e.target.value })}
+                              placeholder="Motivo (opcional)"
+                              aria-label="Motivo da baixa"
+                            />
+                            <button type="button" className="btn-primary" disabled={baixa.salvando} onClick={() => confirmarBaixa(p)}>
+                              {baixa.salvando ? "..." : "Dar baixa"}
+                            </button>
+                          </div>
+                          {baixa.erro && <div className="pedido-sem-cidade-erro">{baixa.erro}</div>}
+                        </div>
+                      )}
 
                       {!p.fechado && (
                       <div className="pedido-select-row">

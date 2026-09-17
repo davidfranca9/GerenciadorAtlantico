@@ -16,14 +16,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.auth import get_current_user  # noqa: E402
 from app.database import get_db  # noqa: E402
-from app.models import Agendamento, AgendamentoItem, Cidade, Pedido, RespostaFabrica  # noqa: E402
+from app.models import Agendamento, AgendamentoItem, Cidade, Pedido, RespostaFabrica, BaixaPedido  # noqa: E402
 from app.routers import pedidos  # noqa: E402
 from tests.apoio_documentos import banco_em_memoria  # noqa: E402
 
 
 @pytest.fixture
 def db():
-    sessao = banco_em_memoria(Pedido, Cidade, Agendamento, AgendamentoItem, RespostaFabrica)
+    sessao = banco_em_memoria(Pedido, BaixaPedido, Cidade, Agendamento, AgendamentoItem, RespostaFabrica)
     sessao.add_all([
         Cidade(nome="Águas Vermelhas", uf="MG", ibge="3101003"),
         Cidade(nome="Montes Claros", uf="MG", ibge="3143302"),

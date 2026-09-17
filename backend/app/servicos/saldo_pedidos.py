@@ -24,7 +24,7 @@ from collections import defaultdict
 
 from sqlalchemy.orm import Session
 
-from ..models import Agendamento, AgendamentoItem, Pedido
+from ..models import Agendamento, AgendamentoItem, BaixaPedido, Pedido
 
 STATUS_QUE_NAO_OCUPA = {"Cancelado"}
 
@@ -158,6 +158,10 @@ def conciliar(db: Session, aplicar: bool = False) -> dict:
 
     esperado: dict[int, float] = defaultdict(float)
     reservado: dict[int, float] = defaultdict(float)
+    # Baixa manual tambem ocupa saldo: a conciliacao nao pode apagar.
+    for pedido_id, toneladas in db.query(BaixaPedido.pedido_id, BaixaPedido.toneladas).all():
+        esperado[pedido_id] += float(toneladas or 0)
+        reservado[pedido_id] += float(toneladas or 0)
     ligar = []
     for agendamento in agendamentos:
         ocupa = agendamento.status not in STATUS_QUE_NAO_OCUPA

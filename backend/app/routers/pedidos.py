@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import AgendamentoItem, Cidade, Pedido
+from ..models import AgendamentoItem, BaixaPedido, Cidade, Pedido
 from ..servicos import ocr, saldo_pedidos
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"], dependencies=[Depends(get_current_user)])
@@ -63,6 +63,16 @@ def _to_dict(p: Pedido) -> dict:
         "cidades_candidatas": _candidatas(p),
         "fechado": _fechado(p),
         "retirado_em": getattr(p, "retirado_em", None),
+        "baixas": [
+            {
+                "id": b.id,
+                "toneladas": b.toneladas,
+                "motivo": b.motivo,
+                "criado_em": b.criado_em,
+                "criado_por": b.criado_por,
+            }
+            for b in getattr(p, "baixas", [])
+        ],
     }
 
 
@@ -213,6 +223,51 @@ def definir_cidade(payload: DefinirCidadeIn, db: Session = Depends(get_db)):
         pedido.cidades_candidatas = ""
     db.commit()
     return {"cidade": texto, "pedidos": [_to_dict(p) for p in pedidos], "agendamento_itens_corrigidos": itens_corrigidos}
+
+
+class BaixaIn(BaseModel):
+    toneladas: float
+    motivo: str = ""
+
+
+@router.post("/{pedido_id}/baixa")
+def dar_baixa(pedido_id: int, payload: BaixaIn, db: Session = Depends(get_db), usuario=Depends(get_current_user)):
+    """Baixa manual: tonelada carregada fora do sistema (ou cortada pela
+    fabrica) que precisa sair do saldo sem ter agendamento."""
+    pedido = db.get(Pedido, pedido_id)
+    if pedido is None:
+        raise HTTPException(status_code=404, detail="Pedido nao encontrado")
+    toneladas = round(float(payload.toneladas or 0), 4)
+    if toneladas <= 0:
+        raise HTTPException(status_code=400, detail="Informe quantas toneladas dar baixa")
+    livre = _restante(pedido)
+    if toneladas > livre + 0.001:
+        raise HTTPException(status_code=400, detail=f"Esse produto tem só {livre:.4f}".rstrip("0").rstrip(".") + " t livres")
+    db.add(BaixaPedido(
+        pedido_id=pedido.id, toneladas=toneladas, motivo=(payload.motivo or "").strip()[:255],
+        criado_por=getattr(usuario, "email", "") or "",
+    ))
+    pedido.toneladas_usadas = round((pedido.toneladas_usadas or 0.0) + toneladas, 4)
+    db.commit()
+    db.refresh(pedido)
+    return _to_dict(pedido)
+
+
+@router.delete("/baixas/{baixa_id}")
+def desfazer_baixa(baixa_id: int, db: Session = Depends(get_db)):
+    """Desfaz a baixa manual e devolve as toneladas pro saldo."""
+    baixa = db.get(BaixaPedido, baixa_id)
+    if baixa is None:
+        raise HTTPException(status_code=404, detail="Baixa nao encontrada")
+    pedido = db.get(Pedido, baixa.pedido_id)
+    if pedido is not None:
+        pedido.toneladas_usadas = round(max(0.0, (pedido.toneladas_usadas or 0.0) - float(baixa.toneladas or 0)), 4)
+    db.delete(baixa)
+    db.commit()
+    if pedido is None:
+        return {"ok": True}
+    db.refresh(pedido)
+    return _to_dict(pedido)
 
 
 @router.get("/conciliacao")

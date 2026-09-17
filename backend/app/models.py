@@ -212,6 +212,29 @@ class Pedido(Base):
     # sistema nao sabe sozinho que tudo ja carregou).
     retirado_em: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
 
+    baixas: Mapped[list["BaixaPedido"]] = relationship(
+        back_populates="pedido", cascade="all, delete-orphan", order_by="BaixaPedido.criado_em"
+    )
+
+
+class BaixaPedido(Base):
+    """Tonelada dada como carregada na mao, fora dos agendamentos.
+
+    Serve pro que carregou sem passar pelo sistema e pro que a fabrica
+    cortou: sem isso o pedido ficava com saldo que nao existe mais.
+    """
+
+    __tablename__ = "baixas_pedido"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pedido_id: Mapped[int] = mapped_column(ForeignKey("pedidos.id", ondelete="CASCADE"), index=True)
+    toneladas: Mapped[float] = mapped_column(Float, default=0)
+    motivo: Mapped[str] = mapped_column(String(255), default="")
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    criado_por: Mapped[str] = mapped_column(String(255), default="")
+
+    pedido: Mapped["Pedido"] = relationship(back_populates="baixas")
+
 
 class WhatsAppMensagem(Base):
     __tablename__ = "whatsapp_mensagens"

@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.auth import get_current_user  # noqa: E402
 from app.database import get_db  # noqa: E402
-from app.models import Pedido  # noqa: E402
+from app.models import Pedido, BaixaPedido  # noqa: E402
 from app.routers import pedidos  # noqa: E402
 from tests.apoio_documentos import banco_em_memoria  # noqa: E402
 
@@ -27,7 +27,7 @@ UREIA = "UREIA PRILL MICROGRANULADA 46% N"
 
 @pytest.fixture
 def db():
-    sessao = banco_em_memoria(Pedido)
+    sessao = banco_em_memoria(Pedido, BaixaPedido)
     sessao.add_all([
         Pedido(id=47, contrato="041594", cliente="CARLOS LUCAS MENDES", produto=SUPER, toneladas_total=56, toneladas_usadas=56),
         Pedido(id=48, contrato="041594", cliente="CARLOS LUCAS MENDES", produto=UREIA, toneladas_total=8, toneladas_usadas=8),

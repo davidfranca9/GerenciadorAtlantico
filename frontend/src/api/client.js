@@ -162,6 +162,14 @@ export function listarPedidos(mostrarEsgotados = false, ocultarRetirados = false
   return request(`/pedidos?mostrar_esgotados=${mostrarEsgotados}&ocultar_retirados=${ocultarRetirados}`);
 }
 
+export function darBaixaPedido(pedidoId, toneladas, motivo = "") {
+  return request(`/pedidos/${pedidoId}/baixa`, { method: "POST", body: { toneladas, motivo } });
+}
+
+export function desfazerBaixaPedido(baixaId) {
+  return request(`/pedidos/baixas/${baixaId}`, { method: "DELETE" });
+}
+
 export function retirarPedidos(pedidoIds) {
   return request("/pedidos/retirar", { method: "POST", body: { pedido_ids: pedidoIds } });
 }
