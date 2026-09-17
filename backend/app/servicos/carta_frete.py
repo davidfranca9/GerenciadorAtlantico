@@ -33,6 +33,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from ..models import CartaFreteEnviada
+from . import listas_email
 from .comunicacao import send_email_message
 from .documentos import fill_carta_frete_docx
 from .pdf_convert import docx_to_pdf
@@ -42,11 +43,8 @@ logger = logging.getLogger(__name__)
 DADOS_DIR = Path(__file__).resolve().parents[2] / "dados"
 TEMPLATE_CF = DADOS_DIR / "CARTA FRETE atlantico (1).docx"
 
-DESTINATARIOS = [
-    "davilucassouzaribeiro@gmail.com",
-    "marvidacaixa503@gmail.com",
-    "crispinianocrys@gmail.com",
-]
+# Padrao: quem recebe de fato e a lista salva em Configuracoes (listas_email).
+DESTINATARIOS = listas_email.LISTAS["abastecimento"]["padrao"]
 
 CAMPOS = ("DATA", "CONDUTOR", "CPF", "PLACA_CAVALO", "VALOR_FRETE", "AUTORIZACAO_NUM")
 
@@ -102,16 +100,20 @@ def gerar_docx(dados: dict) -> str:
     return caminho
 
 
-def _mandar(dados: dict, *, gerar=None, converter=None, enviar=None) -> None:
+def _mandar(dados: dict, destinatarios: list[str] | None = None, *, gerar=None, converter=None, enviar=None) -> None:
     """Gera o PDF e manda. As tres etapas entram por parametro pra teste."""
     gerar = gerar or gerar_docx
     converter = converter or docx_to_pdf
     enviar = enviar or send_email_message
     pdf = converter(gerar(dados))
-    enviar(DESTINATARIOS, assunto(dados), CORPO, [pdf])
+    enviar(destinatarios or DESTINATARIOS, assunto(dados), CORPO, [pdf])
 
 
-def _novo_registro(dados: dict, status: str) -> CartaFreteEnviada:
+def _destinatarios(db: Session) -> list[str]:
+    return listas_email.destinatarios(db, "abastecimento")
+
+
+def _novo_registro(dados: dict, status: str, destinatarios: list[str] | None = None) -> CartaFreteEnviada:
     return CartaFreteEnviada(
         data=dados["DATA"],
         condutor=dados["CONDUTOR"],
@@ -119,7 +121,7 @@ def _novo_registro(dados: dict, status: str) -> CartaFreteEnviada:
         placa_cavalo=dados["PLACA_CAVALO"],
         valor_frete=dados["VALOR_FRETE"],
         autorizacao_num=dados["AUTORIZACAO_NUM"],
-        destinatarios=", ".join(DESTINATARIOS),
+        destinatarios=", ".join(destinatarios or DESTINATARIOS),
         status=status,
         dados=json.dumps(dados, ensure_ascii=False),
     )
@@ -129,11 +131,12 @@ def enviar_agora(db: Session, payload: dict, **etapas) -> CartaFreteEnviada:
     """Manda na hora. O registro fica na lista mesmo quando o envio falha."""
     dados = dados_de(payload)
     _validar_envio(dados)
-    registro = _novo_registro(dados, "enviando")
+    para = _destinatarios(db)
+    registro = _novo_registro(dados, "enviando", para)
     db.add(registro)
     db.commit()
     try:
-        _mandar(dados, **etapas)
+        _mandar(dados, para, **etapas)
     except Exception as exc:
         registro.status = "erro"
         registro.erro = str(exc)[:500]
@@ -152,7 +155,7 @@ def agendar(db: Session, payload: dict, quando: datetime, agora: datetime | None
     _validar_envio(dados)
     if quando <= (agora or datetime.utcnow()):
         raise CartaFreteInvalida("Escolha um horario no futuro para agendar o envio.")
-    registro = _novo_registro(dados, "agendada")
+    registro = _novo_registro(dados, "agendada", _destinatarios(db))
     registro.agendada_para = quando
     db.add(registro)
     db.commit()
@@ -199,8 +202,11 @@ def enviar_agendadas(db: Session, agora: datetime | None = None, **etapas) -> in
 
         registro = db.get(CartaFreteEnviada, carta_id)
         db.refresh(registro)
+        # Vale a lista da hora do envio: se mudou depois de agendar, vai pra nova.
+        para = _destinatarios(db)
+        registro.destinatarios = ", ".join(para)
         try:
-            _mandar(json.loads(registro.dados or "{}"), **etapas)
+            _mandar(json.loads(registro.dados or "{}"), para, **etapas)
         except Exception as exc:
             registro.status = "erro"
             registro.erro = str(exc)[:500]

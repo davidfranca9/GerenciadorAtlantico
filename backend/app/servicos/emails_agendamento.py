@@ -49,11 +49,15 @@ _TD_ROTULO = _TD + ";background:#f3f6f4;font-weight:bold"
 _TH = _TD + ";background:#e3ece7;text-align:left"
 
 
-def destinatarios_da_fabrica(supplier: str) -> list[str]:
-    """A lista de cada fabrica - a mesma dos outros e-mails de agendamento."""
-    from ..routers.documentos import RECIPIENTS_FERTIMAX, RECIPIENTS_HERINGER  # evita import circular
+def destinatarios_da_fabrica(supplier: str, db=None) -> list[str]:
+    """A lista de cada fabrica - a mesma dos outros e-mails de agendamento,
+    editavel em Configuracoes. Sem banco, a lista padrao."""
+    from . import listas_email
 
-    return list(RECIPIENTS_HERINGER if (supplier or "").strip().lower() == "heringer" else RECIPIENTS_FERTIMAX)
+    chave = "heringer" if (supplier or "").strip().lower() == "heringer" else "fertimaxi"
+    if db is None:
+        return list(listas_email.LISTAS[chave]["padrao"])
+    return listas_email.destinatarios(db, chave)
 
 
 def destino(reais: list[str], teste: bool) -> list[str]:

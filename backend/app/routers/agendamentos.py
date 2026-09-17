@@ -13,7 +13,7 @@ from ..auth import get_current_user
 from ..config import settings
 from ..database import get_db
 from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoEmail, AgendamentoItem, Cidade, Pedido
-from ..servicos import emails_agendamento, ocr, respostas_fabrica, saldo_pedidos
+from ..servicos import emails_agendamento, listas_email, ocr, respostas_fabrica, saldo_pedidos
 from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
 from .documentos import Produto, OrdemColetaRequest, _gerar_oc_arquivos
 
@@ -21,10 +21,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agendamentos", tags=["agendamentos"], dependencies=[Depends(get_current_user)])
 
-RECIPIENTES_AUTORIZACAO_FERTIMAXI = [
-    "atlanticofertlog.comercial@gmail.com",
-    "paulo.moura@fertimaxi.com.br",
-]
+# Padrao: quem manda de fato e a lista salva em Configuracoes (listas_email).
+RECIPIENTES_AUTORIZACAO_FERTIMAXI = listas_email.LISTAS["fertimaxi_novo_agendamento"]["padrao"]
 
 
 def _eh_fertimaxi(supplier: str) -> bool:
@@ -65,7 +63,7 @@ def _gerar_anexos_oc(agendamento: Agendamento) -> list[str]:
     return [arquivos["xlsx"]] if arquivos.get("xlsx") else []
 
 
-def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento, teste: bool = False) -> None:
+def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento, teste: bool = False, db: Optional[Session] = None) -> None:
     """Pra cada pedido/cliente distinto do agendamento, manda um e-mail pra
     Fertimaxi solicitando a autorizacao de agendamento, com a Autorizacao
     de Coleta (planilha) anexada. Falha no envio nao derruba a criacao do
@@ -76,6 +74,7 @@ def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento, teste: 
         logger.exception("Falha ao gerar a Autorizacao de Coleta pro e-mail de autorizacao - enviando sem anexo")
         anexos = []
 
+    reais = listas_email.destinatarios(db, "fertimaxi_novo_agendamento") if db is not None else RECIPIENTES_AUTORIZACAO_FERTIMAXI
     vistos: set[tuple[str, str]] = set()
     for item in agendamento.itens:
         cliente, pedido = item.cliente.strip(), item.pedido.strip()
@@ -88,7 +87,7 @@ def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento, teste: 
         )
         try:
             respostas_fabrica.registrar_envio(agendamento, send_email_message(
-                emails_agendamento.destino(RECIPIENTES_AUTORIZACAO_FERTIMAXI, True) if teste else RECIPIENTES_AUTORIZACAO_FERTIMAXI,
+                emails_agendamento.destino(reais, True) if teste else reais,
                 f"[TESTE] {titulo}" if teste else titulo,
                 corpo,
                 anexos,
@@ -217,7 +216,7 @@ def criar_agendamento(payload: AgendamentoIn, db: Session = Depends(get_db)):
     db.refresh(agendamento)
 
     if _eh_fertimaxi(agendamento.supplier):
-        _enviar_autorizacoes_agendamento_fertimaxi(agendamento, teste=payload.teste)
+        _enviar_autorizacoes_agendamento_fertimaxi(agendamento, teste=payload.teste, db=db)
         db.commit()  # guarda os Message-ID de quem saiu
 
     return _to_dict(agendamento)
@@ -367,15 +366,15 @@ class EmailMotoristaIn(BaseModel):
 
 
 @router.get("/email-motorista/config")
-def config_email_motorista():
+def config_email_motorista(db: Session = Depends(get_db)):
     """Pra tela: pra onde o e-mail vai, se esta em teste, e o texto pronto."""
     return {
         "em_teste": settings.emails_motorista_em_teste,
         "email_teste": settings.email_teste_fabrica,
         "copia": settings.gmail_sender_email,
         "destinatarios": {
-            "Fertimaxi": emails_agendamento.destinatarios_da_fabrica("Fertimaxi"),
-            "Heringer": emails_agendamento.destinatarios_da_fabrica("Heringer"),
+            "Fertimaxi": emails_agendamento.destinatarios_da_fabrica("Fertimaxi", db),
+            "Heringer": emails_agendamento.destinatarios_da_fabrica("Heringer", db),
         },
         "modelos": emails_agendamento.MODELOS_MENSAGEM,
     }
@@ -466,7 +465,7 @@ def enviar_email_motorista(
     anexos = [arquivos["xlsx"]] if template == "AFL" and arquivos.get("xlsx") else [arquivos["pdf"]]
 
     teste = payload.teste or settings.emails_motorista_em_teste
-    reais = emails_agendamento.destinatarios_da_fabrica(agendamento.supplier)
+    reais = emails_agendamento.destinatarios_da_fabrica(agendamento.supplier, db)
     para = emails_agendamento.destino(reais, teste)
     assunto = payload.assunto.strip() or emails_agendamento.assunto_padrao(tipo, agendamento.driver_name, agendamento.itens)
     if teste:

@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.auth import get_current_user  # noqa: E402
 from app.database import get_db  # noqa: E402
-from app.models import Agendamento, AgendamentoEmail, AgendamentoItem, Pedido, RespostaFabrica  # noqa: E402
+from app.models import Agendamento, AgendamentoEmail, AgendamentoItem, Pedido, RespostaFabrica, ListaEmail  # noqa: E402
 from app.routers import agendamentos as rotas_agendamentos  # noqa: E402
 from app.servicos import email_inbox, respostas_fabrica  # noqa: E402
 
@@ -96,7 +96,7 @@ def agendamento(id, criado, itens, status="Aguardando Agendamento", ids=""):
 
 @pytest.fixture
 def db():
-    sessao = banco_em_memoria(Pedido, Agendamento, AgendamentoItem, AgendamentoEmail, RespostaFabrica)
+    sessao = banco_em_memoria(Pedido, Agendamento, AgendamentoItem, AgendamentoEmail, RespostaFabrica, ListaEmail)
     sessao.add_all([
         agendamento(136, datetime(2026, 9, 17, 13, 41, 22), [("041595", "UREIA", 40)]),
         agendamento(137, datetime(2026, 9, 17, 13, 43, 45), [("038864", "UREIA", 8), ("041594", "SUPER SIMPLES", 32)]),

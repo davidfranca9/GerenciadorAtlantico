@@ -81,7 +81,7 @@ def test_arquivo_com_motorista_sai_no_nome_dele(monkeypatch):
 
 def _enviar(monkeypatch, corpo):
     # Enviar agora registra o agendamento: o banco entra simulado.
-    cliente, documentos = cliente_http(db=SimpleNamespace(commit=lambda: None))
+    cliente, documentos = cliente_http(db=SimpleNamespace(commit=lambda: None, get=lambda *a, **k: None))
     monkeypatch.setattr(documentos, "_salvar_agendamento_oc", lambda *a, **k: SimpleNamespace(id=7))
     enviados = []
     monkeypatch.setattr(

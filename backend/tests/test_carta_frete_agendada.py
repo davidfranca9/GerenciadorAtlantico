@@ -15,7 +15,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.models import CartaFreteEnviada  # noqa: E402
+from app.models import CartaFreteEnviada, ListaEmail  # noqa: E402
 from app.servicos import carta_frete  # noqa: E402
 from tests.apoio_documentos import banco_em_memoria, cliente_http  # noqa: E402
 
@@ -42,7 +42,7 @@ def etapas(correio):
 
 @pytest.fixture
 def db():
-    sessao = banco_em_memoria(CartaFreteEnviada)
+    sessao = banco_em_memoria(CartaFreteEnviada, ListaEmail)
     yield sessao
     sessao.close()
 

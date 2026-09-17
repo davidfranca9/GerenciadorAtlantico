@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ContratoProvider } from "./context/ContratoContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import AdminPage from "./pages/AdminPage";
+import ConfiguracoesPage from "./pages/ConfiguracoesPage";
 import AgendamentosPage from "./pages/AgendamentosPage";
 import AnaliseFretesPage from "./pages/AnaliseFretesPage";
 import BsoftPage from "./pages/BsoftPage";
@@ -75,6 +76,14 @@ function AppRoutes() {
         <Route path="/buonny" element={<BuonnyPage />} />
         <Route path="/bsoft" element={<BsoftPage />} />
         <Route path="/trocar-senha" element={<TrocarSenhaPage />} />
+        <Route
+          path="/configuracoes"
+          element={
+            <AdminRoute>
+              <ConfiguracoesPage />
+            </AdminRoute>
+          }
+        />
         <Route
           path="/admin"
           element={

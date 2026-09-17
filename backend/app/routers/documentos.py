@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem, CartaFreteEnviada, Pedido
-from ..servicos import carta_frete, respostas_fabrica, emails_agendamento, saldo_pedidos
+from ..servicos import carta_frete, emails_agendamento, listas_email, respostas_fabrica, saldo_pedidos
 from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
 from ..servicos.documentos import gerar_autorizacao_xlsx
 from ..servicos.oc_html import gerar_oc_pdf_html
@@ -27,15 +27,10 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 
 # Destinatarios e modelo da carta frete moram no servico, que o envio
 # agendado tambem usa.
+# Padroes: quem manda de fato e a lista salva em Configuracoes (listas_email).
 RECIPIENTS_CARTA_FRETE = carta_frete.DESTINATARIOS
-RECIPIENTS_HERINGER = [
-    "expedicao.candeias@heringer.com.br",
-    "faturamento.candeias@heringer.com.br",
-]
-RECIPIENTS_FERTIMAX = [
-    "agendamento@fertimaxi.com.br",
-    "paulo.moura@fertimaxi.com.br",
-]
+RECIPIENTS_HERINGER = listas_email.LISTAS["heringer"]["padrao"]
+RECIPIENTS_FERTIMAX = listas_email.LISTAS["fertimaxi"]["padrao"]
 
 DADOS_DIR = Path(__file__).resolve().parents[2] / "dados"
 SUPPLIERS_OC = {"AFL", "HERINGER"}
@@ -280,7 +275,8 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
     xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{nome_documento}.xlsx")
     _gerar_autorizacao(payload, produtos_dict, xlsx_path)
 
-    destinatarios = emails_agendamento.destino(RECIPIENTS_FERTIMAX, True) if payload.teste else RECIPIENTS_FERTIMAX
+    fertimaxi = listas_email.destinatarios(db, "fertimaxi")
+    destinatarios = emails_agendamento.destino(fertimaxi, True) if payload.teste else fertimaxi
     vistos: set[tuple[str, str]] = set()
     assuntos_enviados: list[str] = []
     message_ids: list[str] = []
@@ -323,7 +319,7 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
         raise HTTPException(status_code=400, detail="Nome do motorista e obrigatorio")
 
     supplier_label = "Heringer" if payload.template.upper() == "HERINGER" else "Fertimaxi"
-    recipients = RECIPIENTS_HERINGER if supplier_label == "Heringer" else RECIPIENTS_FERTIMAX
+    recipients = listas_email.destinatarios(db, "heringer" if supplier_label == "Heringer" else "fertimaxi")
     if payload.teste:
         recipients = emails_agendamento.destino(recipients, True)
 
@@ -422,12 +418,12 @@ def gerar_carta_frete(payload: CartaFreteRequest):
 @router.post("/cartas-frete/enviar-email")
 def enviar_carta_frete_email(payload: CartaFreteRequest, db: Session = Depends(get_db)):
     try:
-        carta_frete.enviar_agora(db, payload.model_dump())
+        registro = carta_frete.enviar_agora(db, payload.model_dump())
     except carta_frete.CartaFreteInvalida as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
-    return {"ok": True, "email_enviado_para": carta_frete.DESTINATARIOS}
+    return {"ok": True, "email_enviado_para": registro.destinatarios.split(", ")}
 
 
 class AgendarCartaFreteRequest(CartaFreteRequest):

@@ -38,7 +38,8 @@ export const NAV_SECTIONS = [
 // Pagina so de administrador nao entra na lista de bloqueio por usuario.
 export const PAGINAS_BLOQUEAVEIS = NAV_SECTIONS.flatMap((section) => section.items).filter((item) => !item.adminOnly);
 const ALL_ITEMS = NAV_SECTIONS.flatMap((section) => section.items).concat([
-  { to: "/admin", label: "Administração", icon: "settings", description: "Usuários e permissões do sistema" },
+  { to: "/admin", label: "Administração", icon: "users", description: "Usuários e permissões do sistema" },
+  { to: "/configuracoes", label: "Configurações", icon: "settings", description: "Listas de e-mail e outros ajustes do sistema" },
   { to: "/trocar-senha", label: "Segurança", icon: "key", description: "Atualize sua senha de acesso" },
 ]);
 
@@ -133,7 +134,7 @@ export default function Layout() {
     ...section,
     items: section.items.filter((item) => !bloqueadas.includes(item.to) && (!item.adminOnly || user?.role === "admin")),
   })).filter((section) => section.items.length > 0);
-  const sectionsExibidas = user?.role === "admin" ? [...sections, { title: "Sistema", items: [ALL_ITEMS.find((item) => item.to === "/admin")] }] : sections;
+  const sectionsExibidas = user?.role === "admin" ? [...sections, { title: "Sistema", items: ALL_ITEMS.filter((item) => item.to === "/admin" || item.to === "/configuracoes") }] : sections;
   const current = ALL_ITEMS.find((item) => item.to === location.pathname) || ALL_ITEMS[1];
 
   useEffect(() => setMenuOpen(false), [location.pathname]);

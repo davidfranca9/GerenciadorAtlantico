@@ -223,6 +223,18 @@ export function changePassword(currentPassword, newPassword) {
   });
 }
 
+export function listarListasEmail() {
+  return request("/configuracoes/listas-email");
+}
+
+export function salvarListaEmail(chave, emails) {
+  return request(`/configuracoes/listas-email/${encodeURIComponent(chave)}`, { method: "PUT", body: { emails } });
+}
+
+export function restaurarListaEmail(chave) {
+  return request(`/configuracoes/listas-email/${encodeURIComponent(chave)}`, { method: "DELETE" });
+}
+
 export function adminListarUsuarios() {
   return request("/admin/usuarios");
 }

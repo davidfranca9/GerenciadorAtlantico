@@ -146,6 +146,20 @@ class AgendamentoEmail(Base):
     agendamento: Mapped[Agendamento] = relationship(back_populates="emails")
 
 
+class ListaEmail(Base):
+    """Pra quem vai cada e-mail do sistema, editavel em Configuracoes.
+
+    Sem linha aqui, vale a lista padrao de servicos/listas_email.py.
+    """
+
+    __tablename__ = "listas_email"
+
+    chave: Mapped[str] = mapped_column(String(60), primary_key=True)
+    emails: Mapped[str] = mapped_column(Text, default="")  # um por linha
+    atualizado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    atualizado_por: Mapped[str] = mapped_column(String(255), default="")
+
+
 class RespostaFabrica(Base):
     """Resposta da fabrica a um e-mail de agendamento, lida da caixa.
 
