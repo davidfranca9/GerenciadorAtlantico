@@ -115,14 +115,84 @@ def _consulta_gmail(busca: str) -> str:
     return '"{}"'.format(termo.replace('"', " "))
 
 
-def listar_mensagens(pagina: int = 1, tamanho_pagina: int = 25, busca: str = "") -> dict:
+PASTAS = ("recebidos", "enviados")
+_caixas_especiais: dict[str, str] = {}
+# (conexao, pasta, so_leitura) da ultima selecao: abrir uma conversa le
+# varias mensagens seguidas e nao precisa reabrir a pasta a cada uma.
+_selecao_atual: tuple | None = None
+
+
+def nome_da_caixa_especial(linhas_do_list: list, atributo: str) -> str:
+    """Nome da pasta pelo atributo do Gmail (\\Sent, \\All): o nome muda com
+    o idioma da conta ("[Gmail]/E-mails enviados", "[Gmail]/Sent Mail")."""
+    for linha in linhas_do_list or []:
+        texto = linha.decode("utf-8", errors="replace") if isinstance(linha, bytes) else str(linha)
+        bandeiras = re.match(r"\((.*?)\)", texto)
+        if not bandeiras or atributo.lower() not in bandeiras.group(1).lower().split():
+            continue
+        nome = re.search(r'"((?:[^"\\]|\\.)*)"\s*$', texto) or re.search(r"(\S+)\s*$", texto)
+        if nome:
+            return nome.group(1)
+    return ""
+
+
+def _selecionar(conexao: imaplib.IMAP4_SSL, pasta: str, readonly: bool = True) -> None:
+    """recebidos = INBOX; enviados = pasta de enviados; todas = "Todos os e-mails"
+    (onde uma conversa tem o que chegou e o que saiu)."""
+    if pasta == "recebidos":
+        nome = "INBOX"
+    else:
+        atributo = "\\Sent" if pasta == "enviados" else "\\All"
+        nome = _caixas_especiais.get(atributo, "")
+        if not nome:
+            status, linhas = conexao.list()
+            nome = nome_da_caixa_especial(linhas if status == "OK" else [], atributo)
+            if not nome:
+                raise InboxIndisponivel(f"Pasta {pasta} nao encontrada no Gmail")
+            _caixas_especiais[atributo] = nome
+    global _selecao_atual
+    if _selecao_atual is not None and _selecao_atual[0] is conexao and _selecao_atual[1:] == (nome, readonly):
+        return
+    _selecao_atual = None
+    if conexao.select(f'"{nome}"', readonly=readonly)[0] != "OK":
+        raise InboxIndisponivel(f"Nao foi possivel abrir a pasta {pasta}")
+    _selecao_atual = (conexao, nome, readonly)
+
+
+def consulta_da_pasta(busca: str, pasta: str) -> str:
+    """Termo de busca do Gmail pra pasta. Recebidos nao mostra o que a propria
+    conta mandou: o sistema se copia nos envios e a caixa ficava misturada."""
+    termo = (busca or "").strip()
+    if pasta == "recebidos":
+        termo = f"{termo or '-category:promotions'} -from:me"
+    return termo
+
+
+def _numero_pelo_id(conexao: imaplib.IMAP4_SSL, msg_id: str) -> bytes:
+    """Posicao da mensagem na pasta ja selecionada, pelo id do Gmail (X-GM-MSGID).
+
+    O id do Gmail nao muda de pasta pra pasta; a posicao muda. Por isso a
+    lista devolve o id e quem abre procura a posicao na hora."""
+    if not re.fullmatch(r"\d+", str(msg_id or "")):
+        raise InboxIndisponivel("Mensagem nao encontrada")
+    status, dados = conexao.search(None, "X-GM-MSGID", str(msg_id))
+    if status != "OK" or not dados or not dados[0]:
+        raise InboxIndisponivel("Mensagem nao encontrada")
+    return dados[0].split()[0]
+
+
+def listar_mensagens(pagina: int = 1, tamanho_pagina: int = 25, busca: str = "", pasta: str = "recebidos") -> dict:
+    if pasta not in PASTAS:
+        raise InboxIndisponivel("Pasta invalida")
     with _lock:
         conexao = _obter_conexao()
-        status, _ = conexao.select("INBOX", readonly=True)
-        if status != "OK":
-            raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
+        _selecionar(conexao, pasta)
 
-        status, dados = conexao.search(None, "X-GM-RAW", _consulta_gmail(busca))
+        termo = consulta_da_pasta(busca, pasta)
+        if termo:
+            status, dados = conexao.search(None, "X-GM-RAW", _consulta_gmail(termo))
+        else:
+            status, dados = conexao.search(None, "ALL")
         if status != "OK":
             raise InboxIndisponivel("Nao foi possivel listar as mensagens")
 
@@ -137,7 +207,7 @@ def listar_mensagens(pagina: int = 1, tamanho_pagina: int = 25, busca: str = "")
 
         # Busca todas as mensagens da pagina numa unica chamada FETCH (uma
         # unica ida-e-volta ao servidor) em vez de uma chamada por mensagem.
-        status, dados_msg = conexao.fetch(b",".join(pagina_ids), "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+        status, dados_msg = conexao.fetch(b",".join(pagina_ids), "(X-GM-MSGID FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)])")
         if status != "OK":
             raise InboxIndisponivel("Nao foi possivel buscar as mensagens")
 
@@ -150,28 +220,30 @@ def listar_mensagens(pagina: int = 1, tamanho_pagina: int = 25, busca: str = "")
             if not correspondencia:
                 continue
             msg_id = correspondencia.group(1)
+            id_gmail = re.search(rb"X-GM-MSGID (\d+)", linha_info)
             msg = email.message_from_bytes(cabecalho_bruto)
             flags = imaplib.ParseFlags(linha_info)
             por_id[msg_id] = {
-                "id": msg_id.decode(),
+                "id": id_gmail.group(1).decode() if id_gmail else msg_id.decode(),
                 "remetente": _extrair_remetente(msg),
+                "para": _decodificar(msg.get("To", "")),
                 "assunto": _decodificar(msg.get("Subject", "")) or "(sem assunto)",
                 "data": _extrair_data(msg),
                 "lida": b"\\Seen" in flags,
             }
 
         mensagens = [por_id[mid] for mid in pagina_ids if mid in por_id]
-        return {"mensagens": mensagens, "total": total, "pagina": pagina, "tamanho_pagina": tamanho_pagina}
+        return {"mensagens": mensagens, "total": total, "pagina": pagina, "tamanho_pagina": tamanho_pagina, "pasta": pasta}
 
 
 def obter_mensagem(msg_id: str) -> dict:
     with _lock:
         conexao = _obter_conexao()
-        status, _ = conexao.select("INBOX")
-        if status != "OK":
-            raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
+        # Abrir marca como lida, igual no Gmail: por isso nao e so leitura.
+        _selecionar(conexao, "todas", readonly=False)
+        numero = _numero_pelo_id(conexao, msg_id)
 
-        status, dados_msg = conexao.fetch(msg_id.encode(), "(BODY[])")
+        status, dados_msg = conexao.fetch(numero, "(BODY[])")
         if status != "OK" or not dados_msg or not isinstance(dados_msg[0], tuple):
             raise InboxIndisponivel("Mensagem nao encontrada")
 
@@ -266,9 +338,8 @@ def obter_anexo(msg_id: str, indice: int) -> dict:
     """Devolve um anexo com o conteudo, pra download."""
     with _lock:
         conexao = _obter_conexao()
-        if conexao.select("INBOX")[0] != "OK":
-            raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
-        status, dados = conexao.fetch(msg_id.encode(), "(BODY[])")
+        _selecionar(conexao, "todas")
+        status, dados = conexao.fetch(_numero_pelo_id(conexao, msg_id), "(BODY.PEEK[])")
         if status != "OK" or not dados or not isinstance(dados[0], tuple):
             raise InboxIndisponivel("Mensagem nao encontrada")
 
@@ -287,10 +358,11 @@ def obter_thread(msg_id: str) -> list:
     """
     with _lock:
         conexao = _obter_conexao()
-        if conexao.select("INBOX")[0] != "OK":
-            raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
+        # Em "Todos os e-mails" a conversa tem o que chegou e o que saiu.
+        _selecionar(conexao, "todas")
+        numero = _numero_pelo_id(conexao, msg_id)
 
-        status, dados = conexao.fetch(msg_id.encode(), "(X-GM-THRID)")
+        status, dados = conexao.fetch(numero, "(X-GM-THRID)")
         if status != "OK" or not dados:
             return [msg_id]
         achado = re.search(rb"X-GM-THRID (\d+)", dados[0] if isinstance(dados[0], bytes) else dados[0][0] or b"")
@@ -300,7 +372,14 @@ def obter_thread(msg_id: str) -> list:
         status, resultado = conexao.search(None, "X-GM-THRID", achado.group(1).decode())
         if status != "OK" or not resultado or not resultado[0]:
             return [msg_id]
-        return [i.decode() for i in resultado[0].split()]
+        status, ids = conexao.fetch(b",".join(resultado[0].split()), "(X-GM-MSGID)")
+        encontrados = []
+        for item in ids if status == "OK" else []:
+            linha = item[0] if isinstance(item, tuple) else item
+            id_gmail = re.search(rb"X-GM-MSGID (\d+)", linha or b"")
+            if id_gmail:
+                encontrados.append(id_gmail.group(1).decode())
+        return encontrados or [msg_id]
 
 
 def _texto_simples(msg) -> str:
@@ -337,8 +416,7 @@ def mensagens_para_ler(busca: str, ja_lidas: set[str], limite: int = 60) -> list
     """
     with _lock:
         conexao = _obter_conexao()
-        if conexao.select("INBOX", readonly=True)[0] != "OK":
-            raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
+        _selecionar(conexao, "recebidos")
         status, dados = conexao.search(None, "X-GM-RAW", _consulta_gmail(busca))
         if status != "OK":
             raise InboxIndisponivel("Nao foi possivel buscar as mensagens")
@@ -393,9 +471,9 @@ def contar_desde(epoch: int) -> int:
     """
     with _lock:
         conexao = _obter_conexao()
-        if conexao.select("INBOX")[0] != "OK":
-            raise InboxIndisponivel("Nao foi possivel abrir a caixa de entrada")
-        status, resultado = conexao.search(None, "X-GM-RAW", f'"after:{int(epoch)}"')
+        _selecionar(conexao, "recebidos")
+        # O que a propria conta mandou nao e mensagem nova pra ler.
+        status, resultado = conexao.search(None, "X-GM-RAW", f'"after:{int(epoch)} -from:me"')
         if status != "OK" or not resultado or not resultado[0]:
             return 0
         return len(resultado[0].split())
@@ -413,9 +491,12 @@ def anexos_xml_recentes(dias: int = 7, limite_mensagens: int = 20) -> list[str]:
     for resumo in listagem.get("mensagens", []):
         with _lock:
             conexao = _obter_conexao()
-            if conexao.select("INBOX")[0] != "OK":
+            try:
+                _selecionar(conexao, "todas")
+                numero = _numero_pelo_id(conexao, resumo["id"])
+            except InboxIndisponivel:
                 continue
-            status, dados = conexao.fetch(str(resumo["id"]).encode(), "(BODY[])")
+            status, dados = conexao.fetch(numero, "(BODY.PEEK[])")
         if status != "OK" or not dados or not isinstance(dados[0], tuple):
             continue
 

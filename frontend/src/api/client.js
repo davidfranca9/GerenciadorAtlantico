@@ -287,8 +287,8 @@ export function bsoftLookups() {
   return request("/bsoft/lookups");
 }
 
-export function listarEmails(pagina = 1, tamanhoPagina = 25, busca = "") {
-  return request(`/email/mensagens?pagina=${pagina}&tamanho_pagina=${tamanhoPagina}&busca=${encodeURIComponent(busca)}`);
+export function listarEmails(pagina = 1, tamanhoPagina = 25, busca = "", pasta = "recebidos") {
+  return request(`/email/mensagens?pagina=${pagina}&tamanho_pagina=${tamanhoPagina}&busca=${encodeURIComponent(busca)}&pasta=${pasta}`);
 }
 
 export function obterEmail(id) {

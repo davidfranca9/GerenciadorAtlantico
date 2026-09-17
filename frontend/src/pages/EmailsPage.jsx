@@ -23,7 +23,14 @@ function escapeHtml(texto) {
 }
 
 const RASCUNHO_VAZIO = { para: "", assunto: "", corpoInicial: "" };
-const CHAVE_CACHE = "emails_inbox_cache_v1";
+// v2: o id da mensagem passou a ser o do Gmail (vale em qualquer pasta); a
+// lista salva com o id antigo nao abre mais.
+const CHAVE_CACHE = "emails_cache_v2";
+
+const PASTAS = [
+  { valor: "recebidos", rotulo: "Recebidos" },
+  { valor: "enviados", rotulo: "Enviados" },
+];
 
 function lerCacheSalvo() {
   try {
@@ -34,9 +41,12 @@ function lerCacheSalvo() {
   }
 }
 
-function salvarCache(mensagens, pagina, total) {
+function salvarCache() {
   try {
-    sessionStorage.setItem(CHAVE_CACHE, JSON.stringify({ mensagens, pagina, total }));
+    const porPasta = Object.fromEntries(
+      Object.entries(cache.porPasta).map(([pasta, c]) => [pasta, { mensagens: c.mensagens, pagina: c.pagina, total: c.total }])
+    );
+    sessionStorage.setItem(CHAVE_CACHE, JSON.stringify(porPasta));
   } catch {
     // sessionStorage indisponivel ou cheio: apenas nao persiste, sem quebrar a tela
   }
@@ -44,24 +54,42 @@ function salvarCache(mensagens, pagina, total) {
 
 const cacheSalvo = lerCacheSalvo();
 
+function cacheDaPasta(pasta) {
+  const salvo = cacheSalvo?.[pasta];
+  return { carregou: Boolean(salvo), mensagens: salvo?.mensagens || [], pagina: salvo?.pagina || 1, total: salvo?.total || 0 };
+}
+
 // Cache em memoria + sessionStorage pra sobreviver tanto a navegacao entre
 // paginas do app (sair de E-mails e voltar) quanto a um F5 de verdade no
 // navegador: a lista salva aparece instantaneamente, e uma busca silenciosa
 // em segundo plano atualiza os dados sem mostrar tela de carregamento.
+// Cada pasta tem a sua lista.
 const cache = {
-  carregou: Boolean(cacheSalvo),
-  mensagens: cacheSalvo?.mensagens || [],
-  pagina: cacheSalvo?.pagina || 1,
-  total: cacheSalvo?.total || 0,
+  pasta: "recebidos",
+  porPasta: { recebidos: cacheDaPasta("recebidos"), enviados: cacheDaPasta("enviados") },
   selecionado: null,
   detalhe: null,
 };
 
+// "Fulano <a@x.com>, b@y.com" -> "Fulano, b@y.com"
+function destinatariosCurtos(para) {
+  return String(para || "")
+    .split(",")
+    .map((parte) => {
+      const nome = parte.replace(/<[^>]*>/, "").replace(/"/g, "").trim();
+      return nome || parte.replace(/[<>]/g, "").trim();
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
 export default function EmailsPage() {
-  const [mensagens, setMensagens] = useState(cache.mensagens);
-  const [pagina, setPagina] = useState(cache.pagina);
-  const [total, setTotal] = useState(cache.total);
-  const [carregandoLista, setCarregandoLista] = useState(!cache.carregou);
+  const [pasta, setPasta] = useState(cache.pasta);
+  const pastaRef = useRef(cache.pasta);
+  const [mensagens, setMensagens] = useState(cache.porPasta[cache.pasta].mensagens);
+  const [pagina, setPagina] = useState(cache.porPasta[cache.pasta].pagina);
+  const [total, setTotal] = useState(cache.porPasta[cache.pasta].total);
+  const [carregandoLista, setCarregandoLista] = useState(!cache.porPasta[cache.pasta].carregou);
   const [carregandoMais, setCarregandoMais] = useState(false);
   const [erro, setErro] = useState("");
   const [selecionado, setSelecionado] = useState(cache.selecionado);
@@ -89,10 +117,10 @@ export default function EmailsPage() {
   useEffect(() => {
     // Se ja tem algo em cache, mostra na hora e so atualiza por baixo dos
     // panos (sem spinner); senao, e a primeira vez e mostra o carregamento.
-    carregarPagina(1, false, !cache.carregou);
+    carregarPagina(1, false, !cache.porPasta[cache.pasta].carregou);
   }, []);
 
-  async function carregarPagina(numeroPagina, acumular, mostrarCarregando = true, termo = null) {
+  async function carregarPagina(numeroPagina, acumular, mostrarCarregando = true, termo = null, pastaAlvo = pastaRef.current) {
     const buscaAtiva = termo === null ? buscaAtivaRef.current : termo;
     buscaAtivaRef.current = buscaAtiva;
     if (mostrarCarregando) {
@@ -101,24 +129,40 @@ export default function EmailsPage() {
     }
     setErro("");
     try {
-      const data = await api.listarEmails(numeroPagina, TAMANHO_PAGINA, buscaAtiva);
-      setMensagens((prev) => {
-        const novo = acumular ? [...prev, ...data.mensagens] : data.mensagens;
-        cache.mensagens = novo;
-        salvarCache(novo, numeroPagina, data.total);
-        return novo;
-      });
+      const data = await api.listarEmails(numeroPagina, TAMANHO_PAGINA, buscaAtiva, pastaAlvo);
+      const guardado = cache.porPasta[pastaAlvo];
+      guardado.mensagens = acumular ? [...guardado.mensagens, ...data.mensagens] : data.mensagens;
+      guardado.total = data.total;
+      guardado.pagina = numeroPagina;
+      guardado.carregou = true;
+      salvarCache();
+      // Trocou de aba enquanto carregava: guarda, mas nao mostra na outra.
+      if (pastaRef.current !== pastaAlvo) return;
+      setMensagens(guardado.mensagens);
       setTotal(data.total);
       setPagina(numeroPagina);
-      cache.total = data.total;
-      cache.pagina = numeroPagina;
-      cache.carregou = true;
     } catch (err) {
-      if (mostrarCarregando) setErro(err.message);
+      if (mostrarCarregando && pastaRef.current === pastaAlvo) setErro(err.message);
     } finally {
-      setCarregandoLista(false);
-      setCarregandoMais(false);
+      if (pastaRef.current === pastaAlvo) {
+        setCarregandoLista(false);
+        setCarregandoMais(false);
+      }
     }
+  }
+
+  function trocarPasta(nova) {
+    if (nova === pastaRef.current) return;
+    pastaRef.current = nova;
+    cache.pasta = nova;
+    setPasta(nova);
+    const guardado = cache.porPasta[nova];
+    setMensagens(guardado.mensagens);
+    setTotal(guardado.total);
+    setPagina(guardado.pagina);
+    setCarregandoMais(false);
+    setCarregandoLista(!guardado.carregou);
+    carregarPagina(1, false, !guardado.carregou, null, nova);
   }
 
   async function abrirMensagem(msg) {
@@ -133,12 +177,10 @@ export default function EmailsPage() {
       // A conversa vem inteira; a ultima mensagem e a que abre expandida.
       setDetalhe({ ...data.mensagens[data.mensagens.length - 1], thread: data.mensagens });
       cache.detalhe = data;
-      setMensagens((prev) => {
-        const novo = prev.map((m) => (m.id === msg.id ? { ...m, lida: true } : m));
-        cache.mensagens = novo;
-        salvarCache(novo, cache.pagina, cache.total);
-        return novo;
-      });
+      const guardado = cache.porPasta[pastaRef.current];
+      guardado.mensagens = guardado.mensagens.map((m) => (m.id === msg.id ? { ...m, lida: true } : m));
+      salvarCache();
+      setMensagens(guardado.mensagens);
     } catch (err) {
       setErro(err.message);
     } finally {
@@ -195,6 +237,9 @@ export default function EmailsPage() {
       await api.enviarEmail({ destinatarios, assunto: compor.assunto, corpo: corpoHtml, anexos });
       setCompor(null);
       setAnexos([]);
+      // O que acabou de sair aparece em Enviados na proxima vez que abrir.
+      cache.porPasta.enviados.carregou = false;
+      if (pastaRef.current === "enviados") carregarPagina(1, false, false);
     } catch (err) {
       setErroEnvio(err.message);
     } finally {
@@ -210,7 +255,23 @@ export default function EmailsPage() {
       <div className="inbox-layout">
         <section className="card inbox-list">
           <div className="inbox-list-header">
-            <div><strong>Caixa de entrada</strong><span>{total} mensagem{total === 1 ? "" : "s"}</span></div>
+            <div className="inbox-pastas-wrap">
+              <div className="inbox-pastas" role="tablist" aria-label="Pastas de e-mail">
+                {PASTAS.map((p) => (
+                  <button
+                    key={p.valor}
+                    type="button"
+                    role="tab"
+                    aria-selected={pasta === p.valor}
+                    className={pasta === p.valor ? "ativa" : ""}
+                    onClick={() => trocarPasta(p.valor)}
+                  >
+                    {p.rotulo}
+                  </button>
+                ))}
+              </div>
+              <span>{total} mensage{total === 1 ? "m" : "ns"}</span>
+            </div>
             <button className="btn-primary inbox-compose-btn" onClick={() => abrirComposicao({})}>
               <Icon name="mail" size={16} />Escrever
             </button>
@@ -241,18 +302,24 @@ export default function EmailsPage() {
             <div className="inline-alert info"><span className="status-dot" />Carregando mensagens...</div>
           ) : mensagens.length === 0 ? (
             <div className="inline-alert warning">
-              {buscaAtivaRef.current ? "Nenhuma mensagem para essa busca." : "Nenhuma mensagem encontrada."}
+              {buscaAtivaRef.current
+                ? "Nenhuma mensagem para essa busca."
+                : pasta === "enviados" ? "Nenhum e-mail enviado." : "Nenhuma mensagem recebida."}
             </div>
           ) : (
             <ul className="inbox-messages">
               {mensagens.map((msg) => (
                 <li key={msg.id}>
                   <button
-                    className={`inbox-message ${msg.lida ? "" : "unread"} ${selecionado === msg.id ? "active" : ""}`}
+                    className={`inbox-message ${msg.lida || pasta === "enviados" ? "" : "unread"} ${selecionado === msg.id ? "active" : ""}`}
                     onClick={() => abrirMensagem(msg)}
                   >
                     <div className="inbox-message-top">
-                      <strong>{msg.remetente.nome || msg.remetente.email || "Desconhecido"}</strong>
+                      <strong>
+                        {pasta === "enviados"
+                          ? `Para: ${destinatariosCurtos(msg.para) || "(sem destinatário)"}`
+                          : msg.remetente.nome || msg.remetente.email || "Desconhecido"}
+                      </strong>
                       <span>{formatarData(msg.data)}</span>
                     </div>
                     <div className="inbox-message-subject">{msg.assunto}</div>

@@ -18,9 +18,10 @@ async def listar_mensagens(
     pagina: int = Query(1, ge=1),
     tamanho_pagina: int = Query(25, ge=1, le=100),
     busca: str = Query("", description="Sintaxe de busca do Gmail: from:, subject:, newer_than:7d..."),
+    pasta: str = Query("recebidos", pattern="^(recebidos|enviados)$"),
 ):
     try:
-        return await run_in_threadpool(email_inbox.listar_mensagens, pagina, tamanho_pagina, busca)
+        return await run_in_threadpool(email_inbox.listar_mensagens, pagina, tamanho_pagina, busca, pasta)
     except email_inbox.InboxIndisponivel as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
