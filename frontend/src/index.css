@@ -52,7 +52,9 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .inbox-list-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 20px;border-bottom:1px solid var(--panel-border)}
 .inbox-list-header>div{display:flex;align-items:baseline;gap:8px}
 .inbox-list-header span{color:var(--muted);font-size:12px}
-.inbox-list-header>.inbox-pastas-wrap{align-items:center;gap:10px}
+.inbox-list-header>.inbox-pastas-wrap{align-items:center;gap:10px;min-width:0}
+.inbox-list-header .inbox-compose-btn{flex-shrink:0}
+.inbox-contagem{padding:7px 20px;border-bottom:1px solid var(--panel-border);color:var(--muted);font-size:11px}
 .inbox-pastas{display:inline-flex;gap:2px;padding:3px;border:1px solid var(--panel-border);border-radius:10px;background:var(--panel-soft)}
 .inbox-pastas button{min-height:0;padding:6px 13px;border:0;border-radius:7px;background:transparent;color:var(--muted);font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s}
 .inbox-pastas button:hover{color:var(--text)}

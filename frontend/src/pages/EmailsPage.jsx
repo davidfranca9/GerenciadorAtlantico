@@ -270,7 +270,6 @@ export default function EmailsPage() {
                   </button>
                 ))}
               </div>
-              <span>{total} mensage{total === 1 ? "m" : "ns"}</span>
             </div>
             <button className="btn-primary inbox-compose-btn" onClick={() => abrirComposicao({})}>
               <Icon name="mail" size={16} />Escrever
@@ -298,6 +297,9 @@ export default function EmailsPage() {
               </button>
             )}
           </form>
+          {!carregandoLista && mensagens.length > 0 && (
+            <div className="inbox-contagem">{Number(total).toLocaleString("pt-BR")} mensage{total === 1 ? "m" : "ns"}</div>
+          )}
           {carregandoLista ? (
             <div className="inline-alert info"><span className="status-dot" />Carregando mensagens...</div>
           ) : mensagens.length === 0 ? (

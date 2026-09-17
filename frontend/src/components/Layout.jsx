@@ -27,7 +27,7 @@ export const NAV_SECTIONS = [
     { to: "/autorizacao-abastecimento", label: "Autorização de abastecimento", icon: "file", description: "Geração e envio das autorizações de abastecimento" },
   ] },
   { title: "Comunicação", items: [
-    { to: "/emails", label: "E-mails", icon: "mail", description: "Caixa de entrada do Gmail" },
+    { to: "/emails", label: "E-mails", icon: "mail", description: "Recebidos e enviados do Gmail" },
     { to: "/whatsapp", label: "WhatsApp", icon: "chat", description: "Conversas e pedidos recebidos pelo WhatsApp" },
   ]},
   { title: "Integrações", items: [
