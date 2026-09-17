@@ -151,13 +151,14 @@ export default function PedidosPage() {
   const [status, setStatus] = useState("");
 
   const [selecionados, setSelecionados] = useState({}); // { [pedidoId]: quantidade }
+  const [retirado, setRetirado] = useState(null); // { contrato, ids } do ultimo tirado da lista
   const [expandidos, setExpandidos] = useState({}); // { [chaveGrupo]: true }
 
   async function carregar() {
     setLoading(true);
     setError("");
     try {
-      setPedidos(await api.listarPedidos());
+      setPedidos(await api.listarPedidos(true, true));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -201,6 +202,30 @@ export default function PedidosPage() {
         const { [pedido.id]: _removido, ...resto } = prev;
         return resto;
       });
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleRetirar(grupo) {
+    const ids = grupo.itens.map((p) => p.id);
+    setError("");
+    try {
+      await api.retirarPedidos(ids);
+      setPedidos((prev) => prev.filter((p) => !ids.includes(p.id)));
+      setRetirado({ contrato: grupo.contrato, ids });
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleDesfazerRetirada() {
+    if (!retirado) return;
+    setError("");
+    try {
+      await api.devolverPedidos(retirado.ids);
+      setRetirado(null);
+      await carregar();
     } catch (err) {
       setError(err.message);
     }
@@ -250,12 +275,14 @@ export default function PedidosPage() {
       if (!grupoAtual.cidade && p.cidade) grupoAtual.cidade = p.cidade;
       grupoAtual.itens.push(p);
     }
-    const grupos = [...mapa.values()];
+    const grupos = [...mapa.values()].map((g) => ({ ...g, fechado: g.itens.every((p) => p.fechado) }));
 
+    // Carregamento fechado vai pro fim: o que ainda tem carga pra agendar fica em cima.
     if (ordenacao === "alfabetica") {
-      return grupos.sort((a, b) => (a.cliente || "").localeCompare(b.cliente || "", "pt-BR"));
+      return grupos.sort((a, b) => a.fechado - b.fechado || (a.cliente || "").localeCompare(b.cliente || "", "pt-BR"));
     }
     return grupos.sort((a, b) => {
+      if (a.fechado !== b.fechado) return a.fechado - b.fechado;
       const numA = parseInt((a.contrato || "").replace(/\D/g, ""), 10);
       const numB = parseInt((b.contrato || "").replace(/\D/g, ""), 10);
       if (Number.isNaN(numA) && Number.isNaN(numB)) return 0;
@@ -334,6 +361,13 @@ export default function PedidosPage() {
       </div>
 
       {status && <div className="inline-alert info"><span className="status-dot" />{status}</div>}
+      {retirado && (
+        <div className="inline-alert info pedido-retirado-aviso">
+          <span className="status-dot" />
+          <span>Pedido {retirado.contrato || "sem número"} saiu da lista.</span>
+          <button type="button" className="btn-secondary" onClick={handleDesfazerRetirada}>Desfazer</button>
+        </div>
+      )}
       {error && <div className="inline-alert error">{error}</div>}
 
       {loading ? (
@@ -348,7 +382,7 @@ export default function PedidosPage() {
             const expandido = expandidos[chave] ?? temSelecionado;
             const restanteGrupo = grupo.itens.reduce((soma, p) => soma + p.toneladas_restante, 0);
             return (
-            <div key={chave} className="pedido-card">
+            <div key={chave} className={`pedido-card ${grupo.fechado ? "fechado" : ""}`}>
               <button type="button" className="pedido-card-header" onClick={() => toggleExpandido(chave)}>
                 <div className="pedido-card-top">
                   <span className="pedido-badge">{SUPPLIER_LABEL[grupo.supplier] || grupo.supplier}</span>
@@ -364,12 +398,23 @@ export default function PedidosPage() {
                   <span>{grupo.cidade || "-"}</span>
                 </div>
                 <div className="pedido-card-summary">
-                  <span>{grupo.itens.length} produto{grupo.itens.length === 1 ? "" : "s"} · {formatTon(restanteGrupo)} t restantes</span>
+                  {grupo.fechado ? (
+                    <span className="pedido-fechado-tag"><Icon name="check" size={11} />Carregamento fechado</span>
+                  ) : (
+                    <span>{grupo.itens.length} produto{grupo.itens.length === 1 ? "" : "s"} · {formatTon(restanteGrupo)} t restantes</span>
+                  )}
                   <Icon name="chevron" size={14} className={`pedido-chevron ${expandido ? "open" : ""}`} />
                 </div>
               </button>
 
               <DefinirCidade grupo={grupo} todos={pedidos} aoSalvar={carregar} />
+
+              {grupo.fechado && (
+                <div className="pedido-fechado">
+                  <span>Todas as toneladas já foram agendadas. Quando tudo carregar, tire da lista.</span>
+                  <button type="button" className="btn-secondary" onClick={() => handleRetirar(grupo)}>Tirar da lista</button>
+                </div>
+              )}
 
               {expandido && (
               <div className="pedido-itens">
@@ -391,10 +436,15 @@ export default function PedidosPage() {
                         <div className="pedido-progress-bar"><div className="pedido-progress-fill" style={{ width: `${percentual}%` }} /></div>
                         <div className="pedido-progress-labels">
                           <span>{formatTon(p.toneladas_usadas)} / {formatTon(p.toneladas_total)} t usadas</span>
-                          <span className={`pedido-restante ${esgotando ? "low" : ""}`}>{formatTon(p.toneladas_restante)} t restantes</span>
+                          {p.fechado ? (
+                            <span className="pedido-restante fechado">fechado</span>
+                          ) : (
+                            <span className={`pedido-restante ${esgotando ? "low" : ""}`}>{formatTon(p.toneladas_restante)} t restantes</span>
+                          )}
                         </div>
                       </div>
 
+                      {!p.fechado && (
                       <div className="pedido-select-row">
                         <label className="pedido-select">
                           <input type="checkbox" checked={selecionado} onChange={() => toggleSelecionado(p)} />
@@ -409,6 +459,7 @@ export default function PedidosPage() {
                           />
                         )}
                       </div>
+                      )}
                     </div>
                   );
                 })}

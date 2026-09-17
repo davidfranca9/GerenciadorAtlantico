@@ -82,6 +82,7 @@ def on_startup():
             conn.execute(text("ALTER TABLE cartas_frete_enviadas ADD COLUMN IF NOT EXISTS erro VARCHAR(500) DEFAULT ''"))
             # Cidades possiveis quando a leitura do pedido nao decide.
             conn.execute(text("ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS cidades_candidatas VARCHAR(1000) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS retirado_em TIMESTAMP"))
             conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS modelo_veiculo VARCHAR(40) DEFAULT ''"))
             conn.execute(text("ALTER TABLE dividas ADD COLUMN IF NOT EXISTS proximo_pagamento DATE"))
             conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS origem VARCHAR(20) DEFAULT 'manual'"))

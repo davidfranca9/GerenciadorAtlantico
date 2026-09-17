@@ -37,8 +37,16 @@ def _candidatas(p: Pedido) -> list[str]:
     return valor if isinstance(valor, list) else []
 
 
+def _restante(p: Pedido) -> float:
+    return max(0.0, round(p.toneladas_total - p.toneladas_usadas, 4))
+
+
+def _fechado(p: Pedido) -> bool:
+    """Todo o saldo ja foi agendado."""
+    return (p.toneladas_total or 0) > 0 and _restante(p) <= 0.001
+
+
 def _to_dict(p: Pedido) -> dict:
-    restante = round(p.toneladas_total - p.toneladas_usadas, 4)
     return {
         "id": p.id,
         "created_at": p.created_at,
@@ -50,19 +58,72 @@ def _to_dict(p: Pedido) -> dict:
         "supplier": p.supplier,
         "toneladas_total": p.toneladas_total,
         "toneladas_usadas": p.toneladas_usadas,
-        "toneladas_restante": max(0.0, restante),
+        "toneladas_restante": _restante(p),
         "novo": _eh_novo(p),
         "cidades_candidatas": _candidatas(p),
+        "fechado": _fechado(p),
+        "retirado_em": getattr(p, "retirado_em", None),
     }
 
 
 @router.get("")
-def listar_pedidos(mostrar_esgotados: bool = Query(False), db: Session = Depends(get_db)):
+def listar_pedidos(
+    mostrar_esgotados: bool = Query(False),
+    ocultar_retirados: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    """ocultar_retirados: a tela de Pedidos mostra os fechados, menos os que
+    alguem ja tirou da lista. Se o saldo voltar (agendamento cancelado), o
+    pedido tirado reaparece - tem carga pra agendar de novo."""
     query = db.query(Pedido).order_by(Pedido.created_at.desc())
     pedidos = [_to_dict(p) for p in query.all()]
     if not mostrar_esgotados:
         pedidos = [p for p in pedidos if p["toneladas_restante"] > 0.001]
+    if ocultar_retirados:
+        pedidos = [p for p in pedidos if not (p["retirado_em"] and p["toneladas_restante"] <= 0.001)]
     return pedidos
+
+
+class PedidosIn(BaseModel):
+    pedido_ids: list[int]
+
+
+def _pedidos_do_payload(db: Session, payload: PedidosIn) -> list[Pedido]:
+    ids = set(payload.pedido_ids)
+    if not ids:
+        raise HTTPException(status_code=400, detail="Informe os pedidos")
+    pedidos = db.query(Pedido).filter(Pedido.id.in_(ids)).all()
+    if len(pedidos) != len(ids):
+        raise HTTPException(status_code=404, detail="Algum dos pedidos nao foi encontrado")
+    return pedidos
+
+
+@router.post("/retirar")
+def retirar_da_lista(payload: PedidosIn, db: Session = Depends(get_db)):
+    """Tira da tela de Pedidos um pedido com o carregamento fechado. Nao apaga:
+    o pedido continua ligado aos agendamentos e pode voltar."""
+    pedidos = _pedidos_do_payload(db, payload)
+    abertos = sorted({p.contrato or str(p.id) for p in pedidos if not _fechado(p)})
+    if abertos:
+        raise HTTPException(
+            status_code=400,
+            detail=f"So sai da lista pedido com o carregamento fechado. Ainda tem saldo: {', '.join(abertos)}",
+        )
+    agora = datetime.utcnow()
+    for pedido in pedidos:
+        pedido.retirado_em = agora
+    db.commit()
+    return {"pedidos": [_to_dict(p) for p in pedidos]}
+
+
+@router.post("/devolver")
+def devolver_para_lista(payload: PedidosIn, db: Session = Depends(get_db)):
+    """Desfaz o "tirar da lista"."""
+    pedidos = _pedidos_do_payload(db, payload)
+    for pedido in pedidos:
+        pedido.retirado_em = None
+    db.commit()
+    return {"pedidos": [_to_dict(p) for p in pedidos]}
 
 
 @router.post("/importar-pdf")

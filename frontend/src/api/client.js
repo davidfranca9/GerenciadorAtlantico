@@ -158,8 +158,16 @@ export function definirCidadePedidos(pedidoIds, cidade, uf) {
   return request("/pedidos/cidade", { method: "PATCH", body: { pedido_ids: pedidoIds, cidade, uf } });
 }
 
-export function listarPedidos(mostrarEsgotados = false) {
-  return request(`/pedidos?mostrar_esgotados=${mostrarEsgotados}`);
+export function listarPedidos(mostrarEsgotados = false, ocultarRetirados = false) {
+  return request(`/pedidos?mostrar_esgotados=${mostrarEsgotados}&ocultar_retirados=${ocultarRetirados}`);
+}
+
+export function retirarPedidos(pedidoIds) {
+  return request("/pedidos/retirar", { method: "POST", body: { pedido_ids: pedidoIds } });
+}
+
+export function devolverPedidos(pedidoIds) {
+  return request("/pedidos/devolver", { method: "POST", body: { pedido_ids: pedidoIds } });
 }
 
 export async function importarPedidoPdf(file, supplier) {

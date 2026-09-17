@@ -157,6 +157,10 @@ class Pedido(Base):
     # as possiveis ficam aqui em JSON ("Nome-UF") pra tela sugerir. Antes
     # elas eram descartadas e o pedido ficava sem cidade, calado.
     cidades_candidatas: Mapped[str] = mapped_column(String(1000), default="")
+    # Pedido com todo o saldo agendado continua na lista, marcado como
+    # carregamento fechado. Sai so quando alguem tira na mao (enquanto o
+    # sistema nao sabe sozinho que tudo ja carregou).
+    retirado_em: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
 
 
 class WhatsAppMensagem(Base):
