@@ -16,14 +16,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.auth import get_current_user  # noqa: E402
 from app.database import get_db  # noqa: E402
-from app.models import Cidade, Pedido  # noqa: E402
+from app.models import Agendamento, AgendamentoItem, Cidade, Pedido  # noqa: E402
 from app.routers import pedidos  # noqa: E402
 from tests.apoio_documentos import banco_em_memoria  # noqa: E402
 
 
 @pytest.fixture
 def db():
-    sessao = banco_em_memoria(Pedido, Cidade)
+    sessao = banco_em_memoria(Pedido, Cidade, Agendamento, AgendamentoItem)
     sessao.add_all([
         Cidade(nome="Águas Vermelhas", uf="MG", ibge="3101003"),
         Cidade(nome="Montes Claros", uf="MG", ibge="3143302"),
@@ -85,3 +85,31 @@ def test_listagem_leva_as_cidades_possiveis(cliente):
     assert lista[68]["cidades_candidatas"] == ["Águas Vermelhas-MG", "Montes Claros-MG"]
     assert lista[69]["cidades_candidatas"] == []
     assert lista[4]["cidades_candidatas"] == []
+
+
+def test_correcao_da_cidade_chega_nos_agendamentos(cliente, db):
+    # 041594: lido como Capitao-RS, o destino era Capitao Eneas-MG. Os
+    # agendamentos ja criados guardam a copia errada.
+    db.add_all([
+        Cidade(nome="Capitão", uf="RS", ibge="4304697"),
+        Cidade(nome="Capitão Enéas", uf="MG", ibge="3112703"),
+        Pedido(id=47, contrato="041594", cliente="CARLOS LUCAS MENDES", cidade="Capitão-RS", toneladas_total=24),
+        Agendamento(id=80, supplier="Fertimaxi", itens=[
+            AgendamentoItem(id=138, pedido="041594", cidade="Capitão-RS", toneladas=24, pedido_ref_id=47),
+            # Outro pedido no mesmo agendamento nao muda.
+            AgendamentoItem(id=140, pedido="041595", cidade="Taiobeiras-MG", toneladas=8, pedido_ref_id=4),
+        ]),
+        # Mudado a mao no agendamento: fica como esta.
+        Agendamento(id=81, supplier="Fertimaxi", itens=[
+            AgendamentoItem(id=139, pedido="041594", cidade="Montes Claros-MG", toneladas=8, pedido_ref_id=47),
+        ]),
+    ])
+    db.commit()
+
+    resposta = cliente.patch("/pedidos/cidade", json={"pedido_ids": [47], "cidade": "Capitão Enéas", "uf": "MG"})
+    assert resposta.status_code == 200, resposta.text
+    assert resposta.json()["agendamento_itens_corrigidos"] == 1
+    assert db.get(Pedido, 47).cidade == "Capitão Enéas-MG"
+    assert db.get(AgendamentoItem, 138).cidade == "Capitão Enéas-MG"
+    assert db.get(AgendamentoItem, 140).cidade == "Taiobeiras-MG"
+    assert db.get(AgendamentoItem, 139).cidade == "Montes Claros-MG"

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import Cidade, Pedido
+from ..models import AgendamentoItem, Cidade, Pedido
 from ..servicos import ocr, saldo_pedidos
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"], dependencies=[Depends(get_current_user)])
@@ -137,11 +137,21 @@ def definir_cidade(payload: DefinirCidadeIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Algum dos pedidos nao foi encontrado")
 
     texto = ocr.formatar_cidade(cidade.nome, cidade.uf)
+    # O agendamento guarda uma copia da cidade do pedido. A copia que ainda e
+    # a cidade antiga acompanha a correcao - senao o 041594, lido como
+    # Capitao-RS, continuava RS nos agendamentos ja criados. Se alguem mudou
+    # a cidade direto no agendamento, fica como esta.
+    antigas = {p.id: (p.cidade or "").strip() for p in pedidos}
+    itens_corrigidos = 0
+    for item in db.query(AgendamentoItem).filter(AgendamentoItem.pedido_ref_id.in_(ids)).all():
+        if (item.cidade or "").strip() == antigas[item.pedido_ref_id] and item.cidade != texto:
+            item.cidade = texto
+            itens_corrigidos += 1
     for pedido in pedidos:
         pedido.cidade = texto
         pedido.cidades_candidatas = ""
     db.commit()
-    return {"cidade": texto, "pedidos": [_to_dict(p) for p in pedidos]}
+    return {"cidade": texto, "pedidos": [_to_dict(p) for p in pedidos], "agendamento_itens_corrigidos": itens_corrigidos}
 
 
 @router.get("/conciliacao")
