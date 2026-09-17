@@ -24,7 +24,7 @@ export const NAV_SECTIONS = [
     { to: "/financeiro/precificacao", label: "Precificação CT-e", icon: "chart", description: "Custo fixo por tonelada e frete mínimo", adminOnly: true },
     { to: "/financeiro/pagamentos", label: "Pagamentos", icon: "calendar", description: "Vencimentos do mês, semana a semana", adminOnly: true },
     { to: "/financeiro/dividas", label: "Dívidas ativas", icon: "coins", description: "Quanto falta e quando se paga cada dívida", adminOnly: true },
-    { to: "/carta-frete", label: "Carta frete", icon: "file", description: "Geração de autorizações financeiras" },
+    { to: "/autorizacao-abastecimento", label: "Autorização de abastecimento", icon: "file", description: "Geração e envio das autorizações de abastecimento" },
   ] },
   { title: "Comunicação", items: [
     { to: "/emails", label: "E-mails", icon: "mail", description: "Caixa de entrada do Gmail" },

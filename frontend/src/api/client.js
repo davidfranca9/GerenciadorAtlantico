@@ -560,7 +560,7 @@ export function enviarAutorizacaoColetaEmail(payload) {
 
 export function gerarCartaFrete(payload) {
   const ext = payload.formato === "pdf" ? "pdf" : "docx";
-  return downloadDocumento("/cartas-frete/gerar", payload, `carta_frete.${ext}`);
+  return downloadDocumento("/cartas-frete/gerar", payload, `Autorizacao Abastecimento.${ext}`);
 }
 
 export function enviarCartaFreteEmail(payload) {

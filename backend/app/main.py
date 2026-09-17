@@ -80,6 +80,11 @@ def on_startup():
             conn.execute(text("ALTER TABLE cartas_frete_enviadas ADD COLUMN IF NOT EXISTS enviada_em TIMESTAMP"))
             conn.execute(text("ALTER TABLE cartas_frete_enviadas ADD COLUMN IF NOT EXISTS dados TEXT DEFAULT ''"))
             conn.execute(text("ALTER TABLE cartas_frete_enviadas ADD COLUMN IF NOT EXISTS erro VARCHAR(500) DEFAULT ''"))
+            # Carta frete virou Autorizacao de Abastecimento, e a pagina mudou de endereco.
+            conn.execute(text(
+                "UPDATE users SET paginas_bloqueadas = REPLACE(paginas_bloqueadas, '/carta-frete', '/autorizacao-abastecimento') "
+                "WHERE paginas_bloqueadas LIKE '%/carta-frete%'"
+            ))
             # Cidades possiveis quando a leitura do pedido nao decide.
             conn.execute(text("ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS cidades_candidatas VARCHAR(1000) DEFAULT ''"))
             conn.execute(text("ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS retirado_em TIMESTAMP"))

@@ -80,8 +80,8 @@ function PuxarDoBsoft({ competencia, aoFechar, aoTrazer }) {
           </p>
           {!feito && r.novos.length > 0 && (
             <Aviso tipo={r.motorista_a_completar ? "warning" : "info"}>
-              Frete do motorista: {r.com_carta_frete} {r.com_carta_frete === 1 ? "carga veio" : "cargas vieram"} da carta frete emitida pelo sistema
-              {r.motorista_a_completar > 0 && `; ${r.motorista_a_completar} sem carta ficam para completar`}. O valor do contrato do Bsoft não é usado: não bateu com o que foi pago.
+              Frete do motorista: {r.com_carta_frete} {r.com_carta_frete === 1 ? "carga veio" : "cargas vieram"} da autorização de abastecimento emitida pelo sistema
+              {r.motorista_a_completar > 0 && `; ${r.motorista_a_completar} sem autorização ficam para completar`}. O valor do contrato do Bsoft não é usado: não bateu com o que foi pago.
             </Aviso>
           )}
           {r.divergencias.length > 0 && (

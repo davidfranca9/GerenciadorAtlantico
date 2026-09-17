@@ -1,4 +1,5 @@
-"""Carta frete: baixar, enviar agora e agendar - e o agendado sai uma vez so.
+"""Autorizacao de abastecimento (antiga carta frete): baixar, enviar agora e
+agendar - e o agendado sai uma vez so.
 
 Nenhum e-mail sai daqui: o correio, a geracao do .docx e a conversao pra PDF
 entram simulados. O banco e SQLite em memoria com a tabela real.
@@ -206,3 +207,29 @@ def test_rota_cancelar_e_a_lista_mostram_o_agendamento(db):
     lista = cliente.get("/cartas-frete").json()
     assert lista[0]["status"] == "cancelada"
     assert lista[0]["agendada_para"].startswith("2030-09-20T17:00")
+
+
+# --------------------------------------------------------------------------
+# Nome do arquivo
+# --------------------------------------------------------------------------
+
+
+def test_anexo_do_email_sai_no_padrao_e_nao_como_carta_frete(monkeypatch, tmp_path):
+    from docx import Document
+
+    modelo = tmp_path / "modelo_real.docx"
+    doc = Document()
+    doc.add_paragraph("Nome do Condutor: {{CONDUTOR}}")
+    doc.save(str(modelo))
+    monkeypatch.setattr(carta_frete, "TEMPLATE_CF", modelo)
+    correio = Correio()
+
+    carta_frete._mandar(DADOS, converter=lambda caminho: caminho[:-5] + ".pdf", enviar=correio)
+
+    anexo = Path(correio.enviados[0]["anexos"][0]).name
+    assert anexo == "Autorizacao Abastecimento_TALISSON JUNIOR GUIMARAES RIBEIRO.pdf"
+
+
+def test_nome_do_arquivo_sem_caractere_proibido_e_sem_condutor():
+    assert carta_frete.nome_do_arquivo({"CONDUTOR": ' JOSE/DA "SILVA"? '}) == "Autorizacao Abastecimento_JOSEDA SILVA"
+    assert carta_frete.nome_do_arquivo({"CONDUTOR": ""}) == "Autorizacao Abastecimento_Motorista"

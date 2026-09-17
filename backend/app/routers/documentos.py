@@ -399,17 +399,17 @@ def gerar_carta_frete(payload: CartaFreteRequest):
     except carta_frete.CartaFreteInvalida as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    safe_name = _safe_filename(payload.CONDUTOR)
+    nome = carta_frete.nome_do_arquivo(dados)
     if payload.formato.lower() == "pdf":
         try:
             pdf_path = docx_to_pdf(docx_path)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Falha ao gerar o PDF: {exc}")
-        return FileResponse(pdf_path, filename=f"Autorizacao Abastecimento_{safe_name}.pdf", media_type="application/pdf")
+        return FileResponse(pdf_path, filename=f"{nome}.pdf", media_type="application/pdf")
 
     return FileResponse(
         docx_path,
-        filename=f"Autorizacao Abastecimento_{safe_name}.docx",
+        filename=f"{nome}.docx",
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
 
@@ -449,7 +449,7 @@ def cancelar_carta_frete(carta_id: int, db: Session = Depends(get_db)):
     try:
         registro = carta_frete.cancelar(db, carta_id)
     except LookupError:
-        raise HTTPException(status_code=404, detail="Carta frete nao encontrada")
+        raise HTTPException(status_code=404, detail="Autorização de abastecimento não encontrada")
     except carta_frete.CartaFreteInvalida as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return _carta_para_dict(registro)

@@ -107,7 +107,7 @@ async def _preparar_rascunhos() -> int:
 
 
 async def _enviar_cartas_agendadas() -> int:
-    """Manda as cartas frete cujo horario agendado ja chegou."""
+    """Manda as autorizacoes de abastecimento cujo horario agendado ja chegou."""
     from . import carta_frete
 
     with SessionLocal() as db:
@@ -181,7 +181,7 @@ def iniciar() -> None:
     asyncio.create_task(_repetir("e-mail", _coletar_do_email, INTERVALO_EMAIL_SEGUNDOS))
     asyncio.create_task(_repetir("casamento", _casar_notas_soltas, INTERVALO_EMAIL_SEGUNDOS))
     asyncio.create_task(_repetir("CT-e", _acompanhar_ctes, INTERVALO_ACOMPANHAMENTO_SEGUNDOS))
-    asyncio.create_task(_repetir("cartas frete", _enviar_cartas_agendadas, INTERVALO_CARTAS_SEGUNDOS))
+    asyncio.create_task(_repetir("autorizacoes de abastecimento", _enviar_cartas_agendadas, INTERVALO_CARTAS_SEGUNDOS))
     asyncio.create_task(_repetir("carregamentos do Bsoft", _puxar_carregamentos, INTERVALO_CARREGAMENTOS_SEGUNDOS))
     if settings.rascunho_automatico:
         asyncio.create_task(_repetir("rascunho", _preparar_rascunhos, INTERVALO_ACOMPANHAMENTO_SEGUNDOS))

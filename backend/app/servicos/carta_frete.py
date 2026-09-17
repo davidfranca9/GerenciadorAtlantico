@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -58,7 +59,8 @@ CORPO = """
 
 
 class CartaFreteInvalida(Exception):
-    """Dados que impedem gerar ou agendar a carta. A mensagem vai pra tela."""
+    """Dados que impedem gerar ou agendar a autorizacao de abastecimento. A
+    mensagem vai pra tela."""
 
 
 def dados_de(payload: dict) -> dict:
@@ -70,15 +72,23 @@ def assunto(dados: dict) -> str:
     return f"AUTORIZAÇÃO ABASTECIMENTO: {dados['CONDUTOR']} - {dados['PLACA_CAVALO']}"
 
 
+def nome_do_arquivo(dados: dict) -> str:
+    """Nome do documento, sem extensao: o mesmo no download e no anexo do
+    e-mail, no padrao que o sistema antigo usava. Antes o anexo do e-mail
+    saia "carta_frete.pdf"."""
+    condutor = re.sub(r'[\\/*?:"<>|]', "", str(dados.get("CONDUTOR") or "")).strip()
+    return f"Autorizacao Abastecimento_{condutor or 'Motorista'}"
+
+
 def _conferir_modelo() -> None:
     if not Path(TEMPLATE_CF).exists():
-        raise CartaFreteInvalida("Template de Carta Frete nao encontrado")
+        raise CartaFreteInvalida("Modelo da Autorização de Abastecimento não encontrado")
 
 
 def _validar_envio(dados: dict) -> None:
     _conferir_modelo()
     if not dados["CONDUTOR"]:
-        raise CartaFreteInvalida("Nome do condutor e obrigatorio")
+        raise CartaFreteInvalida("Nome do condutor é obrigatório")
 
 
 def gerar_docx(dados: dict) -> str:
@@ -86,7 +96,8 @@ def gerar_docx(dados: dict) -> str:
     _conferir_modelo()
     doc = Document(str(TEMPLATE_CF))
     fill_carta_frete_docx(doc, dados)
-    caminho = os.path.join(tempfile.mkdtemp(), "carta_frete.docx")
+    # O PDF herda este nome na conversao, e e ele que vai anexado no e-mail.
+    caminho = os.path.join(tempfile.mkdtemp(), f"{nome_do_arquivo(dados)}.docx")
     doc.save(caminho)
     return caminho
 
@@ -162,7 +173,7 @@ def cancelar(db: Session, carta_id: int) -> CartaFreteEnviada:
         raise LookupError(carta_id)
     db.refresh(registro)
     if not mudou:
-        raise CartaFreteInvalida(f"Essa carta nao esta mais agendada (situacao: {registro.status}).")
+        raise CartaFreteInvalida(f"Essa autorização não está mais agendada (situação: {registro.status}).")
     return registro
 
 
@@ -193,7 +204,7 @@ def enviar_agendadas(db: Session, agora: datetime | None = None, **etapas) -> in
         except Exception as exc:
             registro.status = "erro"
             registro.erro = str(exc)[:500]
-            logger.warning("carta frete agendada %s nao foi enviada: %s", carta_id, str(exc)[:150])
+            logger.warning("autorizacao de abastecimento agendada %s nao foi enviada: %s", carta_id, str(exc)[:150])
         else:
             registro.status = "enviada"
             registro.enviada_em = datetime.utcnow()

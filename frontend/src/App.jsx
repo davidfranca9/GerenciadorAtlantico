@@ -54,7 +54,8 @@ function AppRoutes() {
         <Route path="/contrato" element={<ContratoPage />} />
         <Route path="/pedidos" element={<PedidosPage />} />
         <Route path="/ordem-coleta" element={<OrdemColetaPage />} />
-        <Route path="/carta-frete" element={<CartaFretePage />} />
+        <Route path="/autorizacao-abastecimento" element={<CartaFretePage />} />
+        <Route path="/carta-frete" element={<Navigate to="/autorizacao-abastecimento" replace />} />
         <Route path="/financeiro/caixa" element={<AdminRoute><CaixaPage /></AdminRoute>} />
         <Route path="/financeiro/carregamentos" element={<AdminRoute><CarregamentosPage /></AdminRoute>} />
         <Route path="/financeiro/lucro-bruto" element={<AdminRoute><LucroBrutoPage /></AdminRoute>} />

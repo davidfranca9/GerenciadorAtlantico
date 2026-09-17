@@ -121,7 +121,7 @@ export default function CartaFretePage() {
   }
 
   function handleCancelar(carta) {
-    if (!window.confirm(`Cancelar o envio agendado da carta de ${carta.condutor}?`)) return;
+    if (!window.confirm(`Cancelar o envio agendado da autorização de ${carta.condutor}?`)) return;
     executar("cancelar", async () => {
       await api.cancelarCartaFrete(carta.id);
       carregarEnviadas();
@@ -183,11 +183,11 @@ export default function CartaFretePage() {
       </div>
 
       <div className="card">
-        <h2 style={{ margin: "0 0 14px" }}>Cartas frete</h2>
+        <h2 style={{ margin: "0 0 14px" }}>Autorizações de abastecimento</h2>
         {carregandoLista ? (
           <div className="inline-alert info"><span className="status-dot" />Carregando...</div>
         ) : enviadas.length === 0 ? (
-          <div className="inline-alert warning">Nenhuma carta frete enviada ou agendada ainda.</div>
+          <div className="inline-alert warning">Nenhuma autorização de abastecimento enviada ou agendada ainda.</div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table>
