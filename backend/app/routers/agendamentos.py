@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..config import settings
 from ..database import get_db
-from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoEmail, AgendamentoItem, Pedido
-from ..servicos import emails_agendamento, saldo_pedidos
+from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoEmail, AgendamentoItem, Cidade, Pedido
+from ..servicos import emails_agendamento, ocr, saldo_pedidos
 from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
 from .documentos import Produto, OrdemColetaRequest, _gerar_oc_arquivos
 
@@ -280,6 +280,42 @@ def atualizar_status(agendamento_id: int, payload: AgendamentoStatusIn, db: Sess
         raise HTTPException(status_code=400, detail=f"Status invalido. Use um de: {STATUS_AGENDAMENTO}")
     # Cancelado nao ocupa saldo: cancelar devolve, reabrir desconta de novo.
     saldo_pedidos.mudar_status(db, agendamento, payload.status)
+    agendamento.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(agendamento)
+    return _to_dict(agendamento)
+
+
+class CidadeItemIn(BaseModel):
+    cidade: str
+    uf: str
+
+
+@router.patch("/{agendamento_id}/itens/{item_id}/cidade")
+def corrigir_cidade_do_item(agendamento_id: int, item_id: int, payload: CidadeItemIn, db: Session = Depends(get_db)):
+    """Troca a cidade de um item do agendamento - so dele, sem mexer no pedido
+    nem nos outros agendamentos do mesmo pedido.
+
+    So aceita cidade do cadastro, gravada como a leitura grava ("Nome-UF"):
+    e o formato que a cotacao de frete usa pra achar a tarifa do destino.
+    """
+    item = db.get(AgendamentoItem, item_id)
+    if item is None or item.agendamento_id != agendamento_id:
+        raise HTTPException(status_code=404, detail="Item nao encontrado neste agendamento")
+    uf = payload.uf.strip().upper()
+    procurada = ocr.normalizar_texto_sem_acento(payload.cidade)
+    cidade = next(
+        (c for c in db.query(Cidade).filter(Cidade.uf == uf).all()
+         if ocr.normalizar_texto_sem_acento(c.nome) == procurada),
+        None,
+    )
+    if cidade is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cidade '{payload.cidade.strip()}' nao encontrada em {uf or '(sem UF)'} no cadastro de cidades.",
+        )
+    agendamento = item.agendamento
+    item.cidade = ocr.formatar_cidade(cidade.nome, cidade.uf)
     agendamento.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(agendamento)
