@@ -7,6 +7,7 @@ import mimetypes
 import os
 import smtplib
 import time
+import unicodedata
 import uuid
 from email import encoders
 from email.mime.base import MIMEBase
@@ -40,13 +41,47 @@ def montar_autorizacao_agendamento(cliente: str, pedido: str, data_carregamento:
 
     nome = (motorista or "").strip() or cliente
     titulo = f"AUTORIZAÇÃO AGENDAMENTO: {nome} - Nº {pedido}"
+    do_pedido = "dos pedidos" if " / " in pedido else "do pedido"
     corpo = f"""
         <p>Prezados,</p>
-        <p>Solicitamos, por gentileza, o agendamento do pedido {html.escape(prazo)}.</p>
+        <p>Solicitamos, por gentileza, o agendamento {do_pedido} {html.escape(prazo)}.</p>
         <p>Ficamos no aguardo da confirmação do agendamento.</p>
         <img src="cid:assinatura_fertlog" alt="Atlântico Fertlog" style="max-width:420px;margin-top:18px">
     """
     return titulo, corpo
+
+
+def _sem_acento(texto: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFKD", texto) if not unicodedata.combining(c)).upper()
+
+
+def clientes_e_pedidos(itens) -> tuple[str, str]:
+    """Clientes e pedidos de uma autorizacao, sem repetir, separados por " / ".
+
+    "WAGMAR JOSÉ DE OLIVEIRA" e "WAGMAR JOSE DE OLIVEIRA" sao o mesmo cliente
+    (vale a primeira grafia), e "041556" e "41556" o mesmo pedido."""
+    clientes: dict[str, str] = {}
+    pedidos: dict[str, str] = {}
+    for item in itens:
+        campo = item.get if isinstance(item, dict) else (lambda nome, padrao="", _i=item: getattr(_i, nome, padrao))
+        cliente = " ".join(str(campo("cliente", "") or "").split())
+        pedido = str(campo("contrato", "") or campo("pedido", "") or "").strip()
+        if cliente:
+            clientes.setdefault(_sem_acento(cliente), cliente)
+        if pedido:
+            pedidos.setdefault(pedido.lstrip("0") or pedido, pedido)
+    return " / ".join(clientes.values()), " / ".join(pedidos.values())
+
+
+def montar_autorizacao_do_caminhao(itens, data_carregamento: str, motorista: str = "") -> tuple[str, str] | None:
+    """Um e-mail so pra autorizacao inteira, com todos os pedidos no assunto.
+
+    Antes saia um e-mail por pedido, todos com a mesma planilha: dois pedidos
+    juntos no caminhao viravam dois e-mails iguais pra fabrica."""
+    clientes, pedidos = clientes_e_pedidos(itens)
+    if not pedidos or not (clientes or (motorista or "").strip()):
+        return None
+    return montar_autorizacao_agendamento(clientes, pedidos, data_carregamento, motorista=motorista)
 
 
 def _thread_index_novo() -> str:

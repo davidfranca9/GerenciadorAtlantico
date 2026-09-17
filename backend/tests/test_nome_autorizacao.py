@@ -108,3 +108,40 @@ def test_email_com_motorista_leva_o_motorista_no_assunto_e_no_anexo(monkeypatch)
         "AUTORIZAÇÃO AGENDAMENTO: TALISSON JUNIOR GUIMARAES RIBEIRO - Nº 41556",
         ["Autorizacao de carregamento_TALISSON JUNIOR GUIMARAES RIBEIRO.xlsx"],
     )]
+
+
+# --------------------------------------------------------------------------
+# Dois pedidos no mesmo caminhao: um e-mail so
+# --------------------------------------------------------------------------
+
+
+def test_dois_pedidos_juntos_saem_num_e_mail_so(monkeypatch):
+    """041555 e 041556 do Wagmar sairam em dois e-mails iguais, e o nome veio
+    com e sem acento ("JOSÉ" e "JOSE"): contou como dois clientes."""
+    outro = {**PRODUTO, "contrato": "041555", "cliente": "WAGMAR JOSÉ DE OLIVEIRA"}
+    resposta, enviados = _enviar(monkeypatch, {**pedido(), "produtos": [outro, {**PRODUTO, "contrato": "041556"}]})
+    assert resposta.status_code == 200, resposta.text
+    assert enviados == [(
+        "AUTORIZAÇÃO AGENDAMENTO: WAGMAR JOSÉ DE OLIVEIRA - Nº 041555 / 041556",
+        ["Autorizacao de carregamento_WAGMAR JOSÉ DE OLIVEIRA.xlsx"],
+    )]
+
+
+def test_corpo_fala_dos_pedidos_no_plural():
+    _, corpo = montar_autorizacao_agendamento("WAGMAR", "041555 / 041556", "22/09/2026")
+    assert "agendamento dos pedidos para dia 22.09" in corpo
+    _, corpo = montar_autorizacao_agendamento("WAGMAR", "041555", "22/09/2026")
+    assert "agendamento do pedido para dia 22.09" in corpo
+
+
+def test_clientes_diferentes_vao_juntos_no_assunto():
+    from app.servicos.comunicacao import montar_autorizacao_do_caminhao
+
+    titulo, _ = montar_autorizacao_do_caminhao(
+        [{"cliente": "CARLOS LUCAS MENDES", "contrato": "041594"},
+         {"cliente": "LUCAS MENDES FILHO MARQUES SUCUPIRA", "contrato": "038864"},
+         {"cliente": "CARLOS LUCAS MENDES", "contrato": "41594"}],
+        "18/09/2026",
+    )
+    assert titulo == "AUTORIZAÇÃO AGENDAMENTO: CARLOS LUCAS MENDES / LUCAS MENDES FILHO MARQUES SUCUPIRA - Nº 041594 / 038864"
+    assert montar_autorizacao_do_caminhao([{"cliente": "X", "contrato": ""}], "18/09/2026") is None

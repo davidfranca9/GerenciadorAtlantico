@@ -18,7 +18,7 @@ from ..auth import get_current_user
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem, CartaFreteEnviada, Pedido
 from ..servicos import carta_frete, emails_agendamento, listas_email, respostas_fabrica, saldo_pedidos
-from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
+from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_do_caminhao, send_email_message
 from ..servicos.documentos import gerar_autorizacao_xlsx
 from ..servicos.oc_html import gerar_oc_pdf_html
 from ..servicos.pdf_convert import docx_to_pdf
@@ -258,6 +258,9 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
     passar pela Ordem de Coleta - usado na tela de Contratos, onde o
     motorista/placa ainda podem nao estar definidos.
 
+    Um e-mail so pra autorizacao inteira, com todos os pedidos do caminhao no
+    assunto (antes saia um por pedido, todos com a mesma planilha).
+
     Registra o agendamento: e nele que, depois, o motorista e incluido e sai
     o e-mail de inclusao de placas. Antes nada era gravado aqui, e o pedido
     enviado sem motorista nao aparecia em Agendamentos.
@@ -277,24 +280,16 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
 
     fertimaxi = listas_email.destinatarios(db, "fertimaxi")
     destinatarios = emails_agendamento.destino(fertimaxi, True) if payload.teste else fertimaxi
-    vistos: set[tuple[str, str]] = set()
-    assuntos_enviados: list[str] = []
-    message_ids: list[str] = []
-    for produto in payload.produtos:
-        cliente, pedido = produto.cliente.strip(), produto.contrato.strip()
-        if not cliente or not pedido or (cliente, pedido) in vistos:
-            continue
-        vistos.add((cliente, pedido))
-        titulo, corpo = montar_autorizacao_agendamento(cliente, pedido, payload.data_carregamento, motorista=payload.nome)
-        titulo = _assunto_teste(titulo, payload.teste)
-        try:
-            message_ids.append(send_email_message(destinatarios, titulo, corpo, [xlsx_path], imagens_inline=imagem_assinatura_inline()))
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
-        assuntos_enviados.append(titulo)
-
-    if not assuntos_enviados:
+    montado = montar_autorizacao_do_caminhao(payload.produtos, payload.data_carregamento, motorista=payload.nome)
+    if montado is None:
         raise HTTPException(status_code=400, detail="Nenhum produto com cliente e pedido preenchidos pra enviar")
+    titulo, corpo = montado
+    titulo = _assunto_teste(titulo, payload.teste)
+    try:
+        message_ids = [send_email_message(destinatarios, titulo, corpo, [xlsx_path], imagens_inline=imagem_assinatura_inline())]
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
+    assuntos_enviados = [titulo]
 
     agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, {"xlsx": xlsx_path})
     agendamento.email_subject = "; ".join(assuntos_enviados)[:500]
@@ -328,24 +323,19 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
     message_ids: list[str] = []
 
     if supplier_label == "Fertimaxi":
-        # Mesmo modelo (cliente + pedido + assinatura) usado no "Novo
-        # Agendamento" rapido - um e-mail por pedido/cliente distinto, com
-        # a Autorizacao de Coleta (planilha) anexada, nao a O.C. em si.
+        # Mesmo modelo (clientes + pedidos + assinatura) usado no "Novo
+        # Agendamento" rapido - um e-mail so pra autorizacao inteira, com a
+        # Autorizacao de Coleta (planilha) anexada, nao a O.C. em si.
         anexos = [arquivos["xlsx"]] if arquivos["xlsx"] else []
-        vistos: set[tuple[str, str]] = set()
-        assuntos_enviados: list[str] = []
-        for produto in payload.produtos:
-            cliente, pedido = produto.cliente.strip(), produto.contrato.strip()
-            if not cliente or not pedido or (cliente, pedido) in vistos:
-                continue
-            vistos.add((cliente, pedido))
-            titulo, corpo = montar_autorizacao_agendamento(cliente, pedido, payload.data_carregamento, motorista=payload.nome)
+        subject = f"Autorizacao de {payload.nome.strip()}"
+        montado = montar_autorizacao_do_caminhao(payload.produtos, payload.data_carregamento, motorista=payload.nome)
+        if montado is not None:
+            titulo, corpo = montado
             try:
                 message_ids.append(send_email_message(recipients, _assunto_teste(titulo, payload.teste), corpo, anexos, imagens_inline=imagem_assinatura_inline()))
             except Exception as exc:
                 raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
-            assuntos_enviados.append(titulo)
-        subject = "; ".join(assuntos_enviados) or f"Autorizacao de {payload.nome.strip()}"
+            subject = titulo
     else:
         anexos = [arquivos["pdf"]]
         if arquivos["xlsx"]:

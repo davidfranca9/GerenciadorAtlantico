@@ -14,7 +14,7 @@ from ..config import settings
 from ..database import get_db
 from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoEmail, AgendamentoItem, Cidade, Pedido
 from ..servicos import emails_agendamento, listas_email, ocr, respostas_fabrica, saldo_pedidos
-from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_agendamento, send_email_message
+from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_do_caminhao, send_email_message
 from .documentos import Produto, OrdemColetaRequest, _gerar_oc_arquivos
 
 logger = logging.getLogger(__name__)
@@ -64,10 +64,10 @@ def _gerar_anexos_oc(agendamento: Agendamento) -> list[str]:
 
 
 def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento, teste: bool = False, db: Optional[Session] = None) -> None:
-    """Pra cada pedido/cliente distinto do agendamento, manda um e-mail pra
-    Fertimaxi solicitando a autorizacao de agendamento, com a Autorizacao
-    de Coleta (planilha) anexada. Falha no envio nao derruba a criacao do
-    agendamento - so fica registrada no log."""
+    """Manda um e-mail so pra Fertimaxi pedindo o agendamento, com todos os
+    pedidos do caminhao no assunto e a Autorizacao de Coleta (planilha)
+    anexada. Falha no envio nao derruba a criacao do agendamento - so fica
+    registrada no log."""
     try:
         anexos = _gerar_anexos_oc(agendamento)
     except Exception:
@@ -75,26 +75,20 @@ def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento, teste: 
         anexos = []
 
     reais = listas_email.destinatarios(db, "fertimaxi_novo_agendamento") if db is not None else RECIPIENTES_AUTORIZACAO_FERTIMAXI
-    vistos: set[tuple[str, str]] = set()
-    for item in agendamento.itens:
-        cliente, pedido = item.cliente.strip(), item.pedido.strip()
-        if not cliente or not pedido or (cliente, pedido) in vistos:
-            continue
-        vistos.add((cliente, pedido))
-
-        titulo, corpo = montar_autorizacao_agendamento(
-            cliente, pedido, agendamento.loading_date, motorista=agendamento.driver_name
-        )
-        try:
-            respostas_fabrica.registrar_envio(agendamento, send_email_message(
-                emails_agendamento.destino(reais, True) if teste else reais,
-                f"[TESTE] {titulo}" if teste else titulo,
-                corpo,
-                anexos,
-                imagens_inline=imagem_assinatura_inline(),
-            ))
-        except Exception:
-            logger.exception("Falha ao enviar e-mail de autorizacao de agendamento pra Fertimaxi (pedido %s)", pedido)
+    montado = montar_autorizacao_do_caminhao(agendamento.itens, agendamento.loading_date, motorista=agendamento.driver_name)
+    if montado is None:
+        return
+    titulo, corpo = montado
+    try:
+        respostas_fabrica.registrar_envio(agendamento, send_email_message(
+            emails_agendamento.destino(reais, True) if teste else reais,
+            f"[TESTE] {titulo}" if teste else titulo,
+            corpo,
+            anexos,
+            imagens_inline=imagem_assinatura_inline(),
+        ))
+    except Exception:
+        logger.exception("Falha ao enviar e-mail de autorizacao de agendamento pra Fertimaxi (%s)", titulo)
 
 
 class AgendamentoItemIn(BaseModel):

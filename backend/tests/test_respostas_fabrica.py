@@ -221,6 +221,7 @@ def test_previa_nao_grava_nada(db, monkeypatch):
 def test_novo_agendamento_guarda_o_message_id_das_autorizacoes(db, monkeypatch):
     enviados = iter(["<saiu-1@atlanticofertlog.com.br>", "<saiu-2@atlanticofertlog.com.br>"])
     monkeypatch.setattr(rotas_agendamentos, "send_email_message", lambda *args, **kwargs: next(enviados))
+    monkeypatch.setattr(rotas_agendamentos.listas_email, "destinatarios", lambda db, chave: ["fabrica@exemplo.com"])
     monkeypatch.setattr(rotas_agendamentos, "_gerar_anexos_oc", lambda agendamento: [])
     app = FastAPI()
     app.include_router(rotas_agendamentos.router)
@@ -235,7 +236,8 @@ def test_novo_agendamento_guarda_o_message_id_das_autorizacoes(db, monkeypatch):
     })
     assert resposta.status_code == 200, resposta.text
     novo = db.get(Agendamento, resposta.json()["id"])
-    assert novo.email_message_ids.split() == ["<saiu-1@atlanticofertlog.com.br>", "<saiu-2@atlanticofertlog.com.br>"]
+    # Um e-mail so pra autorizacao inteira.
+    assert novo.email_message_ids.split() == ["<saiu-1@atlanticofertlog.com.br>"]
     assert resposta.json()["respostas_fabrica"] == []
 
 
