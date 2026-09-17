@@ -95,6 +95,7 @@ async def enviar_email(
     corpo: str = Form(""),
     anexos: list[UploadFile] = File(default=[]),
 ):
+    """Manda um e-mail novo. Sai como conversa nova, mesmo com titulo repetido."""
     lista_destinatarios = [d.strip() for d in destinatarios.split(",") if d.strip()]
     if not lista_destinatarios:
         raise HTTPException(status_code=400, detail="Informe ao menos um destinatario")

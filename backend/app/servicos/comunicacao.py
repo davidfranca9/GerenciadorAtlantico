@@ -1,15 +1,19 @@
 """Envio de e-mail (Gmail SMTP). Portado de servicos/comunicacao.py sem tkinter."""
 from __future__ import annotations
 
+import base64
 import html
 import mimetypes
 import os
 import smtplib
+import time
+import uuid
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formatdate, make_msgid
 from pathlib import Path
 
 from ..config import settings
@@ -45,6 +49,30 @@ def montar_autorizacao_agendamento(cliente: str, pedido: str, data_carregamento:
     return titulo, corpo
 
 
+def _thread_index_novo() -> str:
+    """Cabecalho Thread-Index do Outlook marcando o comeco de uma conversa nova:
+    1 byte reservado, os 5 bytes mais altos do FILETIME de agora e um GUID."""
+    filetime = int((time.time() + 11644473600) * 10_000_000)
+    cabeca = bytes([1]) + (filetime >> 24).to_bytes(5, "big")
+    return base64.b64encode(cabeca + uuid.uuid4().bytes).decode("ascii")
+
+
+def marcar_conversa_nova(msg, assunto: str) -> None:
+    """Cada e-mail do sistema e uma conversa nova, mesmo com titulo repetido.
+
+    Mandado na mao, o Gmail ja cria cada e-mail como conversa separada. Pelo
+    SMTP ele juntava tudo que tinha o mesmo titulo: tres caminhoes do 041595
+    viraram uma conversa so, e a fabrica respondeu dois de uma vez. Aqui vai
+    o que o e-mail manual leva: identificador proprio (Gmail) e o comeco de
+    conversa do Outlook, que e o que a fabrica usa.
+    """
+    msg["Message-ID"] = make_msgid(idstring=uuid.uuid4().hex, domain="atlanticofertlog.com.br")
+    msg["Date"] = formatdate(localtime=True)
+    msg["X-Entity-Ref-ID"] = uuid.uuid4().hex
+    msg["Thread-Topic"] = assunto
+    msg["Thread-Index"] = _thread_index_novo()
+
+
 def send_email_message(
     destinatarios: list[str],
     assunto: str,
@@ -73,6 +101,7 @@ def send_email_message(
     msg["From"] = settings.gmail_sender_email
     msg["To"] = ", ".join(destinatarios)
     msg["Subject"] = assunto
+    marcar_conversa_nova(msg, assunto)
     msg.attach(corpo_msg)
 
     for caminho_arquivo in anexos:
