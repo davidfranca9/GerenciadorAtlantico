@@ -39,13 +39,18 @@ INTERVALO_CARTAS_SEGUNDOS = 60
 INTERVALO_CARREGAMENTOS_SEGUNDOS = 3600
 
 
+def _guardar_notas(xmls: list[str], origem: str) -> int:
+    """Le os XMLs e grava. Roda fora da linha principal do servidor: feito nela,
+    segurava a API inteira enquanto uma remessa de notas era processada."""
+    with SessionLocal() as db:
+        return len([n for n in (notas_recebidas.guardar(db, x, origem) for x in xmls) if n])
+
+
 async def _coletar_do_email() -> int:
     from . import email_inbox
 
     xmls = await asyncio.to_thread(email_inbox.anexos_xml_recentes, 3)
-    with SessionLocal() as db:
-        guardadas = [n for n in (notas_recebidas.guardar(db, x, "email") for x in xmls) if n]
-    return len(guardadas)
+    return await asyncio.to_thread(_guardar_notas, xmls, "email")
 
 
 async def _ler_respostas_da_fabrica() -> int:
@@ -104,11 +109,7 @@ async def _coletar_da_sefaz() -> int:
             estado.ultimo_status = f"{resultado.get('status')} {resultado.get('motivo')}"[:200]
             db.commit()
 
-        guardadas = [
-            n for n in (notas_recebidas.guardar(db, c["xml"], "sefaz")
-                        for c in resultado["completas"]) if n
-        ]
-    return len(guardadas)
+    return await asyncio.to_thread(_guardar_notas, [c["xml"] for c in resultado["completas"]], "sefaz")
 
 
 async def _preparar_rascunhos() -> int:
