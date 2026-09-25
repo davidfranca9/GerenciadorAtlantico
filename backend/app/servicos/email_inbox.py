@@ -495,20 +495,31 @@ def mensagens_para_ler(busca: str, ja_lidas: set[str], limite: int = 60) -> list
         return mensagens
 
 
+# O contador do menu e perguntado por cada aba aberta, de minuto em minuto,
+# e cada pergunta ia ate o Gmail. A resposta vale por um minuto.
+VALIDADE_CONTAGEM = 60
+_contagens: dict[int, tuple[float, int]] = {}
+
+
 def contar_desde(epoch: int) -> int:
     """Quantas mensagens chegaram depois do instante informado.
 
     O Gmail aceita 'after:' com epoch em segundos na busca X-GM-RAW, entao
     da pra contar sem baixar mensagem nenhuma.
     """
+    guardada = _contagens.get(int(epoch))
+    if guardada and time.monotonic() - guardada[0] < VALIDADE_CONTAGEM:
+        return guardada[1]
+    if len(_contagens) > 50:
+        _contagens.clear()
     with _caixa():
         conexao = _obter_conexao()
         _selecionar(conexao, "recebidos")
         # O que a propria conta mandou nao e mensagem nova pra ler.
         status, resultado = conexao.search(None, "X-GM-RAW", f'"after:{int(epoch)} -from:me"')
-        if status != "OK" or not resultado or not resultado[0]:
-            return 0
-        return len(resultado[0].split())
+        novos = len(resultado[0].split()) if status == "OK" and resultado and resultado[0] else 0
+    _contagens[int(epoch)] = (time.monotonic(), novos)
+    return novos
 
 
 # Mensagens cujos anexos ja foram varridos nesta execucao do servidor. Sem

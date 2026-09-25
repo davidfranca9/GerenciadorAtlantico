@@ -116,3 +116,14 @@ def test_id_que_nao_e_do_gmail_e_recusado(imap):
 def test_pasta_invalida(imap):
     with pytest.raises(email_inbox.InboxIndisponivel):
         email_inbox.listar_mensagens(1, 25, "", "lixeira")
+
+
+def test_contador_do_menu_nao_pergunta_ao_gmail_a_cada_aba(imap, monkeypatch):
+    """Cada aba aberta pergunta de minuto em minuto; a resposta vale um minuto."""
+    monkeypatch.setattr(email_inbox, "_contagens", {})
+    assert email_inbox.contar_desde(1000) == 2
+    assert email_inbox.contar_desde(1000) == 2
+    assert len(imap.buscas) == 1
+    # Outro instante e outra pergunta.
+    assert email_inbox.contar_desde(2000) == 2
+    assert len(imap.buscas) == 2
