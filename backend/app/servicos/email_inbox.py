@@ -7,6 +7,7 @@ OAuth/credenciais do Google Cloud Console.
 from __future__ import annotations
 
 import base64
+import contextlib
 import email
 import html
 import imaplib
@@ -22,9 +23,40 @@ from email.utils import parsedate_to_datetime
 from ..config import settings
 
 IMAP_HOST = "imap.gmail.com"
+# Sem tempo limite, uma conexao IMAP pendurada segura a trava pra sempre: as
+# chamadas empilham atras dela e a API inteira para de responder (25/09/2026).
+TEMPO_LIMITE_IMAP = 30
+ESPERA_PELA_CAIXA = 20
 
 _lock = threading.Lock()
 _conexao_ativa: imaplib.IMAP4_SSL | None = None
+
+
+@contextlib.contextmanager
+def _caixa():
+    """A trava da caixa, com hora pra desistir. Melhor uma tela dizendo que a
+    caixa esta ocupada do que o servidor inteiro parado esperando."""
+    if not _lock.acquire(timeout=ESPERA_PELA_CAIXA):
+        raise InboxIndisponivel("A caixa de e-mail esta ocupada agora. Tente de novo em instantes.")
+    try:
+        yield
+    except (OSError, imaplib.IMAP4.abort) as exc:
+        descartar_conexao()
+        raise InboxIndisponivel(f"Conexao com o e-mail caiu: {str(exc)[:120]}") from exc
+    finally:
+        _lock.release()
+
+
+def descartar_conexao() -> None:
+    """Joga fora a conexao guardada: a proxima chamada abre outra."""
+    global _conexao_ativa, _selecao_atual
+    if _conexao_ativa is not None:
+        try:
+            _conexao_ativa.logout()
+        except Exception:
+            pass
+    _conexao_ativa = None
+    _selecao_atual = None
 
 
 class InboxIndisponivel(Exception):
@@ -38,7 +70,7 @@ def credenciais_limpas() -> tuple[str, str]:
 
 
 def _logar(usuario: str, senha: str) -> imaplib.IMAP4_SSL:
-    conexao = imaplib.IMAP4_SSL(IMAP_HOST)
+    conexao = imaplib.IMAP4_SSL(IMAP_HOST, timeout=TEMPO_LIMITE_IMAP)
     try:
         conexao.login(usuario, senha)
     except imaplib.IMAP4.error as exc:
@@ -184,7 +216,7 @@ def _numero_pelo_id(conexao: imaplib.IMAP4_SSL, msg_id: str) -> bytes:
 def listar_mensagens(pagina: int = 1, tamanho_pagina: int = 25, busca: str = "", pasta: str = "recebidos") -> dict:
     if pasta not in PASTAS:
         raise InboxIndisponivel("Pasta invalida")
-    with _lock:
+    with _caixa():
         conexao = _obter_conexao()
         _selecionar(conexao, pasta)
 
@@ -237,7 +269,7 @@ def listar_mensagens(pagina: int = 1, tamanho_pagina: int = 25, busca: str = "",
 
 
 def obter_mensagem(msg_id: str) -> dict:
-    with _lock:
+    with _caixa():
         conexao = _obter_conexao()
         # Abrir marca como lida, igual no Gmail: por isso nao e so leitura.
         _selecionar(conexao, "todas", readonly=False)
@@ -336,7 +368,7 @@ def _partes_anexas(msg) -> list:
 
 def obter_anexo(msg_id: str, indice: int) -> dict:
     """Devolve um anexo com o conteudo, pra download."""
-    with _lock:
+    with _caixa():
         conexao = _obter_conexao()
         _selecionar(conexao, "todas")
         status, dados = conexao.fetch(_numero_pelo_id(conexao, msg_id), "(BODY.PEEK[])")
@@ -356,7 +388,7 @@ def obter_thread(msg_id: str) -> list:
     Usa a extensao X-GM-THRID do Gmail: uma resposta trocada varias vezes
     fica num unico thread, e sem isso a tela mostrava so a mensagem aberta.
     """
-    with _lock:
+    with _caixa():
         conexao = _obter_conexao()
         # Em "Todos os e-mails" a conversa tem o que chegou e o que saiu.
         _selecionar(conexao, "todas")
@@ -414,7 +446,7 @@ def mensagens_para_ler(busca: str, ja_lidas: set[str], limite: int = 60) -> list
     lida na caixa de quem usa o Gmail. `ja_lidas` sao Message-IDs ja
     processados: esses nem tem o corpo baixado.
     """
-    with _lock:
+    with _caixa():
         conexao = _obter_conexao()
         _selecionar(conexao, "recebidos")
         status, dados = conexao.search(None, "X-GM-RAW", _consulta_gmail(busca))
@@ -469,7 +501,7 @@ def contar_desde(epoch: int) -> int:
     O Gmail aceita 'after:' com epoch em segundos na busca X-GM-RAW, entao
     da pra contar sem baixar mensagem nenhuma.
     """
-    with _lock:
+    with _caixa():
         conexao = _obter_conexao()
         _selecionar(conexao, "recebidos")
         # O que a propria conta mandou nao e mensagem nova pra ler.
@@ -479,8 +511,17 @@ def contar_desde(epoch: int) -> int:
         return len(resultado[0].split())
 
 
+# Mensagens cujos anexos ja foram varridos nesta execucao do servidor. Sem
+# isto, cada volta baixava de novo as 20 ultimas mensagens inteiras (PDF
+# junto) - a cada 10 minutos e a cada e-mail que chegava, o que segurava a
+# caixa e engasgava a API.
+_anexos_varridos: set[str] = set()
+LIMITE_VARRIDAS = 500
+
+
 def anexos_xml_recentes(dias: int = 7, limite_mensagens: int = 20) -> list[str]:
-    """Conteudo dos anexos .xml das mensagens recentes.
+    """Conteudo dos anexos .xml das mensagens recentes, pulando as que ja
+    foram lidas antes.
 
     E o caminho rapido pra pegar a NF-e: quando o fornecedor manda o
     arquivo, ele chega aqui antes de aparecer na esteira da SEFAZ.
@@ -489,7 +530,9 @@ def anexos_xml_recentes(dias: int = 7, limite_mensagens: int = 20) -> list[str]:
     listagem = listar_mensagens(1, limite_mensagens, f"has:attachment newer_than:{dias}d")
 
     for resumo in listagem.get("mensagens", []):
-        with _lock:
+        if str(resumo["id"]) in _anexos_varridos:
+            continue
+        with _caixa():
             conexao = _obter_conexao()
             try:
                 _selecionar(conexao, "todas")
@@ -499,6 +542,10 @@ def anexos_xml_recentes(dias: int = 7, limite_mensagens: int = 20) -> list[str]:
             status, dados = conexao.fetch(numero, "(BODY.PEEK[])")
         if status != "OK" or not dados or not isinstance(dados[0], tuple):
             continue
+
+        if len(_anexos_varridos) >= LIMITE_VARRIDAS:
+            _anexos_varridos.clear()
+        _anexos_varridos.add(str(resumo["id"]))
 
         for anexo in _partes_anexas(email.message_from_bytes(dados[0][1])):
             if not anexo["nome"].lower().endswith(".xml"):

@@ -18,12 +18,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import time
 from datetime import datetime, timedelta
 
 from ..config import settings
 from ..database import SessionLocal
 from ..models import EstadoSefaz
-from . import notas_recebidas
+from . import monitor, notas_recebidas
 
 logger = logging.getLogger(__name__)
 
@@ -158,15 +159,31 @@ async def _puxar_carregamentos() -> int:
 
 
 async def _repetir(nome: str, tarefa, intervalo: int) -> None:
-    """Roda a tarefa em intervalos, sem deixar erro parar o ciclo."""
+    """Roda a tarefa em intervalos, sem deixar erro parar o ciclo.
+
+    Cada volta fica registrada no monitor: e como se descobre qual rotina
+    esta segurando o servidor quando a API engasga."""
     while True:
+        comecou = time.monotonic()
         try:
             quantidade = await tarefa()
+            monitor.registrar(nome, comecou, resultado=quantidade)
             if quantidade:
                 logger.info("coleta %s: %s nota(s) nova(s)", nome, quantidade)
         except Exception as exc:
+            monitor.registrar(nome, comecou, erro=str(exc))
             logger.warning("coleta %s falhou: %s", nome, str(exc)[:200])
         await asyncio.sleep(intervalo)
+
+
+# Uma rajada de e-mails disparava a coleta inteira por mensagem. Uma volta
+# por minuto ja pega tudo o que chegou, sem prender a caixa e o servidor.
+ESPERA_ENTRE_COLETAS_SEGUNDOS = 60
+_ultima_coleta = 0.0
+
+
+def pode_coletar_agora(ultima: float, agora: float, espera: int = ESPERA_ENTRE_COLETAS_SEGUNDOS) -> bool:
+    return agora - ultima >= espera
 
 
 def _escutar_email_em_tempo_real() -> None:
@@ -179,13 +196,24 @@ def _escutar_email_em_tempo_real() -> None:
 
     def ao_chegar():
         # A escuta so avisa QUE chegou algo; quem le os anexos e a coleta.
+        global _ultima_coleta
+        agora = time.monotonic()
+        if not pode_coletar_agora(_ultima_coleta, agora):
+            return
+        _ultima_coleta = agora
+        comecou = time.monotonic()
         try:
             asyncio.run(_coletar_do_email())
+            monitor.registrar("e-mail (aviso)", comecou)
         except Exception as exc:
+            monitor.registrar("e-mail (aviso)", comecou, erro=str(exc))
             logger.warning("coleta apos aviso de e-mail falhou: %s", str(exc)[:150])
+        comecou = time.monotonic()
         try:
             asyncio.run(_ler_respostas_da_fabrica())
+            monitor.registrar("respostas da fabrica (aviso)", comecou)
         except Exception as exc:
+            monitor.registrar("respostas da fabrica (aviso)", comecou, erro=str(exc))
             logger.warning("respostas da fabrica apos aviso de e-mail falharam: %s", str(exc)[:150])
 
     email_inbox.escutar_novas_mensagens(ao_chegar)

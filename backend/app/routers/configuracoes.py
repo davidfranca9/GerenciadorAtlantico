@@ -5,10 +5,22 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..auth import require_admin
-from ..database import get_db
-from ..servicos import listas_email
+from ..database import engine, get_db
+from ..servicos import listas_email, monitor
 
 router = APIRouter(prefix="/configuracoes", tags=["configuracoes"], dependencies=[Depends(require_admin)])
+
+
+@router.get("/diagnostico")
+def diagnostico():
+    """Como o servidor esta agora: memoria, carga, conexoes de banco e
+    quanto cada rotina automatica demorou na ultima volta."""
+    dados = monitor.estado()
+    try:
+        dados["banco"] = engine.pool.status()
+    except Exception as exc:
+        dados["banco"] = f"indisponivel: {exc}"[:200]
+    return dados
 
 
 class ListaEmailIn(BaseModel):
