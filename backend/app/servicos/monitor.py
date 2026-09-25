@@ -6,6 +6,8 @@ isto so dava pra adivinhar qual delas estava segurando o servidor.
 """
 from __future__ import annotations
 
+import contextlib
+import itertools
 import os
 import time
 from datetime import datetime
@@ -13,7 +15,24 @@ from threading import Lock
 
 _lock = Lock()
 _tarefas: dict[str, dict] = {}
+_em_andamento: dict[int, tuple[str, float]] = {}
+_sequencia = itertools.count(1)
 LIGADO_EM = datetime.utcnow()
+
+
+@contextlib.contextmanager
+def executando(nome: str):
+    """Marca a tarefa como em andamento enquanto ela roda: numa travada, e o
+    que diz quem esta segurando o servidor."""
+    chave = next(_sequencia)
+    comecou = time.monotonic()
+    with _lock:
+        _em_andamento[chave] = (nome, comecou)
+    try:
+        yield comecou
+    finally:
+        with _lock:
+            _em_andamento.pop(chave, None)
 
 
 def registrar(nome: str, comecou_em: float, resultado=None, erro: str = "") -> None:
@@ -53,12 +72,18 @@ def carga() -> list[float] | None:
 
 
 def estado() -> dict:
+    agora = time.monotonic()
     with _lock:
         tarefas = {nome: dict(dados) for nome, dados in _tarefas.items()}
+        rodando = [
+            {"tarefa": nome, "ha_segundos": round(agora - comecou, 1)}
+            for nome, comecou in _em_andamento.values()
+        ]
     return {
         "ligado_em": LIGADO_EM,
         "agora": datetime.utcnow(),
         "memoria_mb": memoria_mb(),
         "carga": carga(),
+        "rodando_agora": sorted(rodando, key=lambda t: -t["ha_segundos"]),
         "tarefas": tarefas,
     }

@@ -36,15 +36,19 @@ _conexao_ativa: imaplib.IMAP4_SSL | None = None
 def _caixa():
     """A trava da caixa, com hora pra desistir. Melhor uma tela dizendo que a
     caixa esta ocupada do que o servidor inteiro parado esperando."""
+    from . import monitor
+
     if not _lock.acquire(timeout=ESPERA_PELA_CAIXA):
         raise InboxIndisponivel("A caixa de e-mail esta ocupada agora. Tente de novo em instantes.")
     try:
-        yield
+        with monitor.executando("caixa de e-mail"):
+            yield
     except (OSError, imaplib.IMAP4.abort) as exc:
         descartar_conexao()
         raise InboxIndisponivel(f"Conexao com o e-mail caiu: {str(exc)[:120]}") from exc
     finally:
         _lock.release()
+
 
 
 def descartar_conexao() -> None:

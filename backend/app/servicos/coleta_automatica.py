@@ -165,15 +165,15 @@ async def _repetir(nome: str, tarefa, intervalo: int) -> None:
     Cada volta fica registrada no monitor: e como se descobre qual rotina
     esta segurando o servidor quando a API engasga."""
     while True:
-        comecou = time.monotonic()
-        try:
-            quantidade = await tarefa()
-            monitor.registrar(nome, comecou, resultado=quantidade)
-            if quantidade:
-                logger.info("coleta %s: %s nota(s) nova(s)", nome, quantidade)
-        except Exception as exc:
-            monitor.registrar(nome, comecou, erro=str(exc))
-            logger.warning("coleta %s falhou: %s", nome, str(exc)[:200])
+        with monitor.executando(nome) as comecou:
+            try:
+                quantidade = await tarefa()
+                monitor.registrar(nome, comecou, resultado=quantidade)
+                if quantidade:
+                    logger.info("coleta %s: %s nota(s) nova(s)", nome, quantidade)
+            except Exception as exc:
+                monitor.registrar(nome, comecou, erro=str(exc))
+                logger.warning("coleta %s falhou: %s", nome, str(exc)[:200])
         await asyncio.sleep(intervalo)
 
 

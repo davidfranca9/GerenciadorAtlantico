@@ -121,7 +121,12 @@ def on_startup():
 
 
 @app.get("/health")
-def health():
-    return {"status": "ok"}
+async def health():
+    """Alem do "ok", como o servidor esta: memoria, carga e que rotina esta
+    rodando agora. E assincrono de proposito - assim responde mesmo quando a
+    fila de atendimento esta cheia, que e justamente quando interessa."""
+    from .servicos import monitor
+
+    return {"status": "ok", **monitor.estado()}
 
 
