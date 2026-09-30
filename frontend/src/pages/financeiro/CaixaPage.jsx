@@ -89,10 +89,11 @@ function Distribuicao({ contas }) {
   );
 }
 
-function CartaoBanco({ conta, ativo, aoClicar }) {
+function CartaoBanco({ conta, ativo, aoClicar, aoEditar }) {
   const variacao = conta.fechamento - conta.abertura;
   return (
-    <button type="button" className={`fin-banco ${ativo ? "ativo" : ""}`} style={{ "--cor-banco": conta.cor || "var(--muted)" }} onClick={aoClicar} aria-pressed={ativo}>
+    <div className="fin-banco-caixa" style={{ "--cor-banco": conta.cor || "var(--muted)" }}>
+    <button type="button" className={`fin-banco ${ativo ? "ativo" : ""}`} onClick={aoClicar} aria-pressed={ativo}>
       <span className="fin-banco-nome"><i />{conta.nome}</span>
       <Dinheiro valor={conta.fechamento} tamanho="m" />
       <span className="fin-banco-abriu">abriu com {brl(conta.abertura)}</span>
@@ -102,6 +103,52 @@ function CartaoBanco({ conta, ativo, aoClicar }) {
       </span>
       {Math.abs(variacao) >= 0.01 && <span className={`fin-banco-variacao ${variacao > 0 ? "sobe" : "desce"}`}>{variacao > 0 ? "▲" : "▼"}</span>}
     </button>
+    <button type="button" className="icon-btn fin-banco-editar" title={`Editar ${conta.nome}`} aria-label={`Editar ${conta.nome}`} onClick={aoEditar}>
+      <Icon name="edit" size={13} />
+    </button>
+    </div>
+  );
+}
+
+
+// Sem isto nao havia como mexer no saldo inicial de um banco ja cadastrado -
+// e e ele que traz o fechamento do mes anterior.
+function EditorConta({ conta, aoSalvar, aoFechar }) {
+  const [nome, setNome] = useState(conta.nome);
+  const [saldo, setSaldo] = useState(valorParaCampo(conta.saldo_inicial));
+  const [data, setData] = useState(conta.saldo_inicial_em);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function salvar(e) {
+    e.preventDefault();
+    if (!nome.trim()) return setErro("Informe o nome do banco");
+    setSalvando(true);
+    setErro("");
+    try {
+      await aoSalvar({ nome: nome.trim(), saldo_inicial: numeroBr(saldo) || 0, saldo_inicial_em: data });
+    } catch (err) {
+      setErro(err.message);
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Modal titulo={`Editar ${conta.nome}`} subtitulo="Nome e saldo com que o banco começa" aoFechar={aoFechar}>
+      <form className="fin-form" onSubmit={salvar}>
+        <label className="field"><span>Nome</span><input value={nome} onChange={(e) => setNome(e.target.value)} required /></label>
+        <label className="field"><span>Saldo no começo do dia</span><CampoValor valor={saldo} aoMudar={setSaldo} /></label>
+        <label className="field"><span>A partir do dia</span><input type="date" value={data} onChange={(e) => setData(e.target.value)} /></label>
+        <p className="fin-previa-nota">
+          É quanto tinha na conta ao abrir esse dia: o fechamento do mês anterior. O que veio antes não conta no saldo.
+        </p>
+        {erro && <Aviso tipo="error">{erro}</Aviso>}
+        <footer className="fin-modal-rodape">
+          <button type="button" className="btn-secondary" onClick={aoFechar}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={salvando}>{salvando ? "Salvando..." : "Salvar"}</button>
+        </footer>
+      </form>
+    </Modal>
   );
 }
 
@@ -430,6 +477,7 @@ export default function CaixaPage() {
   const [carregando, setCarregando] = useState(true);
   const [abertoId, setAbertoId] = useState(null);
   const [modal, setModal] = useState(null);
+  const [contaEditando, setContaEditando] = useState(null);
   const [primeiraCarga, setPrimeiraCarga] = useState(true);
 
   const { inicio, fim } = periodoDe(periodo, dia);
@@ -564,7 +612,13 @@ export default function CaixaPage() {
 
           <section className="fin-bancos" aria-label="Bancos">
             {contas.map((c) => (
-              <CartaoBanco key={c.id} conta={c} ativo={contaFiltro === c.id} aoClicar={() => setContaFiltro(contaFiltro === c.id ? null : c.id)} />
+              <CartaoBanco
+                key={c.id}
+                conta={c}
+                ativo={contaFiltro === c.id}
+                aoClicar={() => setContaFiltro(contaFiltro === c.id ? null : c.id)}
+                aoEditar={() => setContaEditando(c)}
+              />
             ))}
           </section>
 
@@ -618,6 +672,13 @@ export default function CaixaPage() {
 
       {modal === "planilha" && <ImportarPlanilha aoFechar={() => setModal(null)} aoImportar={(r) => { if (r.tipo === "fluxo_caixa") { setPeriodo("dia"); setDia(r.data); } carregar(); }} />}
       {modal === "extrato" && <ImportarExtrato contas={contas} aoFechar={() => setModal(null)} aoImportar={carregar} />}
+      {contaEditando && (
+        <EditorConta
+          conta={contaEditando}
+          aoFechar={() => setContaEditando(null)}
+          aoSalvar={async (dados) => { await api.atualizarConta(contaEditando.id, dados); setContaEditando(null); await carregar(); }}
+        />
+      )}
     </div>
   );
 }
