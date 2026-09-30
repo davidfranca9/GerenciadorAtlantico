@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import re
+import unicodedata
 import warnings
 from collections import Counter
 from datetime import date, datetime, timedelta
@@ -514,6 +515,21 @@ def _data_ofx(texto: str) -> Optional[date]:
     return date(int(achou.group(1)), int(achou.group(2)), int(achou.group(3))) if achou else None
 
 
+def _sem_acento(texto: str) -> str:
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", str(texto or "")) if not unicodedata.combining(c)
+    ).upper().strip()
+
+
+def eh_linha_de_saldo(descricao: str) -> bool:
+    """Linha de saldo do extrato, que nao e movimento de dinheiro.
+
+    O Itau exporta "SALDO TOTAL DISPONIVEL DIA" e "SALDO ANTERIOR" junto dos
+    lancamentos; lancar isso duplicaria o caixa inteiro."""
+    limpa = _sem_acento(descricao)
+    return limpa.startswith("SALDO") or limpa.startswith("SDO ") or limpa.startswith("S A L D O")
+
+
 def ler_ofx(conteudo: bytes) -> dict:
     texto = None
     for codificacao in ("utf-8", "cp1252", "latin-1"):
@@ -524,13 +540,20 @@ def ler_ofx(conteudo: bytes) -> dict:
             continue
     if not texto or "<STMTTRN>" not in texto.upper():
         raise fin.ErroFinanceiro("Esse arquivo não parece um extrato OFX (não tem lançamentos)")
-    transacoes = []
+    transacoes, linhas_de_saldo, saldo_anterior = [], [], None
     for indice, bloco in enumerate(re.findall(r"<STMTTRN>(.*?)</STMTTRN>", texto, flags=re.IGNORECASE | re.DOTALL)):
         valor = _numero(_campo_ofx(bloco, "TRNAMT").replace(",", "."))
         dia = _data_ofx(_campo_ofx(bloco, "DTPOSTED"))
         if valor in (None, 0) or dia is None:
             continue
         memo = _campo_ofx(bloco, "MEMO") or _campo_ofx(bloco, "NAME")
+        if eh_linha_de_saldo(memo):
+            # O Itau manda o saldo do dia como se fosse lancamento. Entra como
+            # entrada, o caixa dobra e o fechamento nao bate com o banco.
+            linhas_de_saldo.append({"data": dia, "valor": fin.dinheiro(valor), "descricao": memo})
+            if "ANTERIOR" in _sem_acento(memo):
+                saldo_anterior = {"data": dia, "valor": fin.dinheiro(valor)}
+            continue
         transacoes.append({
             "fitid": _campo_ofx(bloco, "FITID") or f"{dia.isoformat()}:{valor}:{memo}:{indice}",
             "data": dia, "valor": abs(valor), "tipo": "entrada" if valor > 0 else "saida", "descricao": memo,
@@ -542,7 +565,8 @@ def ler_ofx(conteudo: bytes) -> dict:
         dia = _data_ofx(_campo_ofx(bloco_saldo.group(1), "DTASOF"))
         if valor is not None:
             saldo = {"valor": fin.dinheiro(valor), "data": dia}
-    return {"transacoes": transacoes, "saldo": saldo}
+    return {"transacoes": transacoes, "saldo": saldo, "linhas_de_saldo": linhas_de_saldo,
+            "saldo_anterior": saldo_anterior}
 
 
 def importar_extrato(db: Session, conta_id: int, conteudo: bytes, *, aplicar: bool = False, usuario: str = "") -> dict:
@@ -593,6 +617,12 @@ def importar_extrato(db: Session, conta_id: int, conteudo: bytes, *, aplicar: bo
             "periodo": {"inicio": min(datas).isoformat(), "fim": max(datas).isoformat()} if datas else None,
             "lancamentos": {"novos": novos, "ja_existiam": repetidos, "parecidos_ignorados": parecidos_ignorados},
             "previa": previa, "conferencia": conferencia,
+            # Linha de saldo do banco nao e lancamento: fica so como aviso.
+            "linhas_de_saldo": len(lido["linhas_de_saldo"]),
+            "saldo_anterior": (
+                {"data": lido["saldo_anterior"]["data"].isoformat(), "valor": lido["saldo_anterior"]["valor"]}
+                if lido.get("saldo_anterior") else None
+            ),
         }
         if aplicar:
             db.commit()

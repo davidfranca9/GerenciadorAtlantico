@@ -491,3 +491,39 @@ def test_rotas_do_dia_a_dia(db):
 
     importada = http.post("/financeiro/importar-planilha", files={"arquivo": ("Fluxo Caixa_15.09.xlsx", planilha_fluxo())})
     assert importada.status_code == 200 and importada.json()["aplicado"] is False
+
+
+# --------------------------------------------------------------------------
+# Extrato do Itau: saldo do dia nao e lancamento
+# --------------------------------------------------------------------------
+
+OFX_ITAU = """OFXHEADER:100
+DATA:OFXSGML
+<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS>
+<BANKTRANLIST>
+<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20260831100000[-03:EST]<TRNAMT>62,00<FITID>20260831001<MEMO>SALDO ANTERIOR</STMTTRN>
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260901100000[-03:EST]<TRNAMT>-457,82<FITID>20260901002<MEMO>JUROS SALDO DEVEDOR C/C</STMTTRN>
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260901100000[-03:EST]<TRNAMT>-395,82<FITID>20260901001<MEMO>SALDO TOTAL DISPONÍVEL DIA</STMTTRN>
+<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20260915100000[-03:EST]<TRNAMT>3000,00<FITID>20260915002<MEMO>PIX RECEBIDO ATLANTI15/09</STMTTRN>
+</BANKTRANLIST>
+<LEDGERBAL><BALAMT>1185,79<DTASOF>20260930100000[-03:EST]</LEDGERBAL>
+</STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>"""
+
+
+def test_linha_de_saldo_do_extrato_nao_vira_lancamento():
+    lido = imp.ler_ofx(OFX_ITAU.encode("utf-8"))
+    assert [(t["data"].day, t["tipo"], t["valor"]) for t in lido["transacoes"]] == [
+        (1, "saida", 457.82), (15, "entrada", 3000.0),
+    ]
+    assert len(lido["linhas_de_saldo"]) == 2
+    # O saldo anterior e o fechamento do mes passado, nao uma entrada.
+    assert lido["saldo_anterior"] == {"data": date(2026, 8, 31), "valor": 62.0}
+    assert lido["saldo"] == {"valor": 1185.79, "data": date(2026, 9, 30)}
+
+
+def test_o_que_e_linha_de_saldo():
+    assert imp.eh_linha_de_saldo("SALDO TOTAL DISPONÍVEL DIA")
+    assert imp.eh_linha_de_saldo("saldo anterior")
+    assert imp.eh_linha_de_saldo("SDO CTA/APL AUTOMATICA")
+    assert not imp.eh_linha_de_saldo("JUROS SALDO DEVEDOR C/C")
+    assert not imp.eh_linha_de_saldo("PIX RECEBIDO")

@@ -345,6 +345,13 @@ function ImportarExtrato({ contas, aoFechar, aoImportar }) {
             {resumo.lancamentos.ja_existiam > 0 && ` · ${resumo.lancamentos.ja_existiam} já importados antes`}
             {resumo.lancamentos.parecidos_ignorados > 0 && ` · ${resumo.lancamentos.parecidos_ignorados} já lançados à mão (mesmo dia e valor) ficaram de fora`}
           </p>
+          {resumo.linhas_de_saldo > 0 && (
+            <p className="fin-previa-nota">
+              {resumo.linhas_de_saldo} linha{resumo.linhas_de_saldo === 1 ? "" : "s"} de saldo do banco (tipo "SALDO TOTAL DISPONÍVEL DIA")
+              {resumo.linhas_de_saldo === 1 ? " foi ignorada" : " foram ignoradas"}: saldo não é lançamento.
+              {resumo.saldo_anterior && ` O extrato começa com saldo de ${brl(resumo.saldo_anterior.valor)} em ${diaBr(resumo.saldo_anterior.data)}.`}
+            </p>
+          )}
           {resumo.conferencia && (
             <ul className="fin-conferido">
               <li className={Math.abs(resumo.conferencia.diferenca) < 0.01 ? "bate" : "diverge"}>

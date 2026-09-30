@@ -587,3 +587,5 @@
   .fin-medidor-valor, .fin-progresso i, .fin-banco { transition: none; }
   .fin-modal-fundo { animation: none; }
 }
+
+.fin-previa-nota{margin:4px 0 0;color:var(--muted);font-size:11.5px;line-height:1.5}
