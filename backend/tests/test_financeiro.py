@@ -527,3 +527,47 @@ def test_o_que_e_linha_de_saldo():
     assert imp.eh_linha_de_saldo("SDO CTA/APL AUTOMATICA")
     assert not imp.eh_linha_de_saldo("JUROS SALDO DEVEDOR C/C")
     assert not imp.eh_linha_de_saldo("PIX RECEBIDO")
+
+
+# --------------------------------------------------------------------------
+# Editar e excluir conta da agenda
+# --------------------------------------------------------------------------
+
+
+def test_conta_paga_nao_pode_ser_excluida(db):
+    cliente = cliente_http(db)
+    conta(db, nome="Nubank", saldo=5000, em=date(2026, 9, 1))
+    """Apagar deixaria o pagamento solto no caixa: primeiro desfaz o pagamento."""
+    avulsa = cliente.post("/financeiro/contas-avulsas", json={
+        "escopo": "empresa", "data": "2026-09-10", "descricao": "Posto", "valor": 300,
+    }).json()
+    banco = db.query(ContaBancaria).first()
+    pago = cliente.post("/financeiro/agenda/pagar", json={
+        "origem": "avulsa", "origem_id": avulsa["id"], "competencia": "2026-09",
+        "valor": 300, "pago_em": "2026-09-10", "conta_id": banco.id,
+    })
+    assert pago.status_code == 200, pago.text
+
+    recusa = cliente.delete(f"/financeiro/contas-avulsas/{avulsa['id']}")
+    assert recusa.status_code == 400
+    assert "2026-09" in recusa.json()["detail"]
+    assert db.get(ContaAvulsa, avulsa["id"]) is not None
+
+    # Desfeito o pagamento, apaga.
+    cliente.post("/financeiro/agenda/desfazer", json={"origem": "avulsa", "origem_id": avulsa["id"], "competencia": "2026-09"})
+    assert cliente.delete(f"/financeiro/contas-avulsas/{avulsa['id']}").status_code == 200
+    assert db.get(ContaAvulsa, avulsa["id"]) is None
+
+
+def test_editar_conta_avulsa(db):
+    cliente = cliente_http(db)
+    avulsa = cliente.post("/financeiro/contas-avulsas", json={
+        "escopo": "empresa", "data": "2026-09-10", "descricao": "Posto", "valor": 300,
+    }).json()
+    resposta = cliente.put(f"/financeiro/contas-avulsas/{avulsa['id']}", json={
+        "escopo": "pessoal", "data": "2026-09-12", "descricao": "Posto Ipiranga", "valor": 350,
+    })
+    assert resposta.status_code == 200, resposta.text
+    guardada = db.get(ContaAvulsa, avulsa["id"])
+    assert (guardada.descricao, guardada.escopo, guardada.valor) == ("Posto Ipiranga", "pessoal", 350.0)
+    assert guardada.data.isoformat() == "2026-09-12"

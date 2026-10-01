@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from ..auth import require_admin
 from ..database import get_db
-from ..models import CarregamentoFinanceiro, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa, MetaMensal, User
+from ..models import (CarregamentoFinanceiro, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa,
+                      MetaMensal, PagamentoAgenda, User)
 from ..servicos import financeiro as fin
 from ..servicos import financeiro_importacao as importacao
 
@@ -469,11 +470,26 @@ def atualizar_despesa(despesa_id: int, dados: DespesaIn, db: Session = Depends(g
     return fin.despesa_para_dict(despesa)
 
 
+def _conferir_sem_pagamento(db: Session, origem: str, origem_id: int) -> None:
+    """Conta ja paga nao se apaga: o pagamento ficaria solto no caixa."""
+    meses = [
+        p.competencia for p in db.query(PagamentoAgenda)
+        .filter(PagamentoAgenda.origem == origem, PagamentoAgenda.origem_id == origem_id)
+        .order_by(PagamentoAgenda.competencia).all()
+    ]
+    if meses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Essa conta tem pagamento lançado em {', '.join(meses)}. Desfaça o pagamento antes de excluir.",
+        )
+
+
 @router.delete("/despesas/{despesa_id}")
 def excluir_despesa(despesa_id: int, db: Session = Depends(get_db)):
     despesa = db.get(Despesa, despesa_id)
     if despesa is None:
         raise HTTPException(status_code=404, detail="Despesa não encontrada")
+    _conferir_sem_pagamento(db, "despesa", despesa_id)
     db.delete(despesa)
     db.commit()
     return {"ok": True}
@@ -506,6 +522,7 @@ def excluir_avulsa(avulsa_id: int, db: Session = Depends(get_db)):
     avulsa = db.get(ContaAvulsa, avulsa_id)
     if avulsa is None:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
+    _conferir_sem_pagamento(db, "avulsa", avulsa_id)
     db.delete(avulsa)
     db.commit()
     return {"ok": True}

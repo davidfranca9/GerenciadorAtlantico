@@ -107,8 +107,8 @@ export function excluirAgendamento(id) {
   return request(`/agendamentos/${id}`, { method: "DELETE" });
 }
 
-export function obterResumoDashboard() {
-  return request("/dashboard/resumo");
+export function obterResumoDashboard(semana) {
+  return request(`/dashboard/resumo${semana ? `?semana=${semana}` : ""}`);
 }
 
 export function listarConversasWhatsapp() {
@@ -663,6 +663,7 @@ export const financeiro = {
   atualizarDespesa: (id, dados) => request(`/financeiro/despesas/${id}`, { method: "PUT", body: dados }),
   excluirDespesa: (id) => request(`/financeiro/despesas/${id}`, { method: "DELETE" }),
   criarAvulsa: (dados) => request("/financeiro/contas-avulsas", { method: "POST", body: dados }),
+  atualizarAvulsa: (id, dados) => request(`/financeiro/contas-avulsas/${id}`, { method: "PUT", body: dados }),
   excluirAvulsa: (id) => request(`/financeiro/contas-avulsas/${id}`, { method: "DELETE" }),
   dividas: () => request("/financeiro/dividas"),
   criarDivida: (dados) => request("/financeiro/dividas", { method: "POST", body: dados }),

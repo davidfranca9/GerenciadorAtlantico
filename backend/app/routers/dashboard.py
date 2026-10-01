@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
@@ -14,16 +14,26 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depend
 DIAS_LABEL = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"]
 
 
-def _dias_da_semana_atual() -> list[date]:
-    """Segunda a sabado da semana atual (a operacao nao carrega aos domingos)."""
-    hoje = date.today()
-    segunda = hoje - timedelta(days=hoje.weekday())
+def _dias_da_semana(base: date) -> list[date]:
+    """Segunda a sabado da semana de `base` (a operacao nao carrega aos domingos)."""
+    segunda = base - timedelta(days=base.weekday())
     return [segunda + timedelta(days=i) for i in range(6)]
 
 
 @router.get("/resumo")
-def resumo_dashboard(db: Session = Depends(get_db)):
-    dias = _dias_da_semana_atual()
+def resumo_dashboard(
+    semana: str = Query("", description="Qualquer dia (AAAA-MM-DD) da semana a mostrar; vazio = semana atual"),
+    db: Session = Depends(get_db),
+):
+    hoje = date.today()
+    if semana:
+        try:
+            base = date.fromisoformat(semana)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Data da semana invalida; use AAAA-MM-DD")
+    else:
+        base = hoje
+    dias = _dias_da_semana(base)
     datas_str = [d.strftime("%d/%m/%Y") for d in dias]
 
     agendamentos = db.query(Agendamento).filter(Agendamento.loading_date.in_(datas_str)).all()
@@ -55,6 +65,11 @@ def resumo_dashboard(db: Session = Depends(get_db)):
         "semana": {
             "inicio": datas_str[0],
             "fim": datas_str[5],
+            "inicio_iso": dias[0].isoformat(),
+            "fim_iso": dias[5].isoformat(),
+            "anterior": (dias[0] - timedelta(days=7)).isoformat(),
+            "proxima": (dias[0] + timedelta(days=7)).isoformat(),
+            "eh_semana_atual": dias[0] == hoje - timedelta(days=hoje.weekday()),
             "toneladas_total": round(sum(peso_por_dia.values()), 2),
             "agendamentos_total": sum(pedidos_por_dia.values()),
             "dias": dias_semana,

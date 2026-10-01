@@ -138,6 +138,10 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14p
 .dashboard-header{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:10px}
 .dashboard-header h2{font:800 22px/1.15 Manrope,sans-serif;letter-spacing:-.4px;margin:0}
 .dashboard-header p{color:var(--muted);font-size:12.5px;margin:5px 0 0}
+.dashboard-semana-nav{display:flex;align-items:center;gap:6px}
+.dashboard-semana-nav .btn-secondary{min-height:0;padding:7px 14px;font-size:12.5px}
+.dashboard-semana-nav .btn-secondary:disabled{opacity:.45;cursor:default}
+.dashboard-semana-atual{margin-left:8px;padding:1px 8px;border-radius:999px;background:color-mix(in srgb, var(--accent) 14%, transparent);color:var(--accent);font-size:10.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase}
 .dashboard-week-card{padding:0;overflow:hidden}
 .dashboard-week-list{display:flex;flex-direction:column;margin:0 20px 18px}
 .dashboard-week-row{width:100%;background:transparent;border:none;font:inherit;color:inherit;cursor:pointer;display:grid;grid-template-columns:130px minmax(0,1fr) 110px;align-items:center;gap:18px;padding:12px 0;border-bottom:1px solid var(--border-soft);transition:background .12s}

@@ -12,14 +12,26 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [agendamentos, setAgendamentos] = useState([]);
   const [diaSelecionado, setDiaSelecionado] = useState(null);
+  // Vazio = semana atual. Guarda a segunda-feira da semana que esta na tela.
+  const [semana, setSemana] = useState("");
 
   useEffect(() => {
-    api.obterResumoDashboard()
-      .then(setResumo)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+    let atual = true;
+    api.obterResumoDashboard(semana)
+      .then((r) => { if (atual) { setResumo(r); setError(""); } })
+      .catch((err) => { if (atual) setError(err.message); })
+      .finally(() => { if (atual) setLoading(false); });
+    return () => { atual = false; };
+  }, [semana]);
+
+  useEffect(() => {
     api.listarAgendamentos().then(setAgendamentos).catch(() => {});
   }, []);
+
+  function irPara(novaSemana) {
+    setDiaSelecionado(null);
+    setSemana(novaSemana);
+  }
 
   const agendamentosPorDia = useMemo(() => {
     const mapa = {};
@@ -50,7 +62,21 @@ export default function DashboardPage() {
       <div className="dashboard-header">
         <div>
           <h2>Visão geral de carregamentos</h2>
-          <p>Semana de {resumo.semana.inicio} a {resumo.semana.fim}</p>
+          <p>
+            Semana de {resumo.semana.inicio} a {resumo.semana.fim}
+            {resumo.semana.eh_semana_atual && <span className="dashboard-semana-atual">esta semana</span>}
+          </p>
+        </div>
+        <div className="dashboard-semana-nav">
+          <button type="button" className="icon-btn" title="Semana anterior" aria-label="Semana anterior" onClick={() => irPara(resumo.semana.anterior)}>
+            <Icon name="chevron-left" size={16} />
+          </button>
+          <button type="button" className="btn-secondary" disabled={resumo.semana.eh_semana_atual} onClick={() => irPara("")}>
+            Esta semana
+          </button>
+          <button type="button" className="icon-btn" title="Próxima semana" aria-label="Próxima semana" onClick={() => irPara(resumo.semana.proxima)}>
+            <Icon name="chevron-right" size={16} />
+          </button>
         </div>
       </div>
 
@@ -67,7 +93,7 @@ export default function DashboardPage() {
         <div className="section-heading">
           <div>
             <span className="section-index"><Icon name="route" size={16} /></span>
-            <div><h2>Programação de carregamentos da semana</h2><p>Toneladas agendadas por dia, segunda a sábado.</p></div>
+            <div><h2>Programação de carregamentos da semana</h2><p>Toneladas agendadas por dia, segunda a sábado. Use as setas para ver outras semanas.</p></div>
           </div>
         </div>
         <div className="dashboard-week-list">

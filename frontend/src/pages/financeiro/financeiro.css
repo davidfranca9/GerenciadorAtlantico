@@ -595,3 +595,17 @@
 .fin-banco-editar { position: absolute; top: 9px; right: 9px; width: 26px; height: 26px; min-height: 0; padding: 0; color: var(--muted); opacity: 0; transition: .15s; }
 .fin-banco-caixa:hover .fin-banco-editar, .fin-banco-editar:focus-visible { opacity: 1; }
 @media (hover: none) { .fin-banco-editar { opacity: 1; } }
+
+.fin-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 14px; }
+.fin-filtro { display: flex; align-items: center; gap: 7px; }
+.fin-filtro > span { color: var(--muted); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
+.fin-filtro-botoes { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--panel-border); border-radius: 9px; background: var(--panel-soft); }
+.fin-filtro-botoes button { min-height: 0; padding: 4px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 700; cursor: pointer; transition: .15s; }
+.fin-filtro-botoes button:hover { color: var(--text); }
+.fin-filtro-botoes button.ativo { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(10,36,28,.14); }
+.fin-filtro-botoes button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.fin-filtro-limpar { min-height: 0; padding: 4px 10px; font-size: 11.5px; }
+.fin-tipo { padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; font-size: 9.5px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; }
+.fin-tipo.fixa { color: var(--muted); }
+.fin-tipo.avulsa { color: var(--fin-saida, var(--warning)); }
+.fin-conta-acoes .icon-btn.ativo { color: var(--accent); }

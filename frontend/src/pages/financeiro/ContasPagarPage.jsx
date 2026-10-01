@@ -141,17 +141,21 @@ function FormPagar({ item, contas, competencia, aoPagar, aoCancelar }) {
   );
 }
 
-function ItemAgenda({ item, contas, competencia, aoPagar, aoDesfazer, aoExcluirAvulsa }) {
+function ItemAgenda({ item, contas, competencia, grupos, despesaDe, aoPagar, aoDesfazer, aoEditar, aoExcluir }) {
   const [pagando, setPagando] = useState(false);
+  const [editando, setEditando] = useState(false);
   const situacao = SITUACAO[item.situacao];
+  const fixa = item.origem === "despesa";
+  const despesa = fixa ? despesaDe(item) : null;
   return (
     <li className={`fin-conta ${situacao.classe}`}>
       <div className="fin-conta-linha">
         <span className="fin-conta-texto">
           <strong>{item.descricao}{item.parcela && <em>{item.parcela}</em>}</strong>
           <small>
+            <span className={`fin-tipo ${fixa ? "fixa" : "avulsa"}`}>{fixa ? "Fixa" : "Avulsa"}</span>
             <span className={`fin-escopo ${item.escopo}`}>{item.escopo === "empresa" ? "Empresa" : "Pessoal"}</span>
-            {item.grupo}
+            {fixa ? item.grupo : ""}
             {item.pagamento && ` · pago em ${diaBr(item.pagamento.pago_em)}${item.pagamento.conta ? ` pelo ${item.pagamento.conta}` : ""}`}
           </small>
         </span>
@@ -165,15 +169,105 @@ function ItemAgenda({ item, contas, competencia, aoPagar, aoDesfazer, aoExcluirA
           ) : (
             <button type="button" className="btn-secondary" onClick={() => setPagando(!pagando)}>{pagando ? "Fechar" : "Pagar"}</button>
           )}
-          {item.origem === "avulsa" && !item.pagamento && (
-            <button type="button" className="icon-btn" aria-label="Excluir conta avulsa" title="Excluir conta avulsa" onClick={() => aoExcluirAvulsa(item)}><Icon name="trash" size={14} /></button>
-          )}
+          <button
+            type="button"
+            className={`icon-btn${editando ? " ativo" : ""}`}
+            aria-label={`Editar ${item.descricao}`}
+            title="Editar ou excluir"
+            onClick={() => { setEditando(!editando); setPagando(false); }}
+          >
+            <Icon name={editando ? "close" : "edit"} size={14} />
+          </button>
         </span>
       </div>
       {pagando && (
         <FormPagar item={item} contas={contas} competencia={competencia} aoCancelar={() => setPagando(false)} aoPagar={async (p) => { await aoPagar(p); setPagando(false); }} />
       )}
+      {editando && !fixa && (
+        <EditorAvulsa
+          item={item}
+          aoSalvar={async (dados) => { await aoEditar(item, dados); setEditando(false); }}
+          aoExcluir={() => aoExcluir(item)}
+          aoCancelar={() => setEditando(false)}
+        />
+      )}
+      {editando && fixa && (despesa ? (
+        <EditorDespesa
+          escopo={item.escopo}
+          competencia={competencia}
+          despesa={despesa}
+          grupos={grupos}
+          aoSalvar={async (dados) => { await aoEditar(item, dados); setEditando(false); }}
+          aoExcluir={() => aoExcluir(item)}
+          aoCancelar={() => setEditando(false)}
+        />
+      ) : (
+        <Aviso>Carregando a conta fixa...</Aviso>
+      ))}
     </li>
+  );
+}
+
+
+// Mesma conta avulsa da agenda, agora editavel: o Claus pediu poder corrigir
+// e apagar o que foi lancado, sem ter que refazer.
+function EditorAvulsa({ item, aoSalvar, aoExcluir, aoCancelar }) {
+  const [descricao, setDescricao] = useState(item.descricao);
+  const [data, setData] = useState(item.vencimento);
+  const [valor, setValor] = useState(item.valor === null ? "" : valorParaCampo(item.valor));
+  const [escopo, setEscopo] = useState(item.escopo);
+  const [confirmar, setConfirmar] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function salvar(e) {
+    e.preventDefault();
+    setErro("");
+    try {
+      await aoSalvar({ descricao: descricao.trim(), data, valor: numeroBr(valor), escopo });
+    } catch (err) {
+      setErro(err.message);
+    }
+  }
+
+  return (
+    <form className="fin-avulsa" onSubmit={salvar}>
+      <div className="fin-editor-grade">
+        <label className="field fin-editor-largo"><span>Descrição</span><input value={descricao} onChange={(e) => setDescricao(e.target.value)} required autoFocus /></label>
+        <label className="field"><span>Vence em</span><input type="date" value={data} onChange={(e) => setData(e.target.value)} required /></label>
+        <label className="field"><span>Valor</span><CampoValor valor={valor} aoMudar={setValor} placeholder="a definir" /></label>
+        <label className="field"><span>De quem</span>
+          <select value={escopo} onChange={(e) => setEscopo(e.target.value)}><option value="empresa">Empresa</option><option value="pessoal">Pessoal</option></select>
+        </label>
+      </div>
+      {erro && <Aviso tipo="error">{erro}</Aviso>}
+      <div className="fin-editor-acoes">
+        {confirmar ? (
+          <span className="fin-confirmar">Apagar esta conta?
+            <button type="button" className="btn-ghost perigo" onClick={async () => {
+              try { await aoExcluir(); } catch (err) { setErro(err.message); setConfirmar(false); }
+            }}>Apagar</button>
+            <button type="button" className="btn-ghost" onClick={() => setConfirmar(false)}>Não</button>
+          </span>
+        ) : <button type="button" className="btn-ghost perigo" onClick={() => setConfirmar(true)}><Icon name="trash" size={14} /> Excluir</button>}
+        <span className="fin-espaco" />
+        <button type="button" className="btn-secondary" onClick={aoCancelar}>Cancelar</button>
+        <button type="submit" className="btn-primary">Salvar</button>
+      </div>
+    </form>
+  );
+}
+
+
+function Filtro({ rotulo, valor, opcoes, aoMudar }) {
+  return (
+    <div className="fin-filtro">
+      <span>{rotulo}</span>
+      <div className="fin-filtro-botoes" role="group" aria-label={rotulo}>
+        {opcoes.map(([v, texto]) => (
+          <button key={v} type="button" className={valor === v ? "ativo" : ""} aria-pressed={valor === v} onClick={() => aoMudar(v)}>{texto}</button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -215,11 +309,20 @@ function NovaAvulsa({ dia, aoCriar, aoCancelar }) {
   );
 }
 
+const FILTROS_ABERTOS = { tipo: "todas", escopo: "todos", situacao: "todas" };
+
 function Agenda({ competencia, dados, contas, recarregar }) {
   const hoje = dados.hoje;
   const [dia, setDia] = useState(null);
   const [novaAvulsa, setNovaAvulsa] = useState(false);
   const [erro, setErro] = useState("");
+  const [filtros, setFiltros] = useState(FILTROS_ABERTOS);
+  // As contas fixas inteiras, pra poder editar daqui (a agenda so traz o resumo).
+  const [despesas, setDespesas] = useState([]);
+
+  useEffect(() => {
+    api.despesas(competencia).then(setDespesas).catch(() => setDespesas([]));
+  }, [competencia]);
 
   useEffect(() => {
     // Abre no dia de hoje se ele e do mes; senao, no primeiro dia com conta.
@@ -227,9 +330,21 @@ function Agenda({ competencia, dados, contas, recarregar }) {
     else setDia(dados.itens.find((i) => i.vencimento)?.vencimento || `${competencia}-01`);
   }, [competencia]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const doDia = dados.itens.filter((i) => i.vencimento === dia);
-  const semData = dados.itens.filter((i) => !i.vencimento);
-  const atrasadas = dados.itens.filter((i) => i.situacao === "atrasado" && i.vencimento !== dia);
+  const combina = (i) => (
+    (filtros.tipo === "todas" || (filtros.tipo === "fixa" ? i.origem === "despesa" : i.origem === "avulsa"))
+    && (filtros.escopo === "todos" || i.escopo === filtros.escopo)
+    && (filtros.situacao === "todas"
+      || (filtros.situacao === "aberto" && !i.pagamento)
+      || (filtros.situacao === "atrasado" && i.situacao === "atrasado")
+      || (filtros.situacao === "pago" && Boolean(i.pagamento)))
+  );
+  const itens = dados.itens.filter(combina);
+  const filtrando = itens.length !== dados.itens.length;
+  const doDia = itens.filter((i) => i.vencimento === dia);
+  const semData = itens.filter((i) => !i.vencimento);
+  const atrasadas = itens.filter((i) => i.situacao === "atrasado" && i.vencimento !== dia);
+  const grupos = [...new Set(despesas.map((d) => d.grupo).filter(Boolean))];
+  const despesaDe = (item) => despesas.find((d) => d.id === item.id) || null;
 
   async function agir(acao) {
     setErro("");
@@ -241,6 +356,20 @@ function Agenda({ competencia, dados, contas, recarregar }) {
     }
   }
 
+  // Estes dois deixam o erro subir de proposito: o editor segura o que foi
+  // digitado e mostra a mensagem ali mesmo (ex.: conta ja paga nao se apaga).
+  async function salvarItem(item, dados) {
+    setErro("");
+    await (item.origem === "despesa" ? api.atualizarDespesa(item.id, dados) : api.atualizarAvulsa(item.id, dados));
+    await recarregar();
+  }
+
+  async function excluirItem(item) {
+    setErro("");
+    await (item.origem === "despesa" ? api.excluirDespesa(item.id) : api.excluirAvulsa(item.id));
+    await recarregar();
+  }
+
   const lista = (itens) => (
     <ul className="fin-contas">
       {itens.map((item) => (
@@ -249,9 +378,12 @@ function Agenda({ competencia, dados, contas, recarregar }) {
           item={item}
           contas={contas}
           competencia={competencia}
+          grupos={grupos}
+          despesaDe={despesaDe}
           aoPagar={(p) => agir(() => api.pagar(p))}
           aoDesfazer={(i) => agir(() => api.desfazerPagamento({ origem: i.origem, origem_id: i.id, competencia }))}
-          aoExcluirAvulsa={(i) => agir(() => api.excluirAvulsa(i.id))}
+          aoEditar={salvarItem}
+          aoExcluir={excluirItem}
         />
       ))}
     </ul>
@@ -260,7 +392,20 @@ function Agenda({ competencia, dados, contas, recarregar }) {
   return (
     <div className="fin-agenda">
       <section className="card">
-        <Calendario competencia={competencia} itens={dados.itens} hoje={hoje} selecionado={dia} aoSelecionar={setDia} />
+        <div className="fin-filtros">
+          <Filtro rotulo="Cobrança" valor={filtros.tipo} aoMudar={(v) => setFiltros({ ...filtros, tipo: v })}
+            opcoes={[["todas", "Todas"], ["fixa", "Fixas"], ["avulsa", "Avulsas"]]} />
+          <Filtro rotulo="De quem" valor={filtros.escopo} aoMudar={(v) => setFiltros({ ...filtros, escopo: v })}
+            opcoes={[["todos", "Todos"], ["empresa", "Empresa"], ["pessoal", "Pessoal"]]} />
+          <Filtro rotulo="Situação" valor={filtros.situacao} aoMudar={(v) => setFiltros({ ...filtros, situacao: v })}
+            opcoes={[["todas", "Todas"], ["aberto", "Em aberto"], ["atrasado", "Atrasadas"], ["pago", "Pagas"]]} />
+          {filtrando && (
+            <button type="button" className="btn-ghost fin-filtro-limpar" onClick={() => setFiltros(FILTROS_ABERTOS)}>
+              {itens.length} de {dados.itens.length} contas · limpar filtro
+            </button>
+          )}
+        </div>
+        <Calendario competencia={competencia} itens={itens} hoje={hoje} selecionado={dia} aoSelecionar={setDia} />
         <div className="fin-cal-legenda">
           <span><i className="atrasado" />Atrasado</span><span><i className="a-vencer" />A vencer</span><span><i className="pago" />Pago</span>
         </div>
@@ -356,7 +501,9 @@ function EditorDespesa({ escopo, competencia, despesa, grupos, aoSalvar, aoExclu
       <div className="fin-editor-acoes">
         {despesa && (confirmar ? (
           <span className="fin-confirmar">Apagar esta despesa?
-            <button type="button" className="btn-ghost perigo" onClick={aoExcluir}>Apagar</button>
+            <button type="button" className="btn-ghost perigo" onClick={async () => {
+              try { await aoExcluir(); } catch (err) { setErro(err.message); setConfirmar(false); }
+            }}>Apagar</button>
             <button type="button" className="btn-ghost" onClick={() => setConfirmar(false)}>Não</button>
           </span>
         ) : <button type="button" className="btn-ghost perigo" onClick={() => setConfirmar(true)}><Icon name="trash" size={14} /> Excluir</button>)}
@@ -502,7 +649,9 @@ function EditorDivida({ divida, aoSalvar, aoExcluir, aoCancelar }) {
       <footer className="fin-modal-rodape">
         {divida && (confirmar ? (
           <span className="fin-confirmar">Apagar esta dívida?
-            <button type="button" className="btn-ghost perigo" onClick={aoExcluir}>Apagar</button>
+            <button type="button" className="btn-ghost perigo" onClick={async () => {
+              try { await aoExcluir(); } catch (err) { setErro(err.message); setConfirmar(false); }
+            }}>Apagar</button>
             <button type="button" className="btn-ghost" onClick={() => setConfirmar(false)}>Não</button>
           </span>
         ) : <button type="button" className="btn-ghost perigo" onClick={() => setConfirmar(true)}><Icon name="trash" size={14} /> Excluir</button>)}
