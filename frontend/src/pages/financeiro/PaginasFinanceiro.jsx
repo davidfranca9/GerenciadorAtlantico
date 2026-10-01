@@ -299,6 +299,37 @@ export function FaturasPage() {
   const [competencia, setCompetencia] = useCompetencia();
   const { dados, erro, carregar } = useDados(() => api.faturas(competencia), competencia);
   const [alterando, setAlterando] = useState(null);
+  const [visualizacao, setVisualizacao] = useState("todos");
+  const [inicioSemana, setInicioSemana] = useState(() => inicioDaSemana(hojeIso()));
+  useEffect(() => {
+    const ancora = hojeIso().startsWith(competencia) ? hojeIso() : `${competencia}-01`;
+    setInicioSemana(inicioDaSemana(ancora));
+  }, [competencia]);
+
+  function inicioDaSemana(iso) {
+    const data = new Date(`${iso}T12:00:00`);
+    const recuo = (data.getDay() + 6) % 7;
+    data.setDate(data.getDate() - recuo);
+    return data.toISOString().slice(0, 10);
+  }
+  function moverSemana(dias) {
+    const data = new Date(`${inicioSemana}T12:00:00`);
+    data.setDate(data.getDate() + dias);
+    setInicioSemana(data.toISOString().slice(0, 10));
+  }
+  const fimSemanaData = new Date(`${inicioSemana}T12:00:00`);
+  fimSemanaData.setDate(fimSemanaData.getDate() + 6);
+  const fimSemana = fimSemanaData.toISOString().slice(0, 10);
+  const itensVisiveis = dados ? (visualizacao === "todos" ? dados.itens : dados.itens.filter((item) => item.vencimento && item.vencimento >= inicioSemana && item.vencimento <= fimSemana)) : [];
+  const incluidosVisiveis = itensVisiveis.filter((item) => item.incluida);
+  const totaisVisiveis = dados && visualizacao === "todos" ? dados.totais : {
+    previsto: incluidosVisiveis.reduce((s, item) => s + item.valor, 0),
+    vencido: incluidosVisiveis.filter((item) => item.situacao === "vencida").reduce((s, item) => s + item.valor, 0),
+    sem_cte: 0,
+    quantidade: incluidosVisiveis.length,
+    removidas: itensVisiveis.length - incluidosVisiveis.length,
+  };
+  const periodoSemana = `${new Date(`${inicioSemana}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} a ${fimSemanaData.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}`;
   async function alterar(item) {
     setAlterando(item.id);
     try {
@@ -312,14 +343,17 @@ export function FaturasPage() {
     <Moldura competencia={competencia} aoMudarMes={setCompetencia} erro={erro} carregando={!dados} aoImportar={carregar}>
       {dados && <>
         <section className="fin-resumo-contas">
-          <div className="card"><span className="eyebrow">PREVISÃO DO MÊS</span><Dinheiro valor={dados.totais.previsto} tamanho="l" /><small>{dados.totais.quantidade} autorizações incluídas · prazo padrão de {dados.prazo_dias} dias após o CT-e{dados.totais.removidas ? ` · ${dados.totais.removidas} fora da fatura` : ""}</small></div>
-          <div className={`card ${dados.totais.vencido > 0 ? "alerta" : ""}`}><span className="eyebrow">VENCIDO</span><Dinheiro valor={dados.totais.vencido} tamanho="l" /><small>Valores cuja previsão já passou</small></div>
-          <div className="card"><span className="eyebrow">AGUARDANDO CT-e</span><Dinheiro valor={dados.totais.sem_cte} tamanho="l" /><small>Sem data de vencimento até o CT-e ser liberado</small></div>
+          <div className="card"><span className="eyebrow">PREVISÃO {visualizacao === "semana" ? "DA SEMANA" : "DO MÊS"}</span><Dinheiro valor={totaisVisiveis.previsto} tamanho="l" /><small>{totaisVisiveis.quantidade} autorizações incluídas · prazo padrão de {dados.prazo_dias} dias após o CT-e{totaisVisiveis.removidas ? ` · ${totaisVisiveis.removidas} fora da fatura` : ""}</small></div>
+          <div className={`card ${totaisVisiveis.vencido > 0 ? "alerta" : ""}`}><span className="eyebrow">VENCIDO</span><Dinheiro valor={totaisVisiveis.vencido} tamanho="l" /><small>Valores cuja previsão já passou</small></div>
+          <div className="card"><span className="eyebrow">AGUARDANDO CT-e</span><Dinheiro valor={totaisVisiveis.sem_cte} tamanho="l" /><small>{visualizacao === "semana" ? "Disponível na visualização Todos" : "Sem data de vencimento até o CT-e ser liberado"}</small></div>
         </section>
         <section className="card fin-faturas">
-          <header className="fin-extrato-topo"><div><h3>Faturas de abastecimento</h3><p>Previsão calculada automaticamente: emissão do CT-e + {dados.prazo_dias} dias</p></div></header>
-          {dados.itens.length === 0 ? <div className="fin-sem-itens"><Icon name="file" size={22} /><p>Nenhuma fatura prevista para este mês.</p></div> : <div className="fin-faturas-tabela"><table><thead><tr><th>Previsão</th><th>Autorização</th><th>Motorista</th><th>CT-e</th><th>Emissão</th><th>Situação</th><th>Valor</th><th></th></tr></thead><tbody>
-            {dados.itens.map((item) => <tr key={item.id} className={!item.incluida ? "removida" : ""}><td>{item.vencimento ? new Date(`${item.vencimento}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td>{item.autorizacao || `#${item.id}`}</td><td><strong>{item.motorista}</strong></td><td>{item.cte || "—"}</td><td>{item.data_cte ? new Date(`${item.data_cte}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td><span className={`fin-situacao ${item.situacao}`}>{SITUACAO_FATURA[item.situacao]}</span></td><td><Dinheiro valor={item.valor} tamanho="xs" /></td><td><button type="button" className={item.incluida ? "btn-ghost" : "btn-secondary"} disabled={alterando === item.id} onClick={() => alterar(item)}>{alterando === item.id ? "..." : item.incluida ? "Remover" : "Incluir"}</button></td></tr>)}
+          <header className="fin-extrato-topo"><div><h3>Faturas de abastecimento</h3><p>Previsão calculada automaticamente: emissão do CT-e + {dados.prazo_dias} dias</p></div><div className="fin-fatura-controles">
+            {visualizacao === "semana" && <div className="fin-nav-periodo"><button type="button" className="icon-btn" onClick={() => moverSemana(-7)} aria-label="Semana anterior"><Icon name="chevron-left" size={15} /></button><strong>{periodoSemana}</strong><button type="button" className="icon-btn" onClick={() => moverSemana(7)} aria-label="Próxima semana"><Icon name="chevron-right" size={15} /></button></div>}
+            <div className="fin-segmentado pequeno"><button type="button" className={visualizacao === "semana" ? "ativo" : ""} onClick={() => setVisualizacao("semana")}>Semana</button><button type="button" className={visualizacao === "todos" ? "ativo" : ""} onClick={() => setVisualizacao("todos")}>Todos</button></div>
+          </div></header>
+          {itensVisiveis.length === 0 ? <div className="fin-sem-itens"><Icon name="file" size={22} /><p>Nenhuma fatura prevista {visualizacao === "semana" ? "nesta semana" : "neste mês"}.</p></div> : <div className="fin-faturas-tabela"><table><thead><tr><th>Previsão</th><th>Autorização</th><th>Motorista</th><th>CT-e</th><th>Emissão</th><th>Situação</th><th>Valor</th><th></th></tr></thead><tbody>
+            {itensVisiveis.map((item) => <tr key={item.id} className={!item.incluida ? "removida" : ""}><td>{item.vencimento ? new Date(`${item.vencimento}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td>{item.autorizacao || `#${item.id}`}</td><td><strong>{item.motorista}</strong></td><td>{item.cte || "—"}</td><td>{item.data_cte ? new Date(`${item.data_cte}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td><span className={`fin-situacao ${item.situacao}`}>{SITUACAO_FATURA[item.situacao]}</span></td><td><Dinheiro valor={item.valor} tamanho="xs" /></td><td><button type="button" className={item.incluida ? "btn-ghost" : "btn-secondary"} disabled={alterando === item.id} onClick={() => alterar(item)}>{alterando === item.id ? "..." : item.incluida ? "Remover" : "Incluir"}</button></td></tr>)}
           </tbody></table></div>}
         </section>
       </>}
