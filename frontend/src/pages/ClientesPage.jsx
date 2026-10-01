@@ -27,6 +27,25 @@ function linksMapa(cliente) {
   };
 }
 
+function numeroWhatsapp(valor) {
+  const digitos = String(valor || "").replace(/\D/g, "");
+  return digitos.length === 10 || digitos.length === 11 ? `55${digitos}` : digitos;
+}
+
+function linkLocalizacao(cliente) {
+  const localizacao = String(cliente.localizacao || "").trim();
+  return /^https?:\/\//i.test(localizacao) ? localizacao : linksMapa(cliente).google;
+}
+
+function mensagemRoteiro(cliente) {
+  return [
+    `Olá! Seguem as informações do roteiro de ${cliente.nome}:`,
+    cliente.roteiro && `Endereço: ${cliente.roteiro}`,
+    consultaLocalizacao(cliente) && `Localização: ${linkLocalizacao(cliente)}`,
+    cliente.observacoes && `Observações:\n${cliente.observacoes}`,
+  ].filter(Boolean).join("\n\n");
+}
+
 export default function ClientesPage() {
   const [clientes, setClientes] = useState([]);
   const [busca, setBusca] = useState("");
@@ -35,6 +54,11 @@ export default function ClientesPage() {
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [cidadesPorUf, setCidadesPorUf] = useState(null);
+  const [clienteAberto, setClienteAberto] = useState(null);
+  const [numeroEnvio, setNumeroEnvio] = useState("");
+  const [mensagemEnvio, setMensagemEnvio] = useState("");
+  const [enviandoWhatsapp, setEnviandoWhatsapp] = useState(false);
+  const [statusWhatsapp, setStatusWhatsapp] = useState("");
 
   async function carregar() {
     try { setClientes(await api.listarClientes(busca || undefined)); } catch (err) { setError(err.message); }
@@ -107,6 +131,31 @@ export default function ClientesPage() {
     }
   }
 
+  function abrirDetalhes(cliente) {
+    setClienteAberto(cliente);
+    setNumeroEnvio(cliente.contato || cliente.telefone || "");
+    setMensagemEnvio(mensagemRoteiro(cliente));
+    setStatusWhatsapp("");
+  }
+
+  async function enviarRoteiroWhatsapp() {
+    const numero = numeroWhatsapp(numeroEnvio);
+    if (!numero) {
+      setStatusWhatsapp("Selecione ou informe um número para o envio.");
+      return;
+    }
+    setEnviandoWhatsapp(true);
+    setStatusWhatsapp("");
+    try {
+      await api.enviarMensagemWhatsapp(numero, mensagemEnvio);
+      setStatusWhatsapp(`Roteiro enviado pelo WhatsApp da empresa para ${formatPhone(numeroEnvio)}.`);
+    } catch (err) {
+      setStatusWhatsapp(err.message || "Não foi possível enviar o roteiro.");
+    } finally {
+      setEnviandoWhatsapp(false);
+    }
+  }
+
   return (
     <div className="cli-pagina">
       <form onSubmit={handleSubmit} className="card cli-form">
@@ -134,9 +183,37 @@ export default function ClientesPage() {
       {feedback && <div className="inline-alert info">{feedback}</div>}
 
       <div className="card cli-lista"><div className="cli-tabela"><table><thead><tr><th>Nome</th><th>CNPJ/CPF</th><th>Cidade/UF</th><th>Contato descarga</th><th>Localização</th><th></th></tr></thead><tbody>
-        {clientes.map((cliente) => <tr key={cliente.id}><td><strong>{cliente.nome}</strong>{cliente.email && <small>{cliente.email}</small>}</td><td>{formatCpfCnpj(cliente.cnpj_cpf) || "—"}</td><td>{cliente.cidade}{cliente.uf ? `/${cliente.uf}` : ""}</td><td>{formatPhone(cliente.contato) || "—"}</td><td>{consultaLocalizacao(cliente) ? <div className="cli-mapas cli-mapas-tabela"><a href={linksMapa(cliente).apple} target="_blank" rel="noreferrer">Apple</a><a href={linksMapa(cliente).waze} target="_blank" rel="noreferrer">Waze</a><a href={linksMapa(cliente).google} target="_blank" rel="noreferrer">Google</a></div> : "—"}</td><td className="cli-acoes"><button className="btn-secondary" onClick={() => compartilhar(cliente)}><Icon name="send" size={13} /> Compartilhar</button><button className="btn-secondary" onClick={() => handleEdit(cliente)}>Editar</button><button className="btn-secondary" onClick={() => handleRemove(cliente.id)}>Remover</button></td></tr>)}
+        {clientes.map((cliente) => <tr key={cliente.id} className="cli-linha" tabIndex={0} onClick={() => abrirDetalhes(cliente)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") abrirDetalhes(cliente); }}><td><strong>{cliente.nome}</strong>{cliente.email && <small>{cliente.email}</small>}</td><td>{formatCpfCnpj(cliente.cnpj_cpf) || "—"}</td><td>{cliente.cidade}{cliente.uf ? `/${cliente.uf}` : ""}</td><td>{formatPhone(cliente.contato) || "—"}</td><td>{consultaLocalizacao(cliente) ? <div className="cli-mapas cli-mapas-tabela" onClick={(e) => e.stopPropagation()}><a href={linksMapa(cliente).apple} target="_blank" rel="noreferrer">Apple</a><a href={linksMapa(cliente).waze} target="_blank" rel="noreferrer">Waze</a><a href={linksMapa(cliente).google} target="_blank" rel="noreferrer">Google</a></div> : "—"}</td><td className="cli-acoes" onClick={(e) => e.stopPropagation()}><button className="btn-secondary" onClick={() => compartilhar(cliente)}><Icon name="send" size={13} /> Compartilhar</button><button className="btn-secondary" onClick={() => handleEdit(cliente)}>Editar</button><button className="btn-secondary" onClick={() => handleRemove(cliente.id)}>Remover</button></td></tr>)}
         {clientes.length === 0 && <tr><td colSpan={6} className="cli-vazio">Nenhum cliente cadastrado.</td></tr>}
       </tbody></table></div></div>
+
+      {clienteAberto && <div className="cli-modal-fundo" onMouseDown={() => setClienteAberto(null)}>
+        <section className="cli-detalhes" role="dialog" aria-modal="true" aria-labelledby="cli-detalhes-titulo" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="cli-detalhes-topo"><div><span>Detalhes do cliente</span><h2 id="cli-detalhes-titulo">{clienteAberto.nome}</h2></div><button type="button" className="cli-fechar" aria-label="Fechar" onClick={() => setClienteAberto(null)}>×</button></div>
+          <div className="cli-detalhes-grid">
+            <div><small>CPF/CNPJ</small><strong>{formatCpfCnpj(clienteAberto.cnpj_cpf) || "—"}</strong></div>
+            <div><small>Cidade/UF</small><strong>{[clienteAberto.cidade, clienteAberto.uf].filter(Boolean).join("/") || "—"}</strong></div>
+            <div><small>Contato descarga</small><strong>{formatPhone(clienteAberto.contato) || "—"}</strong></div>
+            <div><small>Contato contratante</small><strong>{formatPhone(clienteAberto.telefone) || "—"}</strong></div>
+            <div><small>E-mail</small><strong>{clienteAberto.email || "—"}</strong></div>
+            <div className="cli-detalhe-largo"><small>Roteiro</small><strong>{clienteAberto.roteiro || "—"}</strong></div>
+            {clienteAberto.observacoes && <div className="cli-detalhe-largo"><small>Observações</small><p>{clienteAberto.observacoes}</p></div>}
+          </div>
+          {consultaLocalizacao(clienteAberto) && <div className="cli-mapas cli-mapas-detalhes"><span>Abrir localização:</span><a href={linksMapa(clienteAberto).apple} target="_blank" rel="noreferrer">Apple Maps</a><a href={linksMapa(clienteAberto).waze} target="_blank" rel="noreferrer">Waze</a><a href={linksMapa(clienteAberto).google} target="_blank" rel="noreferrer">Google Maps</a></div>}
+
+          <div className="cli-whatsapp">
+            <div className="cli-whatsapp-titulo"><Icon name="chat" size={18} /><div><strong>Enviar roteiro pelo WhatsApp da empresa</strong><small>Confirme abaixo qual número receberá as informações.</small></div></div>
+            <div className="cli-numeros">
+              {clienteAberto.contato && <label><input type="radio" name="numero-whatsapp" checked={numeroEnvio === clienteAberto.contato} onChange={() => setNumeroEnvio(clienteAberto.contato)} /><span>Descarga<strong>{formatPhone(clienteAberto.contato)}</strong></span></label>}
+              {clienteAberto.telefone && <label><input type="radio" name="numero-whatsapp" checked={numeroEnvio === clienteAberto.telefone} onChange={() => setNumeroEnvio(clienteAberto.telefone)} /><span>Contratante<strong>{formatPhone(clienteAberto.telefone)}</strong></span></label>}
+            </div>
+            <div className="field"><label>Número que receberá a mensagem</label><input inputMode="tel" value={formatPhone(numeroEnvio)} onChange={(e) => setNumeroEnvio(formatPhone(e.target.value))} placeholder="(00) 9 9000-0000" /></div>
+            <div className="field"><label>Mensagem do roteiro</label><textarea rows={6} value={mensagemEnvio} onChange={(e) => setMensagemEnvio(e.target.value)} /></div>
+            {statusWhatsapp && <div className="inline-alert info">{statusWhatsapp}</div>}
+            <button type="button" className="btn-primary cli-enviar-whatsapp" disabled={enviandoWhatsapp || !numeroEnvio || !mensagemEnvio.trim()} onClick={enviarRoteiroWhatsapp}><Icon name="send" size={15} /> {enviandoWhatsapp ? "Enviando..." : "Enviar pelo WhatsApp da empresa"}</button>
+          </div>
+        </section>
+      </div>}
     </div>
   );
 }
