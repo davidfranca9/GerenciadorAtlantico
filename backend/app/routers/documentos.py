@@ -126,8 +126,9 @@ def _gerar_oc_arquivos(payload: OrdemColetaRequest, tmp_dir: str) -> dict:
 
     safe_name = _safe_filename(payload.nome)
     produtos_dict = [p.model_dump() for p in payload.produtos]
+    nome_documento = _nome_do_documento(payload, produtos_dict)
 
-    pdf_path = os.path.join(tmp_dir, f"Ordem de Coleta_{safe_name}.pdf")
+    pdf_path = os.path.join(tmp_dir, f"Ordem de Coleta_{nome_documento}.pdf")
     gerar_oc_pdf_html(
         payload.template,
         produtos_dict,
@@ -145,11 +146,10 @@ def _gerar_oc_arquivos(payload: OrdemColetaRequest, tmp_dir: str) -> dict:
 
     xlsx_path = None
     if payload.template.upper() != "HERINGER" and TEMPLATE_AUTORIZACAO.exists():
-        nome_documento = _nome_do_documento(payload, produtos_dict)
         xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{nome_documento}.xlsx")
         _gerar_autorizacao(payload, produtos_dict, xlsx_path)
 
-    return {"pdf": pdf_path, "xlsx": xlsx_path, "safe_name": safe_name}
+    return {"pdf": pdf_path, "xlsx": xlsx_path, "safe_name": safe_name, "nome_documento": nome_documento}
 
 
 def _salvar_agendamento_oc(
@@ -221,7 +221,7 @@ def gerar_ordem_coleta(payload: OrdemColetaRequest, db: Session = Depends(get_db
     agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, arquivos)
     return FileResponse(
         arquivos["pdf"],
-        filename=f"Ordem de Coleta_{safe_name}.pdf",
+        filename=f"Ordem de Coleta_{arquivos['nome_documento']}.pdf",
         media_type="application/pdf",
         headers={"X-Agendamento-Id": str(agendamento.id)},
     )
@@ -254,9 +254,12 @@ def _assunto_teste(assunto: str, teste: bool) -> str:
 
 @router.post("/ordens-coleta/enviar-autorizacao-email")
 def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(get_db)):
-    """Manda a Autorizacao de Coleta (planilha) direto pra Fertimaxi, sem
-    passar pela Ordem de Coleta - usado na tela de Contratos, onde o
+    """Pede o agendamento pra Fertimaxi pela tela de Contratos, onde o
     motorista/placa ainda podem nao estar definidos.
+
+    Vai a Ordem de Coleta em anexo. A Autorizacao de Carregamento continua
+    sendo gerada e guardada no agendamento (as vezes os dois documentos
+    precisam ser emitidos), mas nao e mais ela que segue no e-mail.
 
     Um e-mail so pra autorizacao inteira, com todos os pedidos do caminhao no
     assunto (antes saia um por pedido, todos com a mesma planilha).
@@ -274,9 +277,7 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
 
     tmp_dir = tempfile.mkdtemp()
     produtos_dict = [p.model_dump() for p in payload.produtos]
-    nome_documento = _nome_do_documento(payload, produtos_dict)
-    xlsx_path = os.path.join(tmp_dir, f"Autorizacao de carregamento_{nome_documento}.xlsx")
-    _gerar_autorizacao(payload, produtos_dict, xlsx_path)
+    arquivos = _gerar_oc_arquivos(payload, tmp_dir)
 
     fertimaxi = listas_email.destinatarios(db, "fertimaxi")
     destinatarios = emails_agendamento.destino(fertimaxi, True) if payload.teste else fertimaxi
@@ -286,12 +287,12 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
     titulo, corpo = montado
     titulo = _assunto_teste(titulo, payload.teste)
     try:
-        message_ids = [send_email_message(destinatarios, titulo, corpo, [xlsx_path], imagens_inline=imagem_assinatura_inline())]
+        message_ids = [send_email_message(destinatarios, titulo, corpo, [arquivos["pdf"]], imagens_inline=imagem_assinatura_inline())]
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
     assuntos_enviados = [titulo]
 
-    agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, {"xlsx": xlsx_path})
+    agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, arquivos)
     agendamento.email_subject = "; ".join(assuntos_enviados)[:500]
     agendamento.email_recipients = ", ".join(destinatarios)[:1000]
     for message_id in message_ids:
@@ -324,9 +325,9 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
 
     if supplier_label == "Fertimaxi":
         # Mesmo modelo (clientes + pedidos + assinatura) usado no "Novo
-        # Agendamento" rapido - um e-mail so pra autorizacao inteira, com a
-        # Autorizacao de Coleta (planilha) anexada, nao a O.C. em si.
-        anexos = [arquivos["xlsx"]] if arquivos["xlsx"] else []
+        # Agendamento" rapido: um e-mail so pro caminhao inteiro, com a Ordem
+        # de Coleta anexada.
+        anexos = [arquivos["pdf"]]
         subject = f"Autorizacao de {payload.nome.strip()}"
         montado = montar_autorizacao_do_caminhao(payload.produtos, payload.data_carregamento, motorista=payload.nome)
         if montado is not None:

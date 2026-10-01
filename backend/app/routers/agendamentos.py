@@ -30,9 +30,10 @@ def _eh_fertimaxi(supplier: str) -> bool:
 
 
 def _gerar_anexos_oc(agendamento: Agendamento) -> list[str]:
-    """Gera a Autorizacao de Coleta (planilha) do agendamento, pra anexar no
-    e-mail - so a autorizacao, nao a O.C. em si (que tem seu proprio botao
-    de download na tela de Ordem de Coleta)."""
+    """Gera a Ordem de Coleta do agendamento, pra anexar no e-mail.
+
+    A fabrica nao recebe mais a Autorizacao de Carregamento: o que segue no
+    pedido de agendamento e a Ordem de Coleta."""
     template = "HERINGER" if agendamento.supplier.strip().lower() == "heringer" else "AFL"
     payload = OrdemColetaRequest(
         template=template,
@@ -60,18 +61,17 @@ def _gerar_anexos_oc(agendamento: Agendamento) -> list[str]:
         observacoes=agendamento.observacoes,
     )
     arquivos = _gerar_oc_arquivos(payload, tempfile.mkdtemp())
-    return [arquivos["xlsx"]] if arquivos.get("xlsx") else []
+    return [arquivos["pdf"]] if arquivos.get("pdf") else []
 
 
 def _enviar_autorizacoes_agendamento_fertimaxi(agendamento: Agendamento, teste: bool = False, db: Optional[Session] = None) -> None:
     """Manda um e-mail so pra Fertimaxi pedindo o agendamento, com todos os
-    pedidos do caminhao no assunto e a Autorizacao de Coleta (planilha)
-    anexada. Falha no envio nao derruba a criacao do agendamento - so fica
+    pedidos do caminhao no assunto e a Ordem de Coleta anexada. Falha no envio nao derruba a criacao do agendamento - so fica
     registrada no log."""
     try:
         anexos = _gerar_anexos_oc(agendamento)
     except Exception:
-        logger.exception("Falha ao gerar a Autorizacao de Coleta pro e-mail de autorizacao - enviando sem anexo")
+        logger.exception("Falha ao gerar a Ordem de Coleta pro e-mail de autorizacao - enviando sem anexo")
         anexos = []
 
     reais = listas_email.destinatarios(db, "fertimaxi_novo_agendamento") if db is not None else RECIPIENTES_AUTORIZACAO_FERTIMAXI
@@ -456,7 +456,8 @@ def enviar_email_motorista(
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Falha ao gerar a autorizacao: {exc}. Nada foi alterado.")
-    anexos = [arquivos["xlsx"]] if template == "AFL" and arquivos.get("xlsx") else [arquivos["pdf"]]
+    # Inclusao e substituicao seguem o mesmo padrao: vai a Ordem de Coleta.
+    anexos = [arquivos["pdf"]]
 
     teste = payload.teste or settings.emails_motorista_em_teste
     reais = emails_agendamento.destinatarios_da_fabrica(agendamento.supplier, db)

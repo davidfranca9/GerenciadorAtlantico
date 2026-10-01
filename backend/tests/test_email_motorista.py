@@ -125,7 +125,8 @@ def test_inclusao_grava_junta_pedido_e_manda_email_de_teste(http, db, correio):
     for trecho in ("Segue a inclusão.", "121.597.816-22", "PFJ-2I64", "NZB-4H89", "SIDER", "041556",
                    "Motorista a incluir", "agendamento@fertimaxi.com.br", "E-mail de teste"):
         assert trecho in corpo, trecho
-    assert email["anexos"] == ["Autorizacao de carregamento_TALISSON JUNIOR GUIMARAES RIBEIRO.xlsx"]
+    # Inclusao e substituicao levam a Ordem de Coleta, nao a Autorizacao.
+    assert email["anexos"] == ["Ordem de Coleta_TALISSON JUNIOR GUIMARAES RIBEIRO.pdf"]
 
     historico = agendamento["emails"]
     assert len(historico) == 1 and historico[0]["tipo"] == "inclusao" and historico[0]["teste"] is True

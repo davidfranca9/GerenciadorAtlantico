@@ -1,6 +1,8 @@
-"""A autorizacao sai no nome do motorista quando ele existe; senao, do cliente.
+"""O documento sai no nome do motorista quando ele existe; senao, do cliente.
 
-Vale pro arquivo baixado, pro anexo e pro assunto do e-mail. Nenhum e-mail
+Vale pro arquivo baixado, pro anexo e pro assunto do e-mail. O anexo que vai
+pra fabrica e a Ordem de Coleta: a Autorizacao de Carregamento continua
+sendo gerada e baixada na tela, mas nao segue mais no e-mail. Nenhum e-mail
 sai daqui: o envio e simulado.
 """
 from __future__ import annotations
@@ -97,7 +99,7 @@ def test_email_sem_motorista_leva_o_cliente_no_assunto_e_no_anexo(monkeypatch):
     assert resposta.status_code == 200, resposta.text
     assert enviados == [(
         "AUTORIZAÇÃO AGENDAMENTO: WAGMAR JOSE DE OLIVEIRA - Nº 41556",
-        ["Autorizacao de carregamento_WAGMAR JOSE DE OLIVEIRA.xlsx"],
+        ["Ordem de Coleta_WAGMAR JOSE DE OLIVEIRA.pdf"],
     )]
 
 
@@ -106,7 +108,7 @@ def test_email_com_motorista_leva_o_motorista_no_assunto_e_no_anexo(monkeypatch)
     assert resposta.status_code == 200, resposta.text
     assert enviados == [(
         "AUTORIZAÇÃO AGENDAMENTO: TALISSON JUNIOR GUIMARAES RIBEIRO - Nº 41556",
-        ["Autorizacao de carregamento_TALISSON JUNIOR GUIMARAES RIBEIRO.xlsx"],
+        ["Ordem de Coleta_TALISSON JUNIOR GUIMARAES RIBEIRO.pdf"],
     )]
 
 
@@ -123,7 +125,7 @@ def test_dois_pedidos_juntos_saem_num_e_mail_so(monkeypatch):
     assert resposta.status_code == 200, resposta.text
     assert enviados == [(
         "AUTORIZAÇÃO AGENDAMENTO: WAGMAR JOSÉ DE OLIVEIRA - Nº 041555 / 041556",
-        ["Autorizacao de carregamento_WAGMAR JOSÉ DE OLIVEIRA.xlsx"],
+        ["Ordem de Coleta_WAGMAR JOSÉ DE OLIVEIRA.pdf"],
     )]
 
 

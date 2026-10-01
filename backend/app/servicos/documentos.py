@@ -18,7 +18,6 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 from openpyxl import load_workbook
-from openpyxl.worksheet.pagebreak import Break
 
 OC_HEADERS = ["Pedido", "Produto", "Embalagem", "Peso (t)", "Cidade/UF", "Cliente"]
 OC_COLUMN_WIDTHS_IN = [0.55, 1.55, 0.78, 0.58, 1.05, 1.39]
@@ -378,15 +377,13 @@ def fill_carta_frete_docx(doc, dados):
 # Autorizacao de Carregamento (Fertimaxi)
 # --------------------------------------------------------------------------
 
-# O modelo da Fertimaxi e um cartao vertical: rotulo na coluna B, valor na C,
-# um bloco por pedido. O arquivo traz dois blocos (linhas 2-15 e 17-30); o
+# O modelo da Fertimaxi e um cartao vertical: rotulo na coluna B, valor na C.
+# O caminhao inteiro cabe num bloco so - cada campo junta os valores com
+# " / ". O arquivo traz dois blocos de exemplo (linhas 2-15 e 17-30); o
 # primeiro e o carimbo - estilo, bordas, altura de linha e mesclagens saem
-# dele pra quantos pedidos houver, e o rotulo de cada linha e lido do
-# arquivo, nunca reescrito aqui.
+# dele, e o rotulo de cada linha e lido do arquivo, nunca reescrito aqui.
 AUTORIZACAO_BLOCO_INICIO = 2
 AUTORIZACAO_BLOCO_LINHAS = 14
-AUTORIZACAO_PASSO = 15  # o bloco e a linha em branco que o separa do proximo
-AUTORIZACAO_BLOCOS_POR_PAGINA = 2  # como no modelo
 TRANSPORTADOR = "ATLÂNTICO FERTLOG"
 
 
@@ -412,17 +409,56 @@ def _formatar_placa_documento(placa) -> str:
     return f"{limpa[:3]}-{limpa[3:]}"
 
 
-def _valores_autorizacao(produto: dict, motorista, cpf, telefone, placas, modelo_veiculo="") -> dict:
-    """{rotulo normalizado: valor} de um bloco."""
+def _grupos_do_caminhao(produtos: list) -> list[dict]:
+    """Um grupo por pedido, na ordem em que entraram no caminhao.
+
+    A fabrica le a autorizacao pela posicao: o segundo produto da lista e do
+    segundo pedido. Por isso aqui nada e reordenado."""
+    grupos: list[dict] = []
+    onde: dict[tuple, int] = {}
+    for produto in produtos or []:
+        chave = (_clean(produto.get("contrato")), _clean(produto.get("cliente")))
+        if chave not in onde:
+            onde[chave] = len(grupos)
+            grupos.append({"pedido": [chave[0]], "cliente": [chave[1]], "produto": [], "quantidade": [], "embalagem": []})
+        grupo = grupos[onde[chave]]
+        toneladas = _format_peso_documento(produto.get("toneladas"))
+        grupo["produto"].append(_clean(produto.get("produto")))
+        grupo["quantidade"].append(f"{toneladas} t" if toneladas else "")
+        grupo["embalagem"].append(_clean(produto.get("embalagem")))
+    return grupos
+
+
+def _juntar_campo(grupos: list[dict], campo: str, sem_repetir: bool = False) -> str:
+    """Os valores de um campo, pedido a pedido, separados por " / ".
+
+    Com mais de um pedido no caminhao, o pedido que tem mais de um valor sai
+    entre parenteses - e assim que se enxerga qual produto e de qual pedido:
+    (PRODUTO 1 / PRODUTO 1-2) / (PRODUTO 2 / PRODUTO 2-2)."""
+    partes = []
+    for grupo in grupos:
+        itens = [v for v in grupo[campo] if v]
+        if sem_repetir:
+            itens = list(dict.fromkeys(itens))
+        if not itens:
+            continue
+        texto = " / ".join(itens)
+        partes.append(f"({texto})" if len(grupos) > 1 and len(itens) > 1 else texto)
+    return " / ".join(partes)
+
+
+def _valores_autorizacao(produtos: list, motorista, cpf, telefone, placas, modelo_veiculo="") -> dict:
+    """{rotulo normalizado: valor} do bloco, com o caminhao inteiro."""
     placas_informadas = [_formatar_placa_documento(p) for p in placas or () if str(p or "").strip()]
-    contrato = _clean(produto.get("contrato"))
-    toneladas = _format_peso_documento(produto.get("toneladas"))
+    grupos = _grupos_do_caminhao(produtos)
+    pedido = _juntar_campo(grupos, "pedido")
     return {
-        "cliente": _clean(produto.get("cliente")),
-        "pedido": int(contrato) if contrato.isdigit() else contrato,
-        "quantidade": f"{toneladas} t" if toneladas else "",
-        "produto": _clean(produto.get("produto")),
-        "embalagem": _clean(produto.get("embalagem")),
+        "cliente": _juntar_campo(grupos, "cliente"),
+        # Pedido sozinho continua saindo como numero, como no modelo.
+        "pedido": int(pedido) if pedido.isdigit() else pedido,
+        "quantidade": _juntar_campo(grupos, "quantidade"),
+        "produto": _juntar_campo(grupos, "produto"),
+        "embalagem": _juntar_campo(grupos, "embalagem", sem_repetir=True),
         "transportador": TRANSPORTADOR,
         "motorista": _clean(motorista),
         "cpf": _formatar_cpf_documento(cpf),
@@ -435,14 +471,18 @@ def _valores_autorizacao(produto: dict, motorista, cpf, telefone, placas, modelo
 
 
 def gerar_autorizacao_xlsx(template_path, save_path, produtos, *, motorista="", cpf="", telefone="", placas=(), modelo_veiculo=""):
-    """Preenche o modelo da Fertimaxi: um bloco por pedido.
+    """Preenche o modelo da Fertimaxi com o caminhao inteiro num bloco so.
+
+    Cada campo junta os valores dos pedidos por " / ", sempre na mesma
+    ordem: o 2o cliente, o 2o pedido e o 2o grupo de produtos sao o mesmo
+    carregamento.
 
     A data de carregamento nao entra - o modelo nao tem esse campo, e ela ja
-    vai no corpo do e-mail que leva a planilha.
+    vai no corpo do e-mail.
     """
     wb = load_workbook(template_path)
     ws = wb.active
-    inicio, linhas, passo = AUTORIZACAO_BLOCO_INICIO, AUTORIZACAO_BLOCO_LINHAS, AUTORIZACAO_PASSO
+    inicio, linhas = AUTORIZACAO_BLOCO_INICIO, AUTORIZACAO_BLOCO_LINHAS
 
     # Carimbo: o primeiro bloco do modelo, linha a linha.
     carimbo = [
@@ -458,7 +498,6 @@ def gerar_autorizacao_xlsx(template_path, save_path, produtos, *, motorista="", 
         m.min_row - inicio for m in ws.merged_cells.ranges
         if inicio <= m.min_row < inicio + linhas and (m.min_col, m.max_col) == (2, 3)
     )
-    altura_separador = ws.row_dimensions[inicio + linhas].height
     estilo_neutro = copy(ws["B1"]._style)
 
     # Limpa os blocos de exemplo inteiros antes de carimbar.
@@ -471,32 +510,21 @@ def gerar_autorizacao_xlsx(template_path, save_path, produtos, *, motorista="", 
             celula._style = copy(estilo_neutro)
         ws.row_dimensions[linha].height = None
 
-    blocos = list(produtos or []) or [{}]
-    for i, produto in enumerate(blocos):
-        topo = inicio + i * passo
-        valores = _valores_autorizacao(produto, motorista, cpf, telefone, placas, modelo_veiculo)
-        if i:
-            ws.row_dimensions[topo - 1].height = altura_separador
-            if i % AUTORIZACAO_BLOCOS_POR_PAGINA == 0:
-                ws.row_breaks.append(Break(id=topo - 1))
-        for r, modelo in enumerate(carimbo):
-            linha = topo + r
-            ws.row_dimensions[linha].height = modelo["altura"]
-            rotulo = ws[f"B{linha}"]
-            rotulo._style = copy(modelo["estilo_b"])
-            rotulo.value = modelo["rotulo"]
-            ws[f"C{linha}"]._style = copy(modelo["estilo_c"])
-            valor = valores.get(_chave_do_rotulo(modelo["rotulo"]))
-            if r not in mescladas and valor not in (None, ""):
-                ws[f"C{linha}"].value = valor
-        for r in mescladas:
-            ws.merge_cells(f"B{topo + r}:C{topo + r}")
+    valores = _valores_autorizacao(produtos, motorista, cpf, telefone, placas, modelo_veiculo)
+    for r, modelo in enumerate(carimbo):
+        linha = inicio + r
+        ws.row_dimensions[linha].height = modelo["altura"]
+        rotulo = ws[f"B{linha}"]
+        rotulo._style = copy(modelo["estilo_b"])
+        rotulo.value = modelo["rotulo"]
+        ws[f"C{linha}"]._style = copy(modelo["estilo_c"])
+        valor = valores.get(_chave_do_rotulo(modelo["rotulo"]))
+        if r not in mescladas and valor not in (None, ""):
+            ws[f"C{linha}"].value = valor
+    for r in mescladas:
+        ws.merge_cells(f"B{inicio + r}:C{inicio + r}")
 
-    ultima = inicio + (len(blocos) - 1) * passo + linhas - 1
-    ws.print_area = f"B{inicio}:C{ultima}"
-    # Uma pagina de largura e altura livre: com o ajuste do modelo (tudo numa
-    # pagina so), cinco pedidos ficariam ilegiveis. As quebras acima mantem
-    # dois blocos por pagina.
+    ws.print_area = f"B{inicio}:C{inicio + linhas - 1}"
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
     wb.save(save_path)

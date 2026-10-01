@@ -1,9 +1,11 @@
 """A Autorizacao de Carregamento sai no modelo que a Fertimaxi mandou.
 
 O modelo e um cartao vertical - rotulo em B, valor em C - e o arquivo traz
-dois blocos. Um pedido vira um bloco; os testes travam que o primeiro bloco
-do modelo e copiado fielmente (rotulos, bordas, cores, mesclagens) e que
-nada do segundo bloco de exemplo sobra quando ha um pedido so.
+dois blocos de exemplo. O caminhao inteiro sai num bloco so: cada campo
+junta os pedidos com " / ", sempre na mesma ordem. Os testes travam que o
+primeiro bloco do modelo e copiado fielmente (rotulos, bordas, cores,
+mesclagens), que nada do segundo bloco de exemplo sobra e que a ordem dos
+campos se corresponde.
 """
 from __future__ import annotations
 
@@ -68,39 +70,71 @@ def test_um_pedido_nao_deixa_sobra_do_segundo_bloco_de_exemplo(tmp_path):
     assert ws.print_area == "'Planilha1'!$B$2:$C$15"
 
 
-def test_cada_pedido_vira_um_bloco(tmp_path):
-    outro = dict(PEDIDO_WAGMAR, cliente="ALYSSON SANTOS AGUIAR", contrato="41416", toneladas="4.5")
-    terceiro = dict(PEDIDO_WAGMAR, contrato="40778", embalagem="BIG BAG")
-    ws = gerar(tmp_path, [PEDIDO_WAGMAR, outro, terceiro])
+def test_varios_pedidos_cabem_num_bloco_so(tmp_path):
+    """O caminhao com dois clientes, como a fabrica le: cada campo na mesma
+    ordem, e o pedido com mais de um produto entre parenteses."""
+    ws = gerar(tmp_path, [
+        {"cliente": "CLIENTE 1", "contrato": "40000", "produto": "PRODUTO 1", "toneladas": "1", "embalagem": "SACO"},
+        {"cliente": "CLIENTE 1", "contrato": "40000", "produto": "PRODUTO 1-2", "toneladas": "1", "embalagem": "SACO"},
+        {"cliente": "CLIENTE 2", "contrato": "40001", "produto": "PRODUTO 2", "toneladas": "2", "embalagem": "BIGBAG"},
+        {"cliente": "CLIENTE 2", "contrato": "40001", "produto": "PRODUTO 2-2", "toneladas": "2", "embalagem": "BIGBAG"},
+    ])
+    campos = valores(ws, 2)
+    assert campos["Cliente:"] == "CLIENTE 1 / CLIENTE 2"
+    assert campos["Pedido:"] == "40000 / 40001"
+    assert campos["Quantidade:"] == "(1 t / 1 t) / (2 t / 2 t)"
+    assert campos["Produto:"] == "(PRODUTO 1 / PRODUTO 1-2) / (PRODUTO 2 / PRODUTO 2-2)"
+    assert campos["Embalagem:"] == "SACO / BIGBAG"
+    # Um bloco so: nada do segundo bloco de exemplo sobra.
+    assert all(ws[f"{c}{r}"].value is None for r in range(16, 31) for c in "BC")
+    assert ws.print_area == "'Planilha1'!$B$2:$C$15"
 
-    for topo in (2, 17, 32):
-        assert ws[f"B{topo}"].value == "FERTIMAXI"
-        assert [ws[f"B{topo + 3 + i}"].value for i in range(len(ROTULOS))] == ROTULOS
-    assert valores(ws, 17)["Cliente:"] == "ALYSSON SANTOS AGUIAR"
-    assert valores(ws, 17)["Quantidade:"] == "4,5 t"
-    assert valores(ws, 32)["Pedido:"] == 40778
-    assert valores(ws, 32)["Embalagem:"] == "BIG BAG"
-    assert {"B17:C17", "B18:C18", "B32:C32", "B33:C33"} <= {str(m) for m in ws.merged_cells.ranges}
-    assert ws.print_area == "'Planilha1'!$B$2:$C$45"
+
+def test_um_pedido_com_dois_produtos_nao_leva_parenteses(tmp_path):
+    """Com um pedido so nao ha o que separar: parenteses so atrapalhariam."""
+    ws = gerar(tmp_path, [
+        dict(PEDIDO_WAGMAR, produto="UREIA", toneladas="20"),
+        dict(PEDIDO_WAGMAR, produto="KCL", toneladas="12", embalagem="BIG BAG"),
+    ])
+    campos = valores(ws, 2)
+    assert campos["Cliente:"] == "WAGMAR JOSE DE OLIVEIRA"
+    assert campos["Pedido:"] == 41556
+    assert campos["Produto:"] == "UREIA / KCL"
+    assert campos["Quantidade:"] == "20 t / 12 t"
+    assert campos["Embalagem:"] == "SACARIA / BIG BAG"
 
 
-def test_o_estilo_do_modelo_e_copiado_pros_blocos_novos(tmp_path):
+def test_mesmo_cliente_em_dois_pedidos_aparece_nas_duas_posicoes(tmp_path):
+    """A fabrica le pela posicao: tirar o nome repetido desalinharia tudo."""
+    ws = gerar(tmp_path, [
+        dict(PEDIDO_WAGMAR, contrato="41556", produto="UREIA"),
+        dict(PEDIDO_WAGMAR, contrato="40778", produto="KCL", embalagem="BIG BAG"),
+    ])
+    campos = valores(ws, 2)
+    assert campos["Cliente:"] == "WAGMAR JOSE DE OLIVEIRA / WAGMAR JOSE DE OLIVEIRA"
+    assert campos["Pedido:"] == "41556 / 40778"
+    assert campos["Produto:"] == "UREIA / KCL"
+    assert campos["Embalagem:"] == "SACARIA / BIG BAG"
+
+
+def test_o_estilo_do_modelo_e_copiado_pro_bloco(tmp_path):
     ws = gerar(tmp_path, [PEDIDO_WAGMAR] * 3)
     modelo = load_workbook(MODELO).active
-    for linha_modelo, linha_nova in ((3, 33), (5, 35), (15, 45)):
+    for linha in (3, 5, 15):
         for col in "BC":
-            original, copia = modelo[f"{col}{linha_modelo}"], ws[f"{col}{linha_nova}"]
+            original, copia = modelo[f"{col}{linha}"], ws[f"{col}{linha}"]
             assert copia.font.b == original.font.b and copia.font.sz == original.font.sz
             assert copia.border.left.style == original.border.left.style
             assert copia.border.bottom.style == original.border.bottom.style
             assert copia.fill.fgColor.rgb == original.fill.fgColor.rgb
-        assert ws.row_dimensions[linha_nova].height == modelo.row_dimensions[linha_modelo].height
+        assert ws.row_dimensions[linha].height == modelo.row_dimensions[linha].height
 
 
-def test_dois_blocos_por_pagina_como_no_modelo(tmp_path):
-    ws = gerar(tmp_path, [PEDIDO_WAGMAR] * 5)
-    # Quebra antes do 3o e do 5o bloco (linhas 32 e 62).
-    assert [b.id for b in ws.row_breaks.brk] == [31, 61]
+def test_caminhao_cheio_nao_quebra_pagina(tmp_path):
+    """Cinco pedidos continuam num bloco so, numa pagina so."""
+    ws = gerar(tmp_path, [dict(PEDIDO_WAGMAR, contrato=f"4100{i}") for i in range(5)])
+    assert [b.id for b in ws.row_breaks.brk] == []
+    assert ws.print_area == "'Planilha1'!$B$2:$C$15"
 
 
 def test_sem_pedido_ainda_sai_um_bloco_com_o_motorista(tmp_path):

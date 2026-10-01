@@ -133,7 +133,7 @@ export default function ContratoPage() {
   async function handleEnviarAutorizacaoEmail() {
     setError("");
     if (selectedRows.length === 0) {
-      setError("Selecione ao menos um contrato na tabela antes de enviar a autorização.");
+      setError("Selecione ao menos um contrato na tabela antes de enviar.");
       return;
     }
     setEnviandoAutorizacao(true);
@@ -141,7 +141,7 @@ export default function ContratoPage() {
       const resultado = await api.enviarAutorizacaoColetaEmail(buildAutorizacaoPayload());
       if (resultado?.agendamento_id) setAgendamentoId(resultado.agendamento_id);
       setStatus(
-        `Autorização enviada por e-mail. Agendamento #${resultado?.agendamento_id} registrado: `
+        `Ordem de coleta enviada por e-mail. Agendamento #${resultado?.agendamento_id} registrado: `
         + "quando tiver o motorista, é só incluir em Agendamentos."
       );
     } catch (err) {
@@ -259,7 +259,11 @@ export default function ContratoPage() {
 
       {supplier !== "HERINGER" && (
         <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <strong style={{ fontSize: 15 }}>Autorização de carregamento</strong>
+          <strong style={{ fontSize: 15 }}>Documentos do carregamento</strong>
+          <small style={{ color: "var(--muted)", marginTop: -8 }}>
+            A fábrica recebe a Ordem de Coleta por e-mail. A autorização de carregamento fica aqui pra baixar
+            quando os dois documentos forem necessários.
+          </small>
           <div className="field-grid">
             <div className="field">
               <label>Nome do Motorista (opcional)</label>
@@ -282,7 +286,7 @@ export default function ContratoPage() {
               {gerandoAutorizacao ? "Gerando..." : "Gerar autorização de carregamento"}
             </button>
             <button className="btn-secondary" disabled={gerandoAutorizacao || enviandoAutorizacao} onClick={handleEnviarAutorizacaoEmail}>
-              {enviandoAutorizacao ? "Enviando..." : "Enviar por e-mail"}
+              {enviandoAutorizacao ? "Enviando..." : "Enviar ordem de coleta por e-mail"}
             </button>
           </div>
         </div>
