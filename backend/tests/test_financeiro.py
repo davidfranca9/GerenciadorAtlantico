@@ -254,19 +254,20 @@ def test_fatura_agrupa_autorizacoes_e_pagamento_vai_para_caixa(db):
     banco = conta(db)
     db.add_all([
         CartaFreteEnviada(data="10/09/2026", condutor="MOTORISTA UM", valor_frete="1.500,00", status="enviada"),
-        CartaFreteEnviada(data="11/09/2026", condutor="MOTORISTA DOIS", valor_frete="2.000,00", status="enviada"),
+        CartaFreteEnviada(data="10/09/2026", condutor="MOTORISTA DOIS", valor_frete="2.000,00", status="enviada"),
     ])
     carregamento(db, ctes="5053", motorista="MOTORISTA UM", data_emissao=date(2026, 9, 12))
-    carregamento(db, ctes="5054", motorista="MOTORISTA DOIS", data_emissao=date(2026, 9, 12))
+    carregamento(db, ctes="5054", motorista="MOTORISTA DOIS", data_emissao=date(2026, 9, 13))
     db.flush()
 
     painel = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
     assert len(painel["faturas"]) == 1
     assert painel["faturas"][0]["quantidade"] == 2
     assert painel["faturas"][0]["valor"] == 3500
+    assert painel["faturas"][0]["vencimento"] == "2026-10-02"
 
     pagamento = fin.pagar_fatura_abastecimento(
-        db, competencia="2026-10", chave_fatura="2026-10-02", pago_em=date(2026, 10, 2),
+        db, competencia="2026-10", chave_fatura="autorizacoes-2026-09-10", pago_em=date(2026, 10, 2),
         valor=None, conta_id=banco.id, forma="BOLETO",
     )
     db.flush()

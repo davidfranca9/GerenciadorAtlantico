@@ -685,9 +685,12 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
     }
     grupos: dict[str, dict] = {}
     for item in itens:
-        chave = item["vencimento"] or "aguardando-cte"
+        # A fatura do posto reune as autorizacoes emitidas no mesmo lote/dia.
+        # O CT-e pode sair no dia seguinte (como no caso do Mauro), sem criar
+        # uma fatura separada para a mesma remessa de autorizacoes.
+        chave = f"autorizacoes-{item['data_autorizacao']}"
         grupo = grupos.setdefault(chave, {
-            "chave": chave, "vencimento": item["vencimento"], "itens": [], "valor": 0.0,
+            "chave": chave, "vencimento": None, "itens": [], "valor": 0.0,
             "quantidade": 0, "removidas": 0, "situacao": "sem_cte" if not item["vencimento"] else item["situacao"],
             "pagamento": None,
         })
@@ -695,10 +698,14 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
         if item["incluida"]:
             grupo["valor"] = dinheiro(grupo["valor"] + item["valor"])
             grupo["quantidade"] += 1
+            if item["vencimento"] and (not grupo["vencimento"] or item["vencimento"] < grupo["vencimento"]):
+                grupo["vencimento"] = item["vencimento"]
         else:
             grupo["removidas"] += 1
     for chave, grupo in grupos.items():
-        pagamento = pagamentos.get(chave)
+        # Compatibilidade com baixas feitas antes do agrupamento por lote,
+        # quando a chave da fatura era somente a data de vencimento.
+        pagamento = pagamentos.get(chave) or pagamentos.get(grupo["vencimento"] or "")
         if pagamento:
             conta = contas.get(pagamento.conta_id)
             grupo["situacao"] = "paga"
@@ -706,6 +713,17 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
                 "id": pagamento.id, "valor": dinheiro(pagamento.valor), "pago_em": pagamento.pago_em.isoformat(),
                 "conta_id": pagamento.conta_id, "conta": conta.nome if conta else "",
             }
+        elif grupo["quantidade"] == 0:
+            grupo["vencimento"] = min((i["vencimento"] for i in grupo["itens"] if i["vencimento"]), default=None)
+            grupo["situacao"] = "removida"
+        elif not grupo["vencimento"]:
+            grupo["situacao"] = "sem_cte"
+        elif grupo["vencimento"] < hoje.isoformat():
+            grupo["situacao"] = "vencida"
+        elif grupo["vencimento"] == hoje.isoformat():
+            grupo["situacao"] = "hoje"
+        else:
+            grupo["situacao"] = "prevista"
     faturas = sorted(grupos.values(), key=lambda g: (g["vencimento"] is None, g["vencimento"] or "9999"))
     return {
         "competencia": competencia, "prazo_dias": 20, "itens": itens, "faturas": faturas,
