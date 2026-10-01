@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import * as api from "../api/client";
 import Icon from "../components/Icon";
 
@@ -142,6 +143,7 @@ function BolhaMidia({ mensagem }) {
 }
 
 export default function WhatsAppPage() {
+  const location = useLocation();
   const [conversas, setConversas] = useState([]);
   const [carregandoLista, setCarregandoLista] = useState(true);
   const [erro, setErro] = useState("");
@@ -177,6 +179,16 @@ export default function WhatsAppPage() {
   const ondaRafRef = useRef(null);
   const videoRef = useRef(null);
   const cameraStreamRef = useRef(null);
+  const rotaInicializadaRef = useRef(false);
+
+  useEffect(() => {
+    const origem = location.state;
+    if (rotaInicializadaRef.current || origem?.origem !== "roteiro-cliente" || !origem.numero) return;
+    rotaInicializadaRef.current = true;
+    setTexto(origem.texto || "");
+    setNumeroNovo("");
+    abrirConversa(origem.numero);
+  }, [location.state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function pararVisualizadorOnda() {
     if (ondaRafRef.current) cancelAnimationFrame(ondaRafRef.current);

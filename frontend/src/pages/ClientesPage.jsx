@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import * as api from "../api/client";
 import Icon from "../components/Icon";
 import { formatCpfCnpj, formatPhone } from "../utils/format";
@@ -47,6 +48,7 @@ function mensagemRoteiro(cliente) {
 }
 
 export default function ClientesPage() {
+  const navigate = useNavigate();
   const [clientes, setClientes] = useState([]);
   const [busca, setBusca] = useState("");
   const [form, setForm] = useState(VAZIO);
@@ -57,8 +59,6 @@ export default function ClientesPage() {
   const [clienteAberto, setClienteAberto] = useState(null);
   const [numeroEnvio, setNumeroEnvio] = useState("");
   const [mensagemEnvio, setMensagemEnvio] = useState("");
-  const [enviandoWhatsapp, setEnviandoWhatsapp] = useState(false);
-  const [statusWhatsapp, setStatusWhatsapp] = useState("");
 
   async function carregar() {
     try { setClientes(await api.listarClientes(busca || undefined)); } catch (err) { setError(err.message); }
@@ -135,25 +135,12 @@ export default function ClientesPage() {
     setClienteAberto(cliente);
     setNumeroEnvio(cliente.contato || cliente.telefone || "");
     setMensagemEnvio(mensagemRoteiro(cliente));
-    setStatusWhatsapp("");
   }
 
-  async function enviarRoteiroWhatsapp() {
+  function abrirNoChatWhatsapp() {
     const numero = numeroWhatsapp(numeroEnvio);
-    if (!numero) {
-      setStatusWhatsapp("Selecione ou informe um número para o envio.");
-      return;
-    }
-    setEnviandoWhatsapp(true);
-    setStatusWhatsapp("");
-    try {
-      await api.enviarMensagemWhatsapp(numero, mensagemEnvio);
-      setStatusWhatsapp(`Roteiro enviado pelo WhatsApp da empresa para ${formatPhone(numeroEnvio)}.`);
-    } catch (err) {
-      setStatusWhatsapp(err.message || "Não foi possível enviar o roteiro.");
-    } finally {
-      setEnviandoWhatsapp(false);
-    }
+    if (!numero || !mensagemEnvio.trim()) return;
+    navigate("/whatsapp", { state: { numero, texto: mensagemEnvio, nome: clienteAberto.nome, origem: "roteiro-cliente" } });
   }
 
   return (
@@ -202,15 +189,14 @@ export default function ClientesPage() {
           {consultaLocalizacao(clienteAberto) && <div className="cli-mapas cli-mapas-detalhes"><span>Abrir localização:</span><a href={linksMapa(clienteAberto).apple} target="_blank" rel="noreferrer">Apple Maps</a><a href={linksMapa(clienteAberto).waze} target="_blank" rel="noreferrer">Waze</a><a href={linksMapa(clienteAberto).google} target="_blank" rel="noreferrer">Google Maps</a></div>}
 
           <div className="cli-whatsapp">
-            <div className="cli-whatsapp-titulo"><Icon name="chat" size={18} /><div><strong>Enviar roteiro pelo WhatsApp da empresa</strong><small>Confirme abaixo qual número receberá as informações.</small></div></div>
+            <div className="cli-whatsapp-titulo"><Icon name="chat" size={18} /><div><strong>Abrir roteiro no chat do sistema</strong><small>Escolha o número. A conversa será aberta com a mensagem pronta para revisar e enviar.</small></div></div>
             <div className="cli-numeros">
               {clienteAberto.contato && <label><input type="radio" name="numero-whatsapp" checked={numeroEnvio === clienteAberto.contato} onChange={() => setNumeroEnvio(clienteAberto.contato)} /><span>Descarga<strong>{formatPhone(clienteAberto.contato)}</strong></span></label>}
               {clienteAberto.telefone && <label><input type="radio" name="numero-whatsapp" checked={numeroEnvio === clienteAberto.telefone} onChange={() => setNumeroEnvio(clienteAberto.telefone)} /><span>Contratante<strong>{formatPhone(clienteAberto.telefone)}</strong></span></label>}
             </div>
             <div className="field"><label>Número que receberá a mensagem</label><input inputMode="tel" value={formatPhone(numeroEnvio)} onChange={(e) => setNumeroEnvio(formatPhone(e.target.value))} placeholder="(00) 9 9000-0000" /></div>
             <div className="field"><label>Mensagem do roteiro</label><textarea rows={6} value={mensagemEnvio} onChange={(e) => setMensagemEnvio(e.target.value)} /></div>
-            {statusWhatsapp && <div className="inline-alert info">{statusWhatsapp}</div>}
-            <button type="button" className="btn-primary cli-enviar-whatsapp" disabled={enviandoWhatsapp || !numeroEnvio || !mensagemEnvio.trim()} onClick={enviarRoteiroWhatsapp}><Icon name="send" size={15} /> {enviandoWhatsapp ? "Enviando..." : "Enviar pelo WhatsApp da empresa"}</button>
+            <button type="button" className="btn-primary cli-enviar-whatsapp" disabled={!numeroEnvio || !mensagemEnvio.trim()} onClick={abrirNoChatWhatsapp}><Icon name="chat" size={15} /> Abrir no chat do sistema</button>
           </div>
         </section>
       </div>}
