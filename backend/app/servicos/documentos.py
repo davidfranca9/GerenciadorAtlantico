@@ -429,12 +429,18 @@ def _grupos_do_caminhao(produtos: list) -> list[dict]:
     return grupos
 
 
-def _juntar_campo(grupos: list[dict], campo: str, sem_repetir: bool = False) -> str:
+def _juntar_campo(grupos: list[dict], campo: str, sem_repetir: bool = False, uma_vez_se_igual: bool = False) -> str:
     """Os valores de um campo, pedido a pedido, separados por " / ".
 
     Com mais de um pedido no caminhao, o pedido que tem mais de um valor sai
     entre parenteses - e assim que se enxerga qual produto e de qual pedido:
     (PRODUTO 1 / PRODUTO 1-2) / (PRODUTO 2 / PRODUTO 2-2)."""
+    # Caminhao todo do mesmo cliente: o nome sai uma vez so. Com clientes
+    # diferentes ele se repete pedido a pedido, senao perde o alinhamento.
+    if uma_vez_se_igual:
+        valores = [v for grupo in grupos for v in grupo[campo] if v]
+        if valores and len(set(valores)) == 1:
+            return valores[0]
     partes = []
     for grupo in grupos:
         itens = [v for v in grupo[campo] if v]
@@ -453,7 +459,7 @@ def _valores_autorizacao(produtos: list, motorista, cpf, telefone, placas, model
     grupos = _grupos_do_caminhao(produtos)
     pedido = _juntar_campo(grupos, "pedido")
     return {
-        "cliente": _juntar_campo(grupos, "cliente"),
+        "cliente": _juntar_campo(grupos, "cliente", uma_vez_se_igual=True),
         # Pedido sozinho continua saindo como numero, como no modelo.
         "pedido": int(pedido) if pedido.isdigit() else pedido,
         "quantidade": _juntar_campo(grupos, "quantidade"),

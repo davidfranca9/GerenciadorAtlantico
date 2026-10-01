@@ -104,17 +104,31 @@ def test_um_pedido_com_dois_produtos_nao_leva_parenteses(tmp_path):
     assert campos["Embalagem:"] == "SACARIA / BIG BAG"
 
 
-def test_mesmo_cliente_em_dois_pedidos_aparece_nas_duas_posicoes(tmp_path):
-    """A fabrica le pela posicao: tirar o nome repetido desalinharia tudo."""
+def test_mesmo_cliente_em_dois_pedidos_sai_uma_vez_so(tmp_path):
+    """Caminhao todo do mesmo cliente: repetir o nome so polui."""
     ws = gerar(tmp_path, [
         dict(PEDIDO_WAGMAR, contrato="41556", produto="UREIA"),
         dict(PEDIDO_WAGMAR, contrato="40778", produto="KCL", embalagem="BIG BAG"),
     ])
     campos = valores(ws, 2)
-    assert campos["Cliente:"] == "WAGMAR JOSE DE OLIVEIRA / WAGMAR JOSE DE OLIVEIRA"
+    assert campos["Cliente:"] == "WAGMAR JOSE DE OLIVEIRA"
     assert campos["Pedido:"] == "41556 / 40778"
     assert campos["Produto:"] == "UREIA / KCL"
     assert campos["Embalagem:"] == "SACARIA / BIG BAG"
+
+
+def test_cliente_que_se_repete_entre_outros_mantem_a_posicao(tmp_path):
+    """Com clientes diferentes o nome volta a acompanhar cada pedido: e pela
+    posicao que a fabrica sabe de quem e cada carga."""
+    ws = gerar(tmp_path, [
+        dict(PEDIDO_WAGMAR, contrato="41556", produto="UREIA"),
+        dict(PEDIDO_WAGMAR, cliente="ALYSSON SANTOS AGUIAR", contrato="41416", produto="MAP"),
+        dict(PEDIDO_WAGMAR, contrato="40778", produto="KCL"),
+    ])
+    campos = valores(ws, 2)
+    assert campos["Cliente:"] == "WAGMAR JOSE DE OLIVEIRA / ALYSSON SANTOS AGUIAR / WAGMAR JOSE DE OLIVEIRA"
+    assert campos["Pedido:"] == "41556 / 41416 / 40778"
+    assert campos["Produto:"] == "UREIA / MAP / KCL"
 
 
 def test_o_estilo_do_modelo_e_copiado_pro_bloco(tmp_path):
