@@ -27,6 +27,7 @@ from ..models import (
     LancamentoCaixa,
     MetaMensal,
     PagamentoAgenda,
+    PagamentoComissao,
 )
 
 FORMAS = ("PIX", "TRANSFERENCIA", "BOLETO", "DEBITO", "CARTAO", "CHEQUE", "RENDIMENTO", "DINHEIRO", "TARIFA", "OUTRO")
@@ -685,6 +686,104 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
             "quantidade": len(incluidos), "removidas": len(itens) - len(incluidos),
         },
     }
+
+
+def painel_comissoes(db: Session, competencia: str) -> dict:
+    validar_competencia(competencia)
+    cargas = (
+        db.query(CarregamentoFinanceiro)
+        .filter(CarregamentoFinanceiro.competencia == competencia, CarregamentoFinanceiro.cancelado.is_(False))
+        .order_by(CarregamentoFinanceiro.data_emissao, CarregamentoFinanceiro.id)
+        .all()
+    )
+    linhas = []
+    grupos: dict[str, dict] = {}
+    for carga in cargas:
+        totais = totais_carregamento(carga)
+        comissao = dinheiro(totais["comissao"])
+        if comissao <= 0:
+            continue
+        beneficiario = (carga.contratante or "SEM BENEFICIÁRIO").strip().upper()
+        linha = {
+            "id": carga.id, "data": carga.data_emissao.isoformat() if carga.data_emissao else None,
+            "cte": carga.ctes, "motorista": carga.motorista, "destino": carga.destino,
+            "peso": round(float(carga.peso or 0), 2), "frete_motorista": totais["frete_motorista"],
+            "comissao_ton": dinheiro(comissao / float(carga.peso)) if carga.peso else None,
+            "comissao": comissao, "beneficiario": beneficiario,
+        }
+        linhas.append(linha)
+        grupo = grupos.setdefault(beneficiario, {"beneficiario": beneficiario, "cargas": 0, "toneladas": 0.0, "gerado": 0.0})
+        grupo["cargas"] += 1
+        grupo["toneladas"] = round(grupo["toneladas"] + linha["peso"], 2)
+        grupo["gerado"] = dinheiro(grupo["gerado"] + comissao)
+
+    contas = {c.id: c for c in db.query(ContaBancaria).all()}
+    pagamentos = db.query(PagamentoComissao).filter(PagamentoComissao.competencia == competencia).order_by(PagamentoComissao.pago_em.desc(), PagamentoComissao.id.desc()).all()
+    pagos_por: dict[str, float] = defaultdict(float)
+    pagamentos_dict = []
+    for pagamento in pagamentos:
+        pagos_por[pagamento.beneficiario] += float(pagamento.valor)
+        conta = contas.get(pagamento.conta_id)
+        pagamentos_dict.append({
+            "id": pagamento.id, "beneficiario": pagamento.beneficiario, "valor": dinheiro(pagamento.valor),
+            "pago_em": pagamento.pago_em.isoformat(), "conta": conta.nome if conta else "",
+            "conta_id": pagamento.conta_id, "observacao": pagamento.observacao,
+        })
+    for grupo in grupos.values():
+        grupo["pago"] = dinheiro(pagos_por.get(grupo["beneficiario"], 0))
+        grupo["pendente"] = dinheiro(max(0, grupo["gerado"] - grupo["pago"]))
+        grupo["media_ton"] = dinheiro(grupo["gerado"] / grupo["toneladas"]) if grupo["toneladas"] else None
+
+    lista_grupos = sorted(grupos.values(), key=lambda g: (-g["pendente"], g["beneficiario"]))
+    gerado = dinheiro(sum(g["gerado"] for g in lista_grupos))
+    pago = dinheiro(sum(float(p.valor) for p in pagamentos))
+    toneladas_total = round(sum(l["peso"] for l in linhas), 2)
+    return {
+        "competencia": competencia, "linhas": linhas, "grupos": lista_grupos, "pagamentos": pagamentos_dict,
+        "resumo": {
+            "gerado": gerado, "pago": pago, "pendente": dinheiro(max(0, gerado - pago)),
+            "cargas": len(linhas), "toneladas": toneladas_total,
+            "media_ton": dinheiro(gerado / toneladas_total) if toneladas_total else None,
+        },
+    }
+
+
+def pagar_comissao(db: Session, *, competencia: str, beneficiario: str, valor: float, pago_em: date,
+                    conta_id: Optional[int], observacao: str = "", usuario: str = "") -> PagamentoComissao:
+    painel = painel_comissoes(db, competencia)
+    nome = (beneficiario or "").strip().upper()
+    grupo = next((g for g in painel["grupos"] if g["beneficiario"] == nome), None)
+    valor = dinheiro(valor)
+    if grupo is None:
+        raise ErroFinanceiro("Beneficiário não possui comissão nesse mês")
+    if valor <= 0 or valor > grupo["pendente"]:
+        raise ErroFinanceiro(f"O pagamento deve ser maior que zero e não pode passar de {grupo['pendente']:.2f}")
+    lancamento = None
+    if conta_id:
+        lancamento = criar_lancamento(
+            db, conta_id=conta_id, data=pago_em, tipo="saida", valor=valor,
+            descricao=f"Comissão · {nome}", forma="PIX", origem="comissao", usuario=usuario,
+        )
+    pagamento = PagamentoComissao(
+        competencia=competencia, beneficiario=nome, valor=valor, pago_em=pago_em,
+        conta_id=conta_id if lancamento else None, lancamento_id=lancamento.id if lancamento else None,
+        observacao=(observacao or "").strip()[:300],
+    )
+    db.add(pagamento)
+    db.flush()
+    return pagamento
+
+
+def desfazer_comissao(db: Session, pagamento_id: int) -> None:
+    pagamento = db.get(PagamentoComissao, pagamento_id)
+    if pagamento is None:
+        raise ErroFinanceiro("Pagamento de comissão não encontrado")
+    if pagamento.lancamento_id:
+        lancamento = db.get(LancamentoCaixa, pagamento.lancamento_id)
+        if lancamento:
+            db.delete(lancamento)
+    db.delete(pagamento)
+    db.flush()
 
 
 # --------------------------------------------------------------------------

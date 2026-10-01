@@ -587,3 +587,19 @@ class Divida(Base):
     # Pausa a cobrança sem apagar nem quitar a dívida.
     congelada: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PagamentoComissao(Base):
+    """Baixa de comissão apurada automaticamente nos carregamentos."""
+
+    __tablename__ = "pagamentos_comissao"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    competencia: Mapped[str] = mapped_column(String(7), index=True)
+    beneficiario: Mapped[str] = mapped_column(String(120), index=True)
+    valor: Mapped[float] = mapped_column(_dinheiro())
+    pago_em: Mapped[date] = mapped_column(Date, index=True)
+    conta_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    lancamento_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    observacao: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

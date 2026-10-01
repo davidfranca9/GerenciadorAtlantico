@@ -558,6 +558,34 @@
 .fin-faturas td:last-child button { min-height: 28px; padding: 0 10px; font-size: 11px; }
 .fin-fatura-controles { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .fin-fatura-controles .fin-nav-periodo strong { min-width: 135px; }
+.fin-comissao-hero { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(0, 1.4fr); gap: 30px; padding: 24px; border-top: 3px solid var(--fin-comissao); }
+.fin-comissao-hero > div { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.fin-comissao-hero p { margin: 0; color: var(--muted); font-size: 11.5px; }
+.fin-comissao-hero dl { display: grid; grid-template-columns: repeat(5, minmax(90px, 1fr)); gap: 10px; margin: 0; }
+.fin-comissao-hero dl div { padding: 12px; border-radius: 10px; background: var(--panel-soft); }
+.fin-comissao-hero dt { color: var(--muted); font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; }
+.fin-comissao-hero dd { margin: 4px 0 0; font: 800 14px Manrope, sans-serif; }
+.fin-comissao-hero dd.pago, .fin-comissao-grupo .pago { color: var(--fin-entrada); }
+.fin-comissao-hero dd.pendente, .fin-comissao-grupo .pendente { color: var(--fin-saida); }
+.fin-comissao-grupos { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 12px; }
+.fin-comissao-grupo { padding: 17px; }
+.fin-comissao-grupo header { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.fin-comissao-grupo header > div:first-child { flex: 1; min-width: 160px; }
+.fin-comissao-grupo header small { color: var(--muted); font-size: 10.5px; }
+.fin-comissao-saldos { display: flex; flex-direction: column; gap: 2px; font-size: 10.5px; color: var(--muted); }
+.fin-comissao-saldos span { display: flex; justify-content: space-between; gap: 12px; }
+.fin-comissao-saldos b { color: inherit; font-variant-numeric: tabular-nums; }
+.fin-comissao-grupo .fin-progresso { margin-top: 14px; }
+.fin-comissao-pagar { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 10px; margin: 14px -17px -17px; padding: 14px 17px; background: var(--panel-soft); border-top: 1px dashed var(--border); }
+.fin-comissao-pagar .fin-editor-acoes, .fin-comissao-pagar .inline-alert { grid-column: 1 / -1; }
+.fin-comissao-historico { padding: 0; overflow: hidden; }
+.fin-comissao-historico ul { margin: 0; padding: 0; list-style: none; }
+.fin-comissao-historico li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 11px 18px; border-bottom: 1px solid var(--border-soft); }
+.fin-comissao-historico li:last-child { border-bottom: 0; }
+.fin-comissao-historico li div { display: flex; flex-direction: column; min-width: 0; }
+.fin-comissao-historico small { color: var(--muted); font-size: 10.5px; }
+@media (max-width: 900px) { .fin-comissao-hero { grid-template-columns: 1fr; } .fin-comissao-hero dl { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px) { .fin-comissao-pagar { grid-template-columns: 1fr; } .fin-comissao-historico li { grid-template-columns: 1fr auto; } .fin-comissao-historico li button { grid-column: 1 / -1; justify-self: end; } }
 .fin-despesa-linha:hover, .fin-grupo li.aberto .fin-despesa-linha { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .fin-despesa-dia { display: flex; flex-direction: column; align-items: center; line-height: 1; font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--muted-soft); }
 .fin-despesa-dia b { font: 800 15px Manrope, sans-serif; color: var(--text); }

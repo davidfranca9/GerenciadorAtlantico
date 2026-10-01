@@ -24,14 +24,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.auth import get_current_user, require_admin  # noqa: E402
 from app.database import get_db  # noqa: E402
 from app.models import (  # noqa: E402
-    CarregamentoFinanceiro, CartaFreteEnviada, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa, MetaMensal, PagamentoAgenda,
+    CarregamentoFinanceiro, CartaFreteEnviada, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa, MetaMensal, PagamentoAgenda, PagamentoComissao,
 )
 from app.routers import financeiro as rotas  # noqa: E402
 from app.servicos import financeiro as fin  # noqa: E402
 from app.servicos import financeiro_importacao as imp  # noqa: E402
 from tests.apoio_documentos import banco_em_memoria  # noqa: E402
 
-TABELAS = (ContaBancaria, LancamentoCaixa, MetaMensal, CarregamentoFinanceiro, CartaFreteEnviada, Despesa, ContaAvulsa, PagamentoAgenda, Divida)
+TABELAS = (ContaBancaria, LancamentoCaixa, MetaMensal, CarregamentoFinanceiro, CartaFreteEnviada, Despesa, ContaAvulsa, PagamentoAgenda, PagamentoComissao, Divida)
 DIA = date(2026, 9, 15)
 
 
@@ -248,6 +248,30 @@ def test_autorizacao_pode_sair_e_voltar_para_previsao_da_fatura(db):
     incluida = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
     assert incluida["totais"]["previsto"] == 1500
     assert incluida["itens"][0]["incluida"] is True
+
+
+def test_comissoes_sao_puxadas_das_cargas_e_pagamento_vai_para_caixa(db):
+    banco = conta(db)
+    carregamento(db, ctes="5003", contratante="Queiroz", peso=32, comissao_ton=20, data_emissao=date(2026, 9, 11))
+    carregamento(db, ctes="5004", contratante="QUEIROZ", peso=40, comissao_ton=10, data_emissao=date(2026, 9, 15))
+    db.flush()
+
+    painel = fin.painel_comissoes(db, "2026-09")
+    assert painel["resumo"] == {"gerado": 1040, "pago": 0, "pendente": 1040, "cargas": 2, "toneladas": 72, "media_ton": 14.44}
+    assert len(painel["grupos"]) == 1 and painel["grupos"][0]["beneficiario"] == "QUEIROZ"
+
+    pagamento = fin.pagar_comissao(
+        db, competencia="2026-09", beneficiario="queiroz", valor=600, pago_em=date(2026, 9, 20), conta_id=banco.id,
+    )
+    db.flush()
+    atualizado = fin.painel_comissoes(db, "2026-09")
+    assert atualizado["resumo"]["pago"] == 600 and atualizado["resumo"]["pendente"] == 440
+    lancamento = db.get(LancamentoCaixa, pagamento.lancamento_id)
+    assert (lancamento.tipo, lancamento.valor, lancamento.origem) == ("saida", 600, "comissao")
+
+    fin.desfazer_comissao(db, pagamento.id)
+    db.flush()
+    assert db.query(PagamentoComissao).count() == 0 and db.get(LancamentoCaixa, lancamento.id) is None
 
 
 # --------------------------------------------------------------------------

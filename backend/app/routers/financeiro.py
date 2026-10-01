@@ -129,6 +129,15 @@ class FaturaAbastecimentoPatch(BaseModel):
     incluida: bool
 
 
+class PagamentoComissaoIn(BaseModel):
+    competencia: str
+    beneficiario: str = Field(min_length=1, max_length=120)
+    valor: float = Field(gt=0)
+    pago_em: date
+    conta_id: Optional[int] = None
+    observacao: str = Field(default="", max_length=300)
+
+
 @router.get("/caixa")
 def caixa(inicio: date, fim: Optional[date] = None, conta_id: Optional[int] = None, db: Session = Depends(get_db)):
     try:
@@ -274,6 +283,36 @@ def alterar_fatura(autorizacao_id: int, dados: FaturaAbastecimentoPatch, db: Ses
     carta.incluida_fatura = dados.incluida
     db.commit()
     return {"ok": True, "incluida": carta.incluida_fatura}
+
+
+@router.get("/comissoes")
+def listar_comissoes(competencia: str, db: Session = Depends(get_db)):
+    try:
+        return fin.painel_comissoes(db, competencia)
+    except fin.ErroFinanceiro as exc:
+        raise _erro(exc)
+
+
+@router.post("/comissoes/pagamentos")
+def registrar_pagamento_comissao(dados: PagamentoComissaoIn, db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    try:
+        fin.pagar_comissao(db, **dados.model_dump(), usuario=_usuario(user))
+        db.commit()
+        return fin.painel_comissoes(db, dados.competencia)
+    except fin.ErroFinanceiro as exc:
+        db.rollback()
+        raise _erro(exc)
+
+
+@router.delete("/comissoes/pagamentos/{pagamento_id}")
+def remover_pagamento_comissao(pagamento_id: int, db: Session = Depends(get_db)):
+    try:
+        fin.desfazer_comissao(db, pagamento_id)
+        db.commit()
+    except fin.ErroFinanceiro as exc:
+        db.rollback()
+        raise _erro(exc)
+    return {"ok": True}
 
 
 def _aplicar_carregamento(c: CarregamentoFinanceiro, dados: CarregamentoIn):
