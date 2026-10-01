@@ -22,7 +22,7 @@ import TrocarSenhaPage from "./pages/TrocarSenhaPage";
 import WhatsAppPage from "./pages/WhatsAppPage";
 import CaixaPage from "./pages/financeiro/CaixaPage";
 import CarregamentosPage from "./pages/financeiro/CarregamentosPage";
-import { ComissoesPage, DividasPage, FaturasPage, GastosPage, LucroBrutoPage, PagamentosPage, PrecificacaoPage } from "./pages/financeiro/PaginasFinanceiro";
+import { AgenciamentosPage, DividasPage, FaturasPage, GastosPage, LucroBrutoPage, PagamentosPage, PrecificacaoPage } from "./pages/financeiro/PaginasFinanceiro";
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -64,7 +64,8 @@ function AppRoutes() {
         <Route path="/financeiro/precificacao" element={<AdminRoute><PrecificacaoPage /></AdminRoute>} />
         <Route path="/financeiro/pagamentos" element={<AdminRoute><PagamentosPage /></AdminRoute>} />
         <Route path="/financeiro/faturas" element={<AdminRoute><FaturasPage /></AdminRoute>} />
-        <Route path="/financeiro/comissoes" element={<AdminRoute><ComissoesPage /></AdminRoute>} />
+        <Route path="/financeiro/agenciamentos" element={<AdminRoute><AgenciamentosPage /></AdminRoute>} />
+        <Route path="/financeiro/comissoes" element={<Navigate to="/financeiro/agenciamentos" replace />} />
         <Route path="/financeiro/dividas" element={<AdminRoute><DividasPage /></AdminRoute>} />
         {/* Enderecos das versoes anteriores. */}
         <Route path="/financeiro/resultado" element={<Navigate to="/financeiro/lucro-bruto" replace />} />

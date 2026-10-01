@@ -320,6 +320,7 @@ def desfazer_pagamento_fatura(pagamento_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/comissoes")
+@router.get("/agenciamentos")
 def listar_comissoes(competencia: str, db: Session = Depends(get_db)):
     try:
         return fin.painel_comissoes(db, competencia)
@@ -328,6 +329,7 @@ def listar_comissoes(competencia: str, db: Session = Depends(get_db)):
 
 
 @router.post("/comissoes/pagamentos")
+@router.post("/agenciamentos/pagamentos")
 def registrar_pagamento_comissao(dados: PagamentoComissaoIn, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     try:
         fin.pagar_comissao(db, **dados.model_dump(), usuario=_usuario(user))
@@ -339,6 +341,7 @@ def registrar_pagamento_comissao(dados: PagamentoComissaoIn, db: Session = Depen
 
 
 @router.delete("/comissoes/pagamentos/{pagamento_id}")
+@router.delete("/agenciamentos/pagamentos/{pagamento_id}")
 def remover_pagamento_comissao(pagamento_id: int, db: Session = Depends(get_db)):
     try:
         fin.desfazer_comissao(db, pagamento_id)

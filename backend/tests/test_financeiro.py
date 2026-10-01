@@ -279,14 +279,14 @@ def test_fatura_agrupa_autorizacoes_e_pagamento_vai_para_caixa(db):
     assert db.query(PagamentoFaturaAbastecimento).count() == 0 and db.get(LancamentoCaixa, lancamento.id) is None
 
 
-def test_comissoes_sao_puxadas_das_cargas_e_pagamento_vai_para_caixa(db):
+def test_agenciamentos_sao_puxados_das_cargas_e_pagamento_vai_para_caixa(db):
     banco = conta(db)
-    carregamento(db, ctes="5003", contratante="Queiroz", peso=32, comissao_ton=20, data_emissao=date(2026, 9, 11))
-    carregamento(db, ctes="5004", contratante="QUEIROZ", peso=40, comissao_ton=10, data_emissao=date(2026, 9, 15))
+    carregamento(db, ctes="5003", contratante="Queiroz", peso=32, agenciamento_ton=20, data_emissao=date(2026, 9, 11))
+    carregamento(db, ctes="5004", contratante="QUEIROZ", peso=40, agenciamento_ton=10, data_emissao=date(2026, 9, 15))
     db.flush()
 
     painel = fin.painel_comissoes(db, "2026-09")
-    assert painel["resumo"] == {"gerado": 1040, "pago": 0, "pendente": 1040, "cargas": 2, "toneladas": 72, "media_ton": 14.44}
+    assert painel["resumo"] == {"gerado": 1040, "pago": 0, "pendente": 1040, "cargas": 2, "toneladas": 72, "media_ton": 14.44, "beneficiarios": 1}
     assert len(painel["grupos"]) == 1 and painel["grupos"][0]["beneficiario"] == "QUEIROZ"
 
     pagamento = fin.pagar_comissao(
@@ -296,7 +296,7 @@ def test_comissoes_sao_puxadas_das_cargas_e_pagamento_vai_para_caixa(db):
     atualizado = fin.painel_comissoes(db, "2026-09")
     assert atualizado["resumo"]["pago"] == 600 and atualizado["resumo"]["pendente"] == 440
     lancamento = db.get(LancamentoCaixa, pagamento.lancamento_id)
-    assert (lancamento.tipo, lancamento.valor, lancamento.origem) == ("saida", 600, "comissao")
+    assert (lancamento.tipo, lancamento.valor, lancamento.origem) == ("saida", 600, "agenciamento")
 
     fin.desfazer_comissao(db, pagamento.id)
     db.flush()

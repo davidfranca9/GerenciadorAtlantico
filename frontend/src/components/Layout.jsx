@@ -25,7 +25,7 @@ export const NAV_SECTIONS = [
     { to: "/financeiro/precificacao", label: "Precificação CT-e", icon: "chart", description: "Custo fixo por tonelada e frete mínimo", adminOnly: true },
     { to: "/financeiro/pagamentos", label: "Pagamentos", icon: "calendar", description: "Vencimentos do mês, semana a semana", adminOnly: true },
     { to: "/financeiro/faturas", label: "Faturas", icon: "file", description: "Previsão dos abastecimentos após a emissão do CT-e", adminOnly: true },
-    { to: "/financeiro/comissoes", label: "Comissões", icon: "users", description: "Comissões automáticas dos carregamentos e pagamentos", adminOnly: true },
+    { to: "/financeiro/agenciamentos", label: "Agenciamentos", icon: "users", description: "Agenciamentos automáticos dos carregamentos e pagamentos", adminOnly: true },
     { to: "/financeiro/dividas", label: "Dívidas ativas", icon: "coins", description: "Quanto falta e quando se paga cada dívida", adminOnly: true },
   ] },
   { title: "Comunicação", items: [

@@ -596,6 +596,13 @@
 .fin-comissao-saldos span { display: flex; justify-content: space-between; gap: 12px; }
 .fin-comissao-saldos b { color: inherit; font-variant-numeric: tabular-nums; }
 .fin-comissao-grupo .fin-progresso { margin-top: 14px; }
+.fin-agenciamento-ranking { padding: 0; overflow: hidden; }
+.fin-agenciamento-ranking > div { display: flex; flex-direction: column; padding: 4px 18px 14px; }
+.fin-ranking-linha { display: grid; grid-template-columns: minmax(150px, .8fr) minmax(180px, 2fr) 110px; align-items: center; gap: 14px; padding: 9px 0; }
+.fin-ranking-linha > span strong, .fin-ranking-linha > span small { display: block; }
+.fin-ranking-linha > span small { margin-top: 2px; color: var(--muted); font-size: 10px; }
+.fin-ranking-linha > i { height: 8px; overflow: hidden; border-radius: 10px; background: var(--panel-soft); }
+.fin-ranking-linha > i b { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--fin-agenciamento), var(--accent)); }
 .fin-comissao-pagar { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 10px; margin: 14px -17px -17px; padding: 14px 17px; background: var(--panel-soft); border-top: 1px dashed var(--border); }
 .fin-comissao-pagar .fin-editor-acoes, .fin-comissao-pagar .inline-alert { grid-column: 1 / -1; }
 .fin-comissao-historico { padding: 0; overflow: hidden; }
@@ -606,6 +613,7 @@
 .fin-comissao-historico small { color: var(--muted); font-size: 10.5px; }
 @media (max-width: 900px) { .fin-comissao-hero { grid-template-columns: 1fr; } .fin-comissao-hero dl { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 700px) { .fin-comissao-pagar { grid-template-columns: 1fr; } .fin-comissao-historico li { grid-template-columns: 1fr auto; } .fin-comissao-historico li button { grid-column: 1 / -1; justify-self: end; } }
+@media (max-width: 600px) { .fin-ranking-linha { grid-template-columns: 1fr auto; } .fin-ranking-linha > i { grid-column: 1 / -1; grid-row: 2; } }
 .fin-despesa-linha:hover, .fin-grupo li.aberto .fin-despesa-linha { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .fin-despesa-dia { display: flex; flex-direction: column; align-items: center; line-height: 1; font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--muted-soft); }
 .fin-despesa-dia b { font: 800 15px Manrope, sans-serif; color: var(--text); }

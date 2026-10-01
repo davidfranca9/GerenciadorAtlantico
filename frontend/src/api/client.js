@@ -653,6 +653,9 @@ export const financeiro = {
   comissoes: (competencia) => request(`/financeiro/comissoes${consulta({ competencia })}`),
   pagarComissao: (dados) => request("/financeiro/comissoes/pagamentos", { method: "POST", body: dados }),
   desfazerComissao: (id) => request(`/financeiro/comissoes/pagamentos/${id}`, { method: "DELETE" }),
+  agenciamentos: (competencia) => request(`/financeiro/agenciamentos${consulta({ competencia })}`),
+  pagarAgenciamento: (dados) => request("/financeiro/agenciamentos/pagamentos", { method: "POST", body: dados }),
+  desfazerAgenciamento: (id) => request(`/financeiro/agenciamentos/pagamentos/${id}`, { method: "DELETE" }),
   puxarDoBsoft: (competencia, aplicar) =>
     request(`/financeiro/carregamentos/bsoft${consulta({ competencia, aplicar })}`, { method: "POST" }),
   criarCarregamento: (dados) => request("/financeiro/carregamentos", { method: "POST", body: dados }),

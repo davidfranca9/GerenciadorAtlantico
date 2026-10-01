@@ -770,22 +770,22 @@ def painel_comissoes(db: Session, competencia: str) -> dict:
     grupos: dict[str, dict] = {}
     for carga in cargas:
         totais = totais_carregamento(carga)
-        comissao = dinheiro(totais["comissao"])
-        if comissao <= 0:
+        agenciamento = dinheiro(totais["agenciamento"])
+        if agenciamento <= 0:
             continue
         beneficiario = (carga.contratante or "SEM BENEFICIÁRIO").strip().upper()
         linha = {
             "id": carga.id, "data": carga.data_emissao.isoformat() if carga.data_emissao else None,
             "cte": carga.ctes, "motorista": carga.motorista, "destino": carga.destino,
             "peso": round(float(carga.peso or 0), 2), "frete_motorista": totais["frete_motorista"],
-            "comissao_ton": dinheiro(comissao / float(carga.peso)) if carga.peso else None,
-            "comissao": comissao, "beneficiario": beneficiario,
+            "agenciamento_ton": dinheiro(agenciamento / float(carga.peso)) if carga.peso else None,
+            "agenciamento": agenciamento, "beneficiario": beneficiario,
         }
         linhas.append(linha)
         grupo = grupos.setdefault(beneficiario, {"beneficiario": beneficiario, "cargas": 0, "toneladas": 0.0, "gerado": 0.0})
         grupo["cargas"] += 1
         grupo["toneladas"] = round(grupo["toneladas"] + linha["peso"], 2)
-        grupo["gerado"] = dinheiro(grupo["gerado"] + comissao)
+        grupo["gerado"] = dinheiro(grupo["gerado"] + agenciamento)
 
     contas = {c.id: c for c in db.query(ContaBancaria).all()}
     pagamentos = db.query(PagamentoComissao).filter(PagamentoComissao.competencia == competencia).order_by(PagamentoComissao.pago_em.desc(), PagamentoComissao.id.desc()).all()
@@ -814,6 +814,7 @@ def painel_comissoes(db: Session, competencia: str) -> dict:
             "gerado": gerado, "pago": pago, "pendente": dinheiro(max(0, gerado - pago)),
             "cargas": len(linhas), "toneladas": toneladas_total,
             "media_ton": dinheiro(gerado / toneladas_total) if toneladas_total else None,
+            "beneficiarios": len(lista_grupos),
         },
     }
 
@@ -825,14 +826,14 @@ def pagar_comissao(db: Session, *, competencia: str, beneficiario: str, valor: f
     grupo = next((g for g in painel["grupos"] if g["beneficiario"] == nome), None)
     valor = dinheiro(valor)
     if grupo is None:
-        raise ErroFinanceiro("Beneficiário não possui comissão nesse mês")
+        raise ErroFinanceiro("Beneficiário não possui agenciamento nesse mês")
     if valor <= 0 or valor > grupo["pendente"]:
         raise ErroFinanceiro(f"O pagamento deve ser maior que zero e não pode passar de {grupo['pendente']:.2f}")
     lancamento = None
     if conta_id:
         lancamento = criar_lancamento(
             db, conta_id=conta_id, data=pago_em, tipo="saida", valor=valor,
-            descricao=f"Comissão · {nome}", forma="PIX", origem="comissao", usuario=usuario,
+            descricao=f"Agenciamento · {nome}", forma="PIX", origem="agenciamento", usuario=usuario,
         )
     pagamento = PagamentoComissao(
         competencia=competencia, beneficiario=nome, valor=valor, pago_em=pago_em,
@@ -847,7 +848,7 @@ def pagar_comissao(db: Session, *, competencia: str, beneficiario: str, valor: f
 def desfazer_comissao(db: Session, pagamento_id: int) -> None:
     pagamento = db.get(PagamentoComissao, pagamento_id)
     if pagamento is None:
-        raise ErroFinanceiro("Pagamento de comissão não encontrado")
+        raise ErroFinanceiro("Pagamento de agenciamento não encontrado")
     if pagamento.lancamento_id:
         lancamento = db.get(LancamentoCaixa, pagamento.lancamento_id)
         if lancamento:
