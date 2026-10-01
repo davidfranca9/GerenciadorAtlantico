@@ -556,6 +556,7 @@
 .fin-situacao.removida { color: var(--muted); background: var(--panel-soft); }
 .fin-faturas tr.removida { opacity: .55; }
 .fin-faturas td:last-child button { min-height: 28px; padding: 0 10px; font-size: 11px; }
+.fin-data-abastecimento { width: 138px; height: 32px; padding: 0 8px; border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); background: color-mix(in srgb, var(--accent) 4%, var(--panel)); font-size: 11px; }
 .fin-fatura-controles { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .fin-fatura-controles .fin-nav-periodo strong { min-width: 135px; }
 .fin-faturas-lista { display: flex; flex-direction: column; }

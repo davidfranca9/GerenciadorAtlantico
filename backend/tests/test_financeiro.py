@@ -244,10 +244,12 @@ def test_autorizacao_pode_sair_e_voltar_para_previsao_da_fatura(db):
     assert removida["totais"]["removidas"] == 1
     assert removida["itens"][0]["situacao"] == "removida"
 
-    http.patch(f"/financeiro/faturas/{carta.id}", json={"incluida": True})
+    http.patch(f"/financeiro/faturas/{carta.id}", json={"incluida": True, "data_abastecimento": "2026-09-13"})
     incluida = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
     assert incluida["totais"]["previsto"] == 1500
     assert incluida["itens"][0]["incluida"] is True
+    assert incluida["itens"][0]["data_abastecimento"] == "2026-09-13"
+    assert incluida["faturas"][0]["chave"] == "abastecimentos-2026-09-13"
 
 
 def test_fatura_agrupa_autorizacoes_e_pagamento_vai_para_caixa(db):
@@ -267,7 +269,7 @@ def test_fatura_agrupa_autorizacoes_e_pagamento_vai_para_caixa(db):
     assert painel["faturas"][0]["vencimento"] == "2026-10-02"
 
     pagamento = fin.pagar_fatura_abastecimento(
-        db, competencia="2026-10", chave_fatura="autorizacoes-2026-09-10", pago_em=date(2026, 10, 2),
+        db, competencia="2026-10", chave_fatura="abastecimentos-2026-09-10", pago_em=date(2026, 10, 2),
         valor=None, conta_id=banco.id, forma="BOLETO",
     )
     db.flush()

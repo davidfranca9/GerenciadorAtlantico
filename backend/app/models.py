@@ -366,6 +366,8 @@ class CartaFreteEnviada(Base):
     erro: Mapped[str] = mapped_column(String(500), default="")
     # Nem toda autorização vira abastecimento; pode sair da previsão sem ser apagada.
     incluida_fatura: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Confirmada manualmente; enquanto vazia, a fatura usa a data da autorizacao.
+    data_abastecimento: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

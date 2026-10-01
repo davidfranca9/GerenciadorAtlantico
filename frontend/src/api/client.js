@@ -647,7 +647,7 @@ export const financeiro = {
   resultado: (competencia) => request(`/financeiro/resultado${consulta({ competencia })}`),
   carregamentos: (competencia) => request(`/financeiro/carregamentos${consulta({ competencia })}`),
   faturas: (competencia) => request(`/financeiro/faturas${consulta({ competencia })}`),
-  alterarFatura: (id, incluida) => request(`/financeiro/faturas/${id}`, { method: "PATCH", body: { incluida } }),
+  alterarFatura: (id, incluida, dataAbastecimento = null) => request(`/financeiro/faturas/${id}`, { method: "PATCH", body: { incluida, data_abastecimento: dataAbastecimento } }),
   pagarFatura: (dados) => request("/financeiro/faturas/pagamentos", { method: "POST", body: dados }),
   desfazerPagamentoFatura: (id) => request(`/financeiro/faturas/pagamentos/${id}`, { method: "DELETE" }),
   comissoes: (competencia) => request(`/financeiro/comissoes${consulta({ competencia })}`),

@@ -371,7 +371,16 @@ export function FaturasPage() {
   async function alterar(item) {
     setAlterando(item.id);
     try {
-      await api.alterarFatura(item.id, !item.incluida);
+      await api.alterarFatura(item.id, !item.incluida, item.data_abastecimento);
+      await carregar();
+    } finally {
+      setAlterando(null);
+    }
+  }
+  async function alterarDataAbastecimento(item, data) {
+    setAlterando(item.id);
+    try {
+      await api.alterarFatura(item.id, item.incluida, data || null);
       await carregar();
     } finally {
       setAlterando(null);
@@ -403,7 +412,7 @@ export function FaturasPage() {
           {faturasVisiveis.length === 0 ? <div className="fin-sem-itens"><Icon name="file" size={22} /><p>Nenhuma fatura prevista {visualizacao === "semana" ? "nesta semana" : "neste mês"}.</p></div> : <div className="fin-faturas-lista">
             {faturasVisiveis.map((fatura) => <article key={fatura.chave} className={`fin-fatura-card ${fatura.pagamento ? "paga" : ""}`}>
               <button type="button" className="fin-fatura-resumo" onClick={() => setFaturaAberta(faturaAberta === fatura.chave ? null : fatura.chave)}>
-                <span><small>Fatura prevista</small><strong>{fatura.vencimento ? new Date(`${fatura.vencimento}T12:00:00`).toLocaleDateString("pt-BR") : "Aguardando CT-e"}</strong></span>
+                <span><small>Fatura prevista</small><strong>{fatura.vencimento ? new Date(`${fatura.vencimento}T12:00:00`).toLocaleDateString("pt-BR") : "Aguardando CT-e"}</strong><small>Lote de {new Date(`${fatura.data_lote}T12:00:00`).toLocaleDateString("pt-BR")}</small></span>
                 <span><small>Abastecimentos</small><strong>{fatura.quantidade}</strong></span>
                 <span><small>Situação</small><b className={`fin-situacao ${fatura.situacao}`}>{SITUACAO_FATURA[fatura.situacao]}</b></span>
                 <Dinheiro valor={fatura.valor} tamanho="s" />
@@ -412,7 +421,7 @@ export function FaturasPage() {
               {faturaAberta === fatura.chave && <div className="fin-fatura-conteudo">
                 {fatura.pagamento ? <div className="fin-fatura-baixa"><span><Icon name="check" size={15} /> Pago em {new Date(`${fatura.pagamento.pago_em}T12:00:00`).toLocaleDateString("pt-BR")} pela conta {fatura.pagamento.conta} · {brl(fatura.pagamento.valor)}</span><button type="button" className="btn-ghost perigo" onClick={() => desfazer(fatura)}>Desfazer pagamento</button></div> : fatura.vencimento && <button type="button" className="btn-primary fin-fatura-pagar" onClick={() => setPagando(pagando === fatura.chave ? null : fatura.chave)}><Icon name="check" size={14} /> Registrar pagamento</button>}
                 {pagando === fatura.chave && !fatura.pagamento && <FormPagamentoFatura fatura={fatura} contas={dados.contas} competencia={competencia} aoSalvar={pagar} aoCancelar={() => setPagando(null)} />}
-                <div className="fin-faturas-tabela"><table><thead><tr><th>Autorização</th><th>Motorista</th><th>CT-e</th><th>Emissão</th><th>Valor</th><th></th></tr></thead><tbody>{fatura.itens.map((item) => <tr key={item.id} className={!item.incluida ? "removida" : ""}><td>{item.autorizacao || `#${item.id}`}</td><td><strong>{item.motorista}</strong></td><td>{item.cte || "—"}</td><td>{item.data_cte ? new Date(`${item.data_cte}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td><Dinheiro valor={item.valor} tamanho="xs" /></td><td><button type="button" className={item.incluida ? "btn-ghost" : "btn-secondary"} disabled={alterando === item.id || Boolean(fatura.pagamento)} onClick={() => alterar(item)}>{alterando === item.id ? "..." : item.incluida ? "Remover" : "Incluir"}</button></td></tr>)}</tbody></table></div>
+                <div className="fin-faturas-tabela"><table><thead><tr><th>Autorização</th><th>Motorista</th><th>Emissão autorização</th><th>CT-e</th><th>Emissão CT-e</th><th>Abasteceu em</th><th>Valor</th><th></th></tr></thead><tbody>{fatura.itens.map((item) => <tr key={item.id} className={!item.incluida ? "removida" : ""}><td>{item.autorizacao || `#${item.id}`}</td><td><strong>{item.motorista}</strong></td><td>{new Date(`${item.data_autorizacao}T12:00:00`).toLocaleDateString("pt-BR")}</td><td>{item.cte || "—"}</td><td>{item.data_cte ? new Date(`${item.data_cte}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td><input className="fin-data-abastecimento" type="date" value={item.data_abastecimento || item.data_autorizacao} disabled={alterando === item.id || Boolean(fatura.pagamento)} onChange={(e) => alterarDataAbastecimento(item, e.target.value)} title={item.data_abastecimento ? "Data de abastecimento confirmada" : "Data sugerida pela autorização; altere se o motorista abasteceu em outro dia"} /></td><td><Dinheiro valor={item.valor} tamanho="xs" /></td><td><button type="button" className={item.incluida ? "btn-ghost" : "btn-secondary"} disabled={alterando === item.id || Boolean(fatura.pagamento)} onClick={() => alterar(item)}>{alterando === item.id ? "..." : item.incluida ? "Remover" : "Incluir"}</button></td></tr>)}</tbody></table></div>
               </div>}
             </article>)}
           </div>}

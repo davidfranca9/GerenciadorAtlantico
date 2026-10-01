@@ -673,6 +673,7 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
             "valor": valor_br(carta.valor_frete), "data_autorizacao": data_autorizacao.isoformat(),
             "cte": carga.ctes if carga else "", "data_cte": carga.data_emissao.isoformat() if carga else None,
             "vencimento": vencimento.isoformat() if vencimento else None, "situacao": situacao, "incluida": incluida,
+            "data_abastecimento": carta.data_abastecimento.isoformat() if carta.data_abastecimento else None,
         })
 
     itens.sort(key=lambda i: (i["vencimento"] is None, i["vencimento"] or "9999", i["motorista"]))
@@ -688,9 +689,10 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
         # A fatura do posto reune as autorizacoes emitidas no mesmo lote/dia.
         # O CT-e pode sair no dia seguinte (como no caso do Mauro), sem criar
         # uma fatura separada para a mesma remessa de autorizacoes.
-        chave = f"autorizacoes-{item['data_autorizacao']}"
+        data_lote = item["data_abastecimento"] or item["data_autorizacao"]
+        chave = f"abastecimentos-{data_lote}"
         grupo = grupos.setdefault(chave, {
-            "chave": chave, "vencimento": None, "itens": [], "valor": 0.0,
+            "chave": chave, "data_lote": data_lote, "vencimento": None, "itens": [], "valor": 0.0,
             "quantidade": 0, "removidas": 0, "situacao": "sem_cte" if not item["vencimento"] else item["situacao"],
             "pagamento": None,
         })
@@ -705,7 +707,11 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
     for chave, grupo in grupos.items():
         # Compatibilidade com baixas feitas antes do agrupamento por lote,
         # quando a chave da fatura era somente a data de vencimento.
-        pagamento = pagamentos.get(chave) or pagamentos.get(grupo["vencimento"] or "")
+        pagamento = (
+            pagamentos.get(chave)
+            or pagamentos.get(f"autorizacoes-{grupo['data_lote']}")
+            or pagamentos.get(grupo["vencimento"] or "")
+        )
         if pagamento:
             conta = contas.get(pagamento.conta_id)
             grupo["situacao"] = "paga"

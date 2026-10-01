@@ -127,6 +127,7 @@ class LancamentoPatch(BaseModel):
 
 class FaturaAbastecimentoPatch(BaseModel):
     incluida: bool
+    data_abastecimento: Optional[date] = None
 
 
 class PagamentoFaturaAbastecimentoIn(BaseModel):
@@ -290,8 +291,9 @@ def alterar_fatura(autorizacao_id: int, dados: FaturaAbastecimentoPatch, db: Ses
     if carta is None:
         raise HTTPException(status_code=404, detail="Autorização de abastecimento não encontrada")
     carta.incluida_fatura = dados.incluida
+    carta.data_abastecimento = dados.data_abastecimento
     db.commit()
-    return {"ok": True, "incluida": carta.incluida_fatura}
+    return {"ok": True, "incluida": carta.incluida_fatura, "data_abastecimento": carta.data_abastecimento}
 
 
 @router.post("/faturas/pagamentos")
