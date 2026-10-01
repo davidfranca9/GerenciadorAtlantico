@@ -553,6 +553,9 @@
 .fin-situacao.prevista { color: var(--accent); background: var(--row-selected); }
 .fin-situacao.vencida { color: var(--fin-saida); background: var(--fin-saida-fundo); }
 .fin-situacao.sem_cte { color: var(--muted); background: var(--panel-soft); }
+.fin-situacao.removida { color: var(--muted); background: var(--panel-soft); }
+.fin-faturas tr.removida { opacity: .55; }
+.fin-faturas td:last-child button { min-height: 28px; padding: 0 10px; font-size: 11px; }
 .fin-despesa-linha:hover, .fin-grupo li.aberto .fin-despesa-linha { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .fin-despesa-dia { display: flex; flex-direction: column; align-items: center; line-height: 1; font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--muted-soft); }
 .fin-despesa-dia b { font: 800 15px Manrope, sans-serif; color: var(--text); }

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import require_admin
 from ..database import get_db
-from ..models import (CarregamentoFinanceiro, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa,
+from ..models import (CarregamentoFinanceiro, CartaFreteEnviada, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa,
                       MetaMensal, PagamentoAgenda, User)
 from ..servicos import financeiro as fin
 from ..servicos import financeiro_importacao as importacao
@@ -123,6 +123,10 @@ class LancamentoPatch(BaseModel):
     descricao: Optional[str] = Field(default=None, max_length=255)
     forma: Optional[str] = None
     conta_id: Optional[int] = None
+
+
+class FaturaAbastecimentoPatch(BaseModel):
+    incluida: bool
 
 
 @router.get("/caixa")
@@ -260,6 +264,16 @@ def listar_faturas(competencia: str, db: Session = Depends(get_db)):
         return fin.previsao_faturas_abastecimento(db, competencia)
     except fin.ErroFinanceiro as exc:
         raise _erro(exc)
+
+
+@router.patch("/faturas/{autorizacao_id}")
+def alterar_fatura(autorizacao_id: int, dados: FaturaAbastecimentoPatch, db: Session = Depends(get_db)):
+    carta = db.get(CartaFreteEnviada, autorizacao_id)
+    if carta is None:
+        raise HTTPException(status_code=404, detail="Autorização de abastecimento não encontrada")
+    carta.incluida_fatura = dados.incluida
+    db.commit()
+    return {"ok": True, "incluida": carta.incluida_fatura}
 
 
 def _aplicar_carregamento(c: CarregamentoFinanceiro, dados: CarregamentoIn):

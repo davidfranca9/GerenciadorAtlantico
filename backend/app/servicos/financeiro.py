@@ -664,23 +664,25 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
             continue
         if not vencimento and competencia != competencia_de(hoje):
             continue
-        situacao = "sem_cte" if not vencimento else "vencida" if vencimento < hoje else "hoje" if vencimento == hoje else "prevista"
+        incluida = carta.incluida_fatura is not False
+        situacao = "removida" if not incluida else "sem_cte" if not vencimento else "vencida" if vencimento < hoje else "hoje" if vencimento == hoje else "prevista"
         itens.append({
             "id": carta.id, "autorizacao": carta.autorizacao_num, "motorista": carta.condutor,
             "valor": valor_br(carta.valor_frete), "data_autorizacao": data_autorizacao.isoformat(),
             "cte": carga.ctes if carga else "", "data_cte": carga.data_emissao.isoformat() if carga else None,
-            "vencimento": vencimento.isoformat() if vencimento else None, "situacao": situacao,
+            "vencimento": vencimento.isoformat() if vencimento else None, "situacao": situacao, "incluida": incluida,
         })
 
     itens.sort(key=lambda i: (i["vencimento"] is None, i["vencimento"] or "9999", i["motorista"]))
-    previstos = [i for i in itens if i["vencimento"]]
+    incluidos = [i for i in itens if i["incluida"]]
+    previstos = [i for i in incluidos if i["vencimento"]]
     return {
         "competencia": competencia, "prazo_dias": 20, "itens": itens,
         "totais": {
             "previsto": dinheiro(sum(i["valor"] for i in previstos)),
             "vencido": dinheiro(sum(i["valor"] for i in previstos if i["situacao"] == "vencida")),
-            "sem_cte": dinheiro(sum(i["valor"] for i in itens if i["situacao"] == "sem_cte")),
-            "quantidade": len(itens),
+            "sem_cte": dinheiro(sum(i["valor"] for i in incluidos if i["situacao"] == "sem_cte")),
+            "quantidade": len(incluidos), "removidas": len(itens) - len(incluidos),
         },
     }
 

@@ -292,24 +292,34 @@ export function PagamentosPage() {
 }
 
 const SITUACAO_FATURA = {
-  prevista: "Prevista", hoje: "Vence hoje", vencida: "Vencida", sem_cte: "Aguardando CT-e",
+  prevista: "Prevista", hoje: "Vence hoje", vencida: "Vencida", sem_cte: "Aguardando CT-e", removida: "Fora da fatura",
 };
 
 export function FaturasPage() {
   const [competencia, setCompetencia] = useCompetencia();
   const { dados, erro, carregar } = useDados(() => api.faturas(competencia), competencia);
+  const [alterando, setAlterando] = useState(null);
+  async function alterar(item) {
+    setAlterando(item.id);
+    try {
+      await api.alterarFatura(item.id, !item.incluida);
+      await carregar();
+    } finally {
+      setAlterando(null);
+    }
+  }
   return (
     <Moldura competencia={competencia} aoMudarMes={setCompetencia} erro={erro} carregando={!dados} aoImportar={carregar}>
       {dados && <>
         <section className="fin-resumo-contas">
-          <div className="card"><span className="eyebrow">PREVISÃO DO MÊS</span><Dinheiro valor={dados.totais.previsto} tamanho="l" /><small>{dados.totais.quantidade} autorizações · prazo padrão de {dados.prazo_dias} dias após o CT-e</small></div>
+          <div className="card"><span className="eyebrow">PREVISÃO DO MÊS</span><Dinheiro valor={dados.totais.previsto} tamanho="l" /><small>{dados.totais.quantidade} autorizações incluídas · prazo padrão de {dados.prazo_dias} dias após o CT-e{dados.totais.removidas ? ` · ${dados.totais.removidas} fora da fatura` : ""}</small></div>
           <div className={`card ${dados.totais.vencido > 0 ? "alerta" : ""}`}><span className="eyebrow">VENCIDO</span><Dinheiro valor={dados.totais.vencido} tamanho="l" /><small>Valores cuja previsão já passou</small></div>
           <div className="card"><span className="eyebrow">AGUARDANDO CT-e</span><Dinheiro valor={dados.totais.sem_cte} tamanho="l" /><small>Sem data de vencimento até o CT-e ser liberado</small></div>
         </section>
         <section className="card fin-faturas">
           <header className="fin-extrato-topo"><div><h3>Faturas de abastecimento</h3><p>Previsão calculada automaticamente: emissão do CT-e + {dados.prazo_dias} dias</p></div></header>
-          {dados.itens.length === 0 ? <div className="fin-sem-itens"><Icon name="file" size={22} /><p>Nenhuma fatura prevista para este mês.</p></div> : <div className="fin-faturas-tabela"><table><thead><tr><th>Previsão</th><th>Autorização</th><th>Motorista</th><th>CT-e</th><th>Emissão</th><th>Situação</th><th>Valor</th></tr></thead><tbody>
-            {dados.itens.map((item) => <tr key={item.id}><td>{item.vencimento ? new Date(`${item.vencimento}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td>{item.autorizacao || `#${item.id}`}</td><td><strong>{item.motorista}</strong></td><td>{item.cte || "—"}</td><td>{item.data_cte ? new Date(`${item.data_cte}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td><span className={`fin-situacao ${item.situacao}`}>{SITUACAO_FATURA[item.situacao]}</span></td><td><Dinheiro valor={item.valor} tamanho="xs" /></td></tr>)}
+          {dados.itens.length === 0 ? <div className="fin-sem-itens"><Icon name="file" size={22} /><p>Nenhuma fatura prevista para este mês.</p></div> : <div className="fin-faturas-tabela"><table><thead><tr><th>Previsão</th><th>Autorização</th><th>Motorista</th><th>CT-e</th><th>Emissão</th><th>Situação</th><th>Valor</th><th></th></tr></thead><tbody>
+            {dados.itens.map((item) => <tr key={item.id} className={!item.incluida ? "removida" : ""}><td>{item.vencimento ? new Date(`${item.vencimento}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td>{item.autorizacao || `#${item.id}`}</td><td><strong>{item.motorista}</strong></td><td>{item.cte || "—"}</td><td>{item.data_cte ? new Date(`${item.data_cte}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td><span className={`fin-situacao ${item.situacao}`}>{SITUACAO_FATURA[item.situacao]}</span></td><td><Dinheiro valor={item.valor} tamanho="xs" /></td><td><button type="button" className={item.incluida ? "btn-ghost" : "btn-secondary"} disabled={alterando === item.id} onClick={() => alterar(item)}>{alterando === item.id ? "..." : item.incluida ? "Remover" : "Incluir"}</button></td></tr>)}
           </tbody></table></div>}
         </section>
       </>}

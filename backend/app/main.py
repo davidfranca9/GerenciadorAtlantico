@@ -82,6 +82,7 @@ def on_startup():
             conn.execute(text("ALTER TABLE cartas_frete_enviadas ADD COLUMN IF NOT EXISTS enviada_em TIMESTAMP"))
             conn.execute(text("ALTER TABLE cartas_frete_enviadas ADD COLUMN IF NOT EXISTS dados TEXT DEFAULT ''"))
             conn.execute(text("ALTER TABLE cartas_frete_enviadas ADD COLUMN IF NOT EXISTS erro VARCHAR(500) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE cartas_frete_enviadas ADD COLUMN IF NOT EXISTS incluida_fatura BOOLEAN DEFAULT TRUE"))
             # Carta frete virou Autorizacao de Abastecimento, e a pagina mudou de endereco.
             conn.execute(text(
                 "UPDATE users SET paginas_bloqueadas = REPLACE(paginas_bloqueadas, '/carta-frete', '/autorizacao-abastecimento') "

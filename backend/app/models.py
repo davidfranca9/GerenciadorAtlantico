@@ -363,6 +363,8 @@ class CartaFreteEnviada(Base):
     enviada_em: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     dados: Mapped[str] = mapped_column(Text, default="")
     erro: Mapped[str] = mapped_column(String(500), default="")
+    # Nem toda autorização vira abastecimento; pode sair da previsão sem ser apagada.
+    incluida_fatura: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

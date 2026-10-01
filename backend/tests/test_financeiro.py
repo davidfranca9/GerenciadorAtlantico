@@ -231,6 +231,25 @@ def test_autorizacao_sem_cte_fica_pendente_sem_inventar_vencimento(db):
     assert outubro["itens"][0]["situacao"] == "sem_cte"
 
 
+def test_autorizacao_pode_sair_e_voltar_para_previsao_da_fatura(db):
+    carta = CartaFreteEnviada(data="10/09/2026", condutor="JOÃO", valor_frete="1.500,00", status="enviada")
+    db.add(carta)
+    carregamento(db, ctes="5053", motorista="JOÃO", data_emissao=date(2026, 9, 12))
+    db.flush()
+    http = cliente_http(db)
+
+    assert http.patch(f"/financeiro/faturas/{carta.id}", json={"incluida": False}).status_code == 200
+    removida = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
+    assert removida["totais"]["previsto"] == 0
+    assert removida["totais"]["removidas"] == 1
+    assert removida["itens"][0]["situacao"] == "removida"
+
+    http.patch(f"/financeiro/faturas/{carta.id}", json={"incluida": True})
+    incluida = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
+    assert incluida["totais"]["previsto"] == 1500
+    assert incluida["itens"][0]["incluida"] is True
+
+
 # --------------------------------------------------------------------------
 # Agenda de pagamentos
 # --------------------------------------------------------------------------
