@@ -628,6 +628,38 @@ def resultado_mensal(db: Session, competencia: str, hoje: Optional[date] = None)
     }
 
 
+def _pascoa(ano: int) -> date:
+    """Algoritmo gregoriano para os feriados moveis usados na operacao."""
+    a, b, c = ano % 19, ano // 100, ano % 100
+    d, e = b // 4, b % 4
+    f, g = (b + 8) // 25, (b - ((b + 8) // 25) + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = c // 4, c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    mes = (h + l - 7 * m + 114) // 31
+    dia = ((h + l - 7 * m + 114) % 31) + 1
+    return date(ano, mes, dia)
+
+
+def _feriados_operacao(ano: int) -> set[date]:
+    pascoa = _pascoa(ano)
+    fixos = ((1, 1), (4, 21), (5, 1), (6, 24), (7, 2), (9, 7), (10, 12), (11, 2), (11, 15), (11, 20), (12, 25))
+    return {date(ano, mes, dia) for mes, dia in fixos} | {
+        pascoa - timedelta(days=48), pascoa - timedelta(days=47),  # carnaval
+        pascoa - timedelta(days=2),                               # sexta-feira santa
+        pascoa + timedelta(days=60),                              # corpus christi
+    }
+
+
+def data_lote_abastecimento(valor: str | date) -> date:
+    """Fim de semana/feriado pertence ao lote do ultimo dia util."""
+    data = date.fromisoformat(valor) if isinstance(valor, str) else valor
+    while data.weekday() >= 5 or data in _feriados_operacao(data.year):
+        data -= timedelta(days=1)
+    return data
+
+
 def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional[date] = None) -> dict:
     """Autorizações de abastecimento previstas para faturar 20 dias após o CT-e."""
     hoje = hoje or date.today()
@@ -689,14 +721,17 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
         # A fatura do posto reune as autorizacoes emitidas no mesmo lote/dia.
         # O CT-e pode sair no dia seguinte (como no caso do Mauro), sem criar
         # uma fatura separada para a mesma remessa de autorizacoes.
-        data_lote = item["data_abastecimento"] or item["data_autorizacao"]
+        data_origem_lote = item["data_abastecimento"] or item["data_autorizacao"]
+        data_lote = data_lote_abastecimento(data_origem_lote).isoformat()
         chave = f"abastecimentos-{data_lote}"
         grupo = grupos.setdefault(chave, {
             "chave": chave, "data_lote": data_lote, "vencimento": None, "itens": [], "valor": 0.0,
             "quantidade": 0, "removidas": 0, "situacao": "sem_cte" if not item["vencimento"] else item["situacao"],
-            "pagamento": None,
+            "pagamento": None, "datas_origem": [],
         })
         grupo["itens"].append(item)
+        if data_origem_lote not in grupo["datas_origem"]:
+            grupo["datas_origem"].append(data_origem_lote)
         if item["incluida"]:
             grupo["valor"] = dinheiro(grupo["valor"] + item["valor"])
             grupo["quantidade"] += 1
@@ -711,6 +746,7 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
             pagamentos.get(chave)
             or pagamentos.get(f"autorizacoes-{grupo['data_lote']}")
             or pagamentos.get(grupo["vencimento"] or "")
+            or next((pagamentos.get(f"abastecimentos-{d}") for d in grupo["datas_origem"] if pagamentos.get(f"abastecimentos-{d}")), None)
         )
         if pagamento:
             conta = contas.get(pagamento.conta_id)

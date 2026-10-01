@@ -249,7 +249,14 @@ def test_autorizacao_pode_sair_e_voltar_para_previsao_da_fatura(db):
     assert incluida["totais"]["previsto"] == 1500
     assert incluida["itens"][0]["incluida"] is True
     assert incluida["itens"][0]["data_abastecimento"] == "2026-09-13"
-    assert incluida["faturas"][0]["chave"] == "abastecimentos-2026-09-13"
+    assert incluida["faturas"][0]["chave"] == "abastecimentos-2026-09-11"
+
+
+def test_fim_de_semana_e_feriado_entram_no_lote_do_ultimo_dia_util():
+    assert fin.data_lote_abastecimento("2026-09-11") == date(2026, 9, 11)  # sexta
+    assert fin.data_lote_abastecimento("2026-09-12") == date(2026, 9, 11)  # sabado
+    assert fin.data_lote_abastecimento("2026-09-13") == date(2026, 9, 11)  # domingo
+    assert fin.data_lote_abastecimento("2026-09-07") == date(2026, 9, 4)   # independencia, segunda
 
 
 def test_fatura_agrupa_autorizacoes_e_pagamento_vai_para_caixa(db):
