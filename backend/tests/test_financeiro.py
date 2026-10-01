@@ -24,14 +24,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.auth import get_current_user, require_admin  # noqa: E402
 from app.database import get_db  # noqa: E402
 from app.models import (  # noqa: E402
-    CarregamentoFinanceiro, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa, MetaMensal, PagamentoAgenda,
+    CarregamentoFinanceiro, CartaFreteEnviada, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa, MetaMensal, PagamentoAgenda,
 )
 from app.routers import financeiro as rotas  # noqa: E402
 from app.servicos import financeiro as fin  # noqa: E402
 from app.servicos import financeiro_importacao as imp  # noqa: E402
 from tests.apoio_documentos import banco_em_memoria  # noqa: E402
 
-TABELAS = (ContaBancaria, LancamentoCaixa, MetaMensal, CarregamentoFinanceiro, Despesa, ContaAvulsa, PagamentoAgenda, Divida)
+TABELAS = (ContaBancaria, LancamentoCaixa, MetaMensal, CarregamentoFinanceiro, CartaFreteEnviada, Despesa, ContaAvulsa, PagamentoAgenda, Divida)
 DIA = date(2026, 9, 15)
 
 
@@ -144,6 +144,17 @@ def test_cancelado_nao_entra_na_conta(db):
     assert (resumo["carregamentos"], resumo["cancelados"], resumo["toneladas"], resumo["lucro_bruto"]) == (1, 1, 32, 1600)
 
 
+def test_contratante_ignora_caixa_e_aparece_em_maiusculo(db):
+    carregamento(db, ctes="5003", contratante="Queiroz")
+    carregamento(db, ctes="5004", contratante="  QUEIROZ  ", peso=30)
+
+    resultado = fin.resultado_mensal(db, "2026-09", hoje=date(2026, 9, 16))
+
+    assert len(resultado["por_contratante"]) == 1
+    assert resultado["por_contratante"][0]["nome"] == "QUEIROZ"
+    assert resultado["por_contratante"][0]["carregamentos"] == 2
+
+
 def test_meta_precificacao_e_cascata(db):
     carregamento(db)
     db.add(MetaMensal(competencia="2026-09", meta_toneladas=3000))
@@ -161,6 +172,63 @@ def test_meta_precificacao_e_cascata(db):
     assert r["precificacao"] == {"custo_fixo": 1600, "por_tonelada_atual": 50, "por_tonelada_na_meta": 0.53,
                                  "ponto_de_equilibrio_ton": 32.0}
     assert [p["valor"] for p in r["cascata"]] == [8640, -6720, -320, 0, 1600, -800, 800, -500, 300]
+
+
+def test_tarifa_do_caixa_entra_no_grupo_de_taxas_e_no_lucro_real(db):
+    carregamento(db)
+    banco = conta(db)
+    lancar(db, banco, date(2026, 9, 15), "saida", 45.90, descricao="Tarifa de manutenção", forma="TARIFA")
+    # Fora do mês não entra no resultado de setembro.
+    lancar(db, banco, date(2026, 10, 1), "saida", 20, descricao="Outra tarifa", forma="TARIFA")
+
+    resultado = fin.resultado_mensal(db, "2026-09", hoje=date(2026, 9, 16))
+
+    assert resultado["despesas"]["tarifas"] == 45.90
+    assert resultado["despesas"]["itens_tarifas"] == [
+        {"id": 1, "data": "2026-09-15", "descricao": "Tarifa de manutenção", "valor": 45.90}
+    ]
+    assert resultado["despesas"]["empresa"] == 45.90
+    assert resultado["lucro_real"] == 1554.10
+    assert resultado["precificacao"]["custo_fixo"] == 0
+
+
+def test_divida_ativa_substitui_copia_antiga_em_gastos(db):
+    db.add(Despesa(escopo="pessoal", grupo="Dívidas", descricao="Rodrigo", valor=9999, competencia_inicio="2026-09"))
+    db.add(Divida(credor="Rodrigo", valor_total=70000, parcelas_total=7, parcelas_pagas=3, valor_parcela=10000))
+    db.flush()
+
+    resultado = fin.resultado_mensal(db, "2026-09", hoje=date(2026, 9, 16))
+
+    assert resultado["despesas"]["escopo_dividas"] == "pessoal"
+    assert resultado["despesas"]["pessoal"] == 10000
+    assert resultado["despesas"]["itens_dividas"][0]["credor"] == "Rodrigo"
+    assert fin.despesas_do_mes(db, "2026-09") == []
+
+
+def test_fatura_de_abastecimento_vence_vinte_dias_depois_do_cte(db):
+    db.add(CartaFreteEnviada(data="10/09/2026", condutor="JOÃO DA SILVA", valor_frete="R$ 1.500,00", autorizacao_num="AUT-9", status="enviada"))
+    carregamento(db, ctes="5053", motorista="Joao da Silva", data_emissao=date(2026, 9, 12))
+    db.flush()
+
+    outubro = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
+
+    assert outubro["prazo_dias"] == 20
+    assert outubro["totais"]["previsto"] == 1500
+    assert outubro["itens"][0]["cte"] == "5053"
+    assert outubro["itens"][0]["data_cte"] == "2026-09-12"
+    assert outubro["itens"][0]["vencimento"] == "2026-10-02"
+    assert outubro["itens"][0]["situacao"] == "prevista"
+
+
+def test_autorizacao_sem_cte_fica_pendente_sem_inventar_vencimento(db):
+    db.add(CartaFreteEnviada(data="01/10/2026", condutor="SEM CARGA", valor_frete="900,00", status="enviada"))
+    db.flush()
+
+    outubro = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
+
+    assert outubro["totais"]["sem_cte"] == 900
+    assert outubro["itens"][0]["vencimento"] is None
+    assert outubro["itens"][0]["situacao"] == "sem_cte"
 
 
 # --------------------------------------------------------------------------
@@ -340,7 +408,12 @@ def test_controle_de_carregamentos_completo(db):
     r = fin.resultado_mensal(db, "2026-09", hoje=date(2026, 9, 16))
     # 5003: 32x(270-210-10)=1.600; 5004: 32x340 - 9.000 - 320 = 1.560
     assert (r["resumo"]["toneladas"], r["resumo"]["lucro_bruto"], r["meta"]["toneladas"]) == (64, 3160, 3000)
-    assert (r["despesas"]["empresa"], r["despesas"]["pessoal"], r["precificacao"]["custo_fixo"]) == (5197.92, 950, 4614.21)
+    # Gastos usa as mesmas dívidas ativas da página lateral: duas parcelas
+    # de R$ 10.000 entram na empresa (padrão quando não havia grupo antigo).
+    assert (r["despesas"]["empresa"], r["despesas"]["pessoal"], r["precificacao"]["custo_fixo"]) == (25197.92, 950, 4614.21)
+    assert r["despesas"]["dividas_ativas"] == 20000
+    assert r["despesas"]["escopo_dividas"] == "empresa"
+    assert [d["credor"] for d in r["despesas"]["itens_dividas"]] == ["Rodrigo", "Hugo"]
 
     buonny = db.query(Despesa).filter(Despesa.descricao == "Acordo Buonny").order_by(Despesa.parcela_inicial).all()
     assert [(d.parcela_inicial, d.parcelas_total, d.dia_vencimento) for d in buonny] == [(5, 6, 15), (6, 6, 30)]
@@ -427,6 +500,21 @@ def test_parcela_paga_empurra_a_data_e_quitar_limpa(db):
     assert http.post(f"/financeiro/dividas/{van['id']}/parcela-paga").json()["proximo_pagamento"] == "2026-10-30"
     ultima = http.post(f"/financeiro/dividas/{van['id']}/parcela-paga").json()
     assert ultima["quitada"] is True and ultima["proximo_pagamento"] is None
+
+
+def test_divida_congelada_pausa_parcela_e_nao_entra_em_gastos(db):
+    http = cliente_http(db)
+    divida = http.post("/financeiro/dividas", json={
+        "credor": "Van", "valor_total": 30000, "parcelas_total": 10, "parcelas_pagas": 2,
+        "valor_parcela": 3000, "proximo_pagamento": "2026-09-30", "congelada": True,
+    }).json()
+
+    assert divida["congelada"] is True
+    bloqueado = http.post(f"/financeiro/dividas/{divida['id']}/parcela-paga")
+    assert bloqueado.status_code == 400
+    resultado = fin.resultado_mensal(db, "2026-09", hoje=date(2026, 9, 16))
+    assert resultado["despesas"]["dividas_ativas"] == 0
+    assert resultado["despesas"]["itens_dividas"] == []
 
 
 def test_dividas_em_aberto_na_ordem_do_pagamento(db):

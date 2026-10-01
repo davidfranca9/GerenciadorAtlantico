@@ -254,11 +254,21 @@ def listar_carregamentos(competencia: Optional[str] = None, db: Session = Depend
         raise _erro(exc)
 
 
+@router.get("/faturas")
+def listar_faturas(competencia: str, db: Session = Depends(get_db)):
+    try:
+        return fin.previsao_faturas_abastecimento(db, competencia)
+    except fin.ErroFinanceiro as exc:
+        raise _erro(exc)
+
+
 def _aplicar_carregamento(c: CarregamentoFinanceiro, dados: CarregamentoIn):
     fin.validar_competencia(dados.competencia)
     for campo, valor in dados.model_dump().items():
         if campo.endswith("_ton") or campo.endswith("_total"):
             valor = fin.dinheiro(valor) if valor is not None else None
+        elif campo == "contratante":
+            valor = (valor or "").strip().upper()
         setattr(c, campo, valor)
 
 
@@ -367,6 +377,7 @@ class DividaIn(BaseModel):
     proximo_pagamento: Optional[date] = None
     observacao: str = Field(default="", max_length=300)
     quitada: bool = False
+    congelada: bool = False
 
 
 @router.get("/agenda")
@@ -427,6 +438,7 @@ def listar_despesas(competencia: str, db: Session = Depends(get_db)):
     except fin.ErroFinanceiro as exc:
         raise _erro(exc)
     despesas = db.query(Despesa).order_by(Despesa.escopo, Despesa.ordem, Despesa.id).all()
+    despesas = [d for d in despesas if fin.sem_acento(d.grupo) not in ("divida", "dividas", "dividas ativas")]
     return [
         {**fin.despesa_para_dict(d, do_mes.get(d.id)), "vale_no_mes": d.id in do_mes}
         for d in despesas
@@ -538,6 +550,7 @@ def _divida_para_dict(d: Divida) -> dict:
         "parcelas_total": d.parcelas_total, "parcelas_pagas": d.parcelas_pagas,
         "valor_parcela": fin.dinheiro(d.valor_parcela) if d.valor_parcela is not None else None,
         "restante": restante, "observacao": d.observacao, "quitada": d.quitada,
+        "congelada": d.congelada,
         "proximo_pagamento": d.proximo_pagamento.isoformat() if d.proximo_pagamento else None,
     }
 
@@ -576,6 +589,8 @@ def registrar_parcela(divida_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Dívida não encontrada")
     if divida.parcelas_total and divida.parcelas_pagas >= divida.parcelas_total:
         raise HTTPException(status_code=400, detail="Todas as parcelas já estão pagas")
+    if divida.congelada:
+        raise HTTPException(status_code=400, detail="Reative a dívida antes de registrar uma parcela")
     divida.parcelas_pagas += 1
     if divida.parcelas_total and divida.parcelas_pagas >= divida.parcelas_total:
         divida.quitada = True

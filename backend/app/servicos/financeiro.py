@@ -11,7 +11,7 @@ import re
 import unicodedata
 import uuid
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import case, func
@@ -19,15 +19,17 @@ from sqlalchemy.orm import Session
 
 from ..models import (
     CarregamentoFinanceiro,
+    CartaFreteEnviada,
     ContaAvulsa,
     ContaBancaria,
     Despesa,
+    Divida,
     LancamentoCaixa,
     MetaMensal,
     PagamentoAgenda,
 )
 
-FORMAS = ("PIX", "TRANSFERENCIA", "BOLETO", "DEBITO", "CARTAO", "CHEQUE", "RENDIMENTO", "DINHEIRO", "OUTRO")
+FORMAS = ("PIX", "TRANSFERENCIA", "BOLETO", "DEBITO", "CARTAO", "CHEQUE", "RENDIMENTO", "DINHEIRO", "TARIFA", "OUTRO")
 ESCOPOS = ("empresa", "pessoal")
 
 
@@ -408,7 +410,9 @@ def carregamento_para_dict(c: CarregamentoFinanceiro) -> dict:
         "motorista": c.motorista,
         "fabrica": c.fabrica,
         "destino": c.destino,
-        "contratante": c.contratante,
+        # Contratante tem um unico padrao visual e de agrupamento. Dados
+        # antigos podem ter sido salvos como "Queiroz" e "QUEIROZ".
+        "contratante": (c.contratante or "").strip().upper(),
         "peso": float(c.peso or 0),
         **{f"{p}_ton": (dinheiro(getattr(c, f"{p}_ton")) if getattr(c, f"{p}_ton") is not None else None) for p in PARTES},
         **{f"{p}_fechado": (dinheiro(getattr(c, f"{p}_total")) if getattr(c, f"{p}_total") is not None else None) for p in PARTES},
@@ -455,6 +459,10 @@ def despesas_do_mes(db: Session, competencia: str, escopo: Optional[str] = None)
         consulta = consulta.filter(Despesa.escopo == escopo)
     valem = []
     for despesa in consulta.order_by(Despesa.escopo, Despesa.ordem, Despesa.id).all():
+        # Dívidas têm como fonte única a tabela de dívidas ativas. Linhas
+        # antigas importadas ficam preservadas, mas não entram duas vezes.
+        if sem_acento(despesa.grupo) in ("divida", "dividas", "dividas ativas"):
+            continue
         passados = meses_entre(despesa.competencia_inicio, competencia)
         if passados < 0:
             continue
@@ -502,8 +510,35 @@ def resultado_mensal(db: Session, competencia: str, hoje: Optional[date] = None)
     dias_restantes = _dias_de_carregamento(max(hoje, inicio), fim) if hoje <= fim else 0
 
     despesas = despesas_do_mes(db, competencia)
-    empresa = dinheiro(sum(float(d.valor) for d, _ in despesas if d.escopo == "empresa" and d.conta_no_resultado))
-    pessoal = dinheiro(sum(float(d.valor) for d, _ in despesas if d.escopo == "pessoal" and d.conta_no_resultado))
+    tarifas = (
+        db.query(LancamentoCaixa)
+        .filter(
+            LancamentoCaixa.data >= inicio,
+            LancamentoCaixa.data <= fim,
+            LancamentoCaixa.tipo == "saida",
+            LancamentoCaixa.forma == "TARIFA",
+            LancamentoCaixa.transferencia.is_(None),
+        )
+        .order_by(LancamentoCaixa.data, LancamentoCaixa.id)
+        .all()
+    )
+    total_tarifas = dinheiro(sum(float(l.valor) for l in tarifas))
+    grupos_divida_antigos = [
+        d for d in db.query(Despesa).all()
+        if sem_acento(d.grupo) in ("divida", "dividas", "dividas ativas")
+    ]
+    # Respeita a aba onde o grupo antigo já aparecia. Em instalações novas,
+    # dívidas são compromissos da empresa por padrão.
+    escopo_dividas = grupos_divida_antigos[0].escopo if grupos_divida_antigos else "empresa"
+    dividas_ativas = (
+        db.query(Divida)
+        .filter(Divida.quitada.is_(False), Divida.congelada.is_(False))
+        .order_by(Divida.proximo_pagamento.is_(None), Divida.proximo_pagamento, Divida.id)
+        .all()
+    )
+    total_dividas = dinheiro(sum(float(d.valor_parcela or 0) for d in dividas_ativas))
+    empresa = dinheiro(sum(float(d.valor) for d, _ in despesas if d.escopo == "empresa" and d.conta_no_resultado) + total_tarifas + (total_dividas if escopo_dividas == "empresa" else 0))
+    pessoal = dinheiro(sum(float(d.valor) for d, _ in despesas if d.escopo == "pessoal" and d.conta_no_resultado) + (total_dividas if escopo_dividas == "pessoal" else 0))
     custo_fixo = dinheiro(sum(float(d.valor) for d, _ in despesas if d.escopo == "empresa" and d.entra_precificacao))
     lucro_real = dinheiro(lucro_bruto - empresa)
     sobra = dinheiro(lucro_real - pessoal)
@@ -545,7 +580,26 @@ def resultado_mensal(db: Session, competencia: str, hoje: Optional[date] = None)
             "dias_restantes": dias_restantes,
             "ritmo_necessario": round(falta / dias_restantes, 1) if falta and dias_restantes else None,
         },
-        "despesas": {"empresa": empresa, "pessoal": pessoal},
+        "despesas": {
+            "empresa": empresa,
+            "pessoal": pessoal,
+            "tarifas": total_tarifas,
+            "itens_tarifas": [
+                {"id": l.id, "data": l.data.isoformat(), "descricao": l.descricao or "Tarifa bancária", "valor": dinheiro(l.valor)}
+                for l in tarifas
+            ],
+            "dividas_ativas": total_dividas,
+            "escopo_dividas": escopo_dividas,
+            "itens_dividas": [
+                {
+                    "id": d.id, "credor": d.credor,
+                    "valor": dinheiro(d.valor_parcela) if d.valor_parcela is not None else None,
+                    "proximo_pagamento": d.proximo_pagamento.isoformat() if d.proximo_pagamento else None,
+                    "parcelas_pagas": d.parcelas_pagas, "parcelas_total": d.parcelas_total,
+                }
+                for d in dividas_ativas
+            ],
+        },
         "lucro_real": lucro_real,
         "sobra": sobra,
         # Na planilha "Valor por Tonelada" subtraia o lucro bruto das despesas
@@ -569,6 +623,65 @@ def resultado_mensal(db: Session, competencia: str, hoje: Optional[date] = None)
         ],
         "por_contratante": agrupar("contratante"),
         "por_fabrica": agrupar("fabrica"),
+    }
+
+
+def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional[date] = None) -> dict:
+    """Autorizações de abastecimento previstas para faturar 20 dias após o CT-e."""
+    hoje = hoje or date.today()
+    inicio, fim = limites_competencia(competencia)
+    cartas = db.query(CartaFreteEnviada).filter(CartaFreteEnviada.status != "cancelada").all()
+    cargas = db.query(CarregamentoFinanceiro).filter(CarregamentoFinanceiro.cancelado.is_(False)).all()
+    usadas: set[int] = set()
+    itens = []
+
+    def valor_br(texto) -> float:
+        limpo = re.sub(r"[^\d,.-]", "", str(texto or ""))
+        if "," in limpo:
+            limpo = limpo.replace(".", "").replace(",", ".")
+        try:
+            return dinheiro(float(limpo))
+        except (TypeError, ValueError):
+            return 0.0
+
+    for carta in sorted(cartas, key=lambda c: c.id):
+        try:
+            data_autorizacao = datetime.strptime(carta.data or "", "%d/%m/%Y").date()
+        except ValueError:
+            data_autorizacao = carta.created_at.date()
+        candidatas = []
+        for carga in cargas:
+            if carga.id in usadas or not carga.data_emissao:
+                continue
+            distancia = abs((carga.data_emissao - data_autorizacao).days)
+            if distancia <= 7 and sem_acento(carga.motorista) == sem_acento(carta.condutor):
+                candidatas.append((distancia, carga.id, carga))
+        carga = min(candidatas, default=(None, None, None))[2]
+        if carga:
+            usadas.add(carga.id)
+        vencimento = carga.data_emissao + timedelta(days=20) if carga else None
+        if vencimento and not (inicio <= vencimento <= fim):
+            continue
+        if not vencimento and competencia != competencia_de(hoje):
+            continue
+        situacao = "sem_cte" if not vencimento else "vencida" if vencimento < hoje else "hoje" if vencimento == hoje else "prevista"
+        itens.append({
+            "id": carta.id, "autorizacao": carta.autorizacao_num, "motorista": carta.condutor,
+            "valor": valor_br(carta.valor_frete), "data_autorizacao": data_autorizacao.isoformat(),
+            "cte": carga.ctes if carga else "", "data_cte": carga.data_emissao.isoformat() if carga else None,
+            "vencimento": vencimento.isoformat() if vencimento else None, "situacao": situacao,
+        })
+
+    itens.sort(key=lambda i: (i["vencimento"] is None, i["vencimento"] or "9999", i["motorista"]))
+    previstos = [i for i in itens if i["vencimento"]]
+    return {
+        "competencia": competencia, "prazo_dias": 20, "itens": itens,
+        "totais": {
+            "previsto": dinheiro(sum(i["valor"] for i in previstos)),
+            "vencido": dinheiro(sum(i["valor"] for i in previstos if i["situacao"] == "vencida")),
+            "sem_cte": dinheiro(sum(i["valor"] for i in itens if i["situacao"] == "sem_cte")),
+            "quantidade": len(itens),
+        },
     }
 
 

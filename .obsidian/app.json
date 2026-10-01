@@ -1,0 +1,10 @@
+{
+  "userIgnoreFilters": [
+    ".git/",
+    ".pytest_cache/",
+    "__pycache__/",
+    "backend/dados/",
+    "build/",
+    "dist/"
+  ]
+}

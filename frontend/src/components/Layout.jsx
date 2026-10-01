@@ -11,6 +11,7 @@ export const NAV_SECTIONS = [
     { to: "/pedidos", label: "Pedidos", icon: "route", description: "Pedidos disponíveis e saldo de toneladas" },
     { to: "/contrato", label: "Contratos", icon: "contract", description: "Importação e seleção de cargas" },
     { to: "/ordem-coleta", label: "Ordem de coleta", icon: "clipboard", description: "Emissão de documentos operacionais" },
+    { to: "/autorizacao-abastecimento", label: "Autorização de abastecimento", icon: "file", description: "Geração e envio das autorizações de abastecimento" },
     { to: "/agendamentos", label: "Agendamentos", icon: "calendar", description: "Controle de coletas programadas" },
     { to: "/analise-fretes", label: "Análise de fretes", icon: "chart", description: "Histórico e comparação de valores" },
     { to: "/documentos-fiscais", label: "Documentos fiscais", icon: "file", description: "CT-e e CIOT emitidos, vindos do Bsoft" },
@@ -23,8 +24,8 @@ export const NAV_SECTIONS = [
     { to: "/financeiro/gastos", label: "Gastos", icon: "clipboard", description: "Despesas da empresa e gastos pessoais do mês", adminOnly: true },
     { to: "/financeiro/precificacao", label: "Precificação CT-e", icon: "chart", description: "Custo fixo por tonelada e frete mínimo", adminOnly: true },
     { to: "/financeiro/pagamentos", label: "Pagamentos", icon: "calendar", description: "Vencimentos do mês, semana a semana", adminOnly: true },
+    { to: "/financeiro/faturas", label: "Faturas", icon: "file", description: "Previsão dos abastecimentos após a emissão do CT-e", adminOnly: true },
     { to: "/financeiro/dividas", label: "Dívidas ativas", icon: "coins", description: "Quanto falta e quando se paga cada dívida", adminOnly: true },
-    { to: "/autorizacao-abastecimento", label: "Autorização de abastecimento", icon: "file", description: "Geração e envio das autorizações de abastecimento" },
   ] },
   { title: "Comunicação", items: [
     { to: "/emails", label: "E-mails", icon: "mail", description: "Recebidos e enviados do Gmail" },

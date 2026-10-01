@@ -223,8 +223,10 @@ export function GastosPage() {
   const escopo = busca.get("aba") === "pessoal" ? "pessoal" : "empresa";
   const { dados, erro, carregar } = useDados(
     async () => {
-      const [resultado, despesas] = await Promise.all([api.resultado(competencia), api.despesas(competencia)]);
-      return { resultado, despesas };
+      const [resultado, despesas, dividas, pagamentos] = await Promise.all([
+        api.resultado(competencia), api.despesas(competencia), api.dividas(), api.agenda(competencia),
+      ]);
+      return { resultado, despesas, dividas, pagamentos };
     },
     competencia,
   );
@@ -245,6 +247,9 @@ export function GastosPage() {
         <Despesas
           key={escopo}
           escopo={escopo} competencia={competencia} despesas={dados.despesas} recarregar={carregar}
+          tarifas={escopo === "empresa" ? r.despesas.itens_tarifas || [] : []}
+          dividas={escopo === r.despesas.escopo_dividas ? dados.dividas.filter((d) => !d.quitada && !d.congelada) : []}
+          pagamentos={dados.pagamentos.itens}
           fechamento={escopo === "empresa"
             ? [{ rotulo: "Lucro bruto", valor: r.resumo.lucro_bruto }, { rotulo: "Lucro real", valor: r.lucro_real, destaque: true }]
             : [{ rotulo: "Lucro real da empresa", valor: r.lucro_real }, { rotulo: "Sobra do mês", valor: r.sobra, destaque: true }]}
@@ -282,6 +287,32 @@ export function PagamentosPage() {
   return (
     <Moldura competencia={competencia} aoMudarMes={setCompetencia} erro={erro} carregando={!dados} aoImportar={carregar}>
       {dados && <AbaPagamentos competencia={competencia} agenda={dados.agenda} contas={dados.contas} recarregar={carregar} />}
+    </Moldura>
+  );
+}
+
+const SITUACAO_FATURA = {
+  prevista: "Prevista", hoje: "Vence hoje", vencida: "Vencida", sem_cte: "Aguardando CT-e",
+};
+
+export function FaturasPage() {
+  const [competencia, setCompetencia] = useCompetencia();
+  const { dados, erro, carregar } = useDados(() => api.faturas(competencia), competencia);
+  return (
+    <Moldura competencia={competencia} aoMudarMes={setCompetencia} erro={erro} carregando={!dados} aoImportar={carregar}>
+      {dados && <>
+        <section className="fin-resumo-contas">
+          <div className="card"><span className="eyebrow">PREVISÃO DO MÊS</span><Dinheiro valor={dados.totais.previsto} tamanho="l" /><small>{dados.totais.quantidade} autorizações · prazo padrão de {dados.prazo_dias} dias após o CT-e</small></div>
+          <div className={`card ${dados.totais.vencido > 0 ? "alerta" : ""}`}><span className="eyebrow">VENCIDO</span><Dinheiro valor={dados.totais.vencido} tamanho="l" /><small>Valores cuja previsão já passou</small></div>
+          <div className="card"><span className="eyebrow">AGUARDANDO CT-e</span><Dinheiro valor={dados.totais.sem_cte} tamanho="l" /><small>Sem data de vencimento até o CT-e ser liberado</small></div>
+        </section>
+        <section className="card fin-faturas">
+          <header className="fin-extrato-topo"><div><h3>Faturas de abastecimento</h3><p>Previsão calculada automaticamente: emissão do CT-e + {dados.prazo_dias} dias</p></div></header>
+          {dados.itens.length === 0 ? <div className="fin-sem-itens"><Icon name="file" size={22} /><p>Nenhuma fatura prevista para este mês.</p></div> : <div className="fin-faturas-tabela"><table><thead><tr><th>Previsão</th><th>Autorização</th><th>Motorista</th><th>CT-e</th><th>Emissão</th><th>Situação</th><th>Valor</th></tr></thead><tbody>
+            {dados.itens.map((item) => <tr key={item.id}><td>{item.vencimento ? new Date(`${item.vencimento}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td>{item.autorizacao || `#${item.id}`}</td><td><strong>{item.motorista}</strong></td><td>{item.cte || "—"}</td><td>{item.data_cte ? new Date(`${item.data_cte}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td><span className={`fin-situacao ${item.situacao}`}>{SITUACAO_FATURA[item.situacao]}</span></td><td><Dinheiro valor={item.valor} tamanho="xs" /></td></tr>)}
+          </tbody></table></div>}
+        </section>
+      </>}
     </Moldura>
   );
 }

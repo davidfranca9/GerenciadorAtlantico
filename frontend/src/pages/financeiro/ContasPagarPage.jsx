@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
 import { Aviso, CampoValor, Dinheiro, Modal } from "./comum";
@@ -515,12 +516,13 @@ function EditorDespesa({ escopo, competencia, despesa, grupos, aoSalvar, aoExclu
   );
 }
 
-export function Despesas({ escopo, competencia, despesas, recarregar, fechamento = [] }) {
+export function Despesas({ escopo, competencia, despesas, recarregar, fechamento = [], tarifas = [], dividas = [], pagamentos = [] }) {
   const [aberto, setAberto] = useState(null);
   const minhas = despesas.filter((d) => d.escopo === escopo);
-  const grupos = [...new Set(minhas.map((d) => d.grupo))];
+  const grupos = [...new Set([...minhas.map((d) => d.grupo), ...(tarifas.length ? ["Taxas"] : []), ...(dividas.length ? ["Dívidas ativas"] : [])])];
   const doMes = minhas.filter((d) => d.vale_no_mes && d.conta_no_resultado);
-  const total = doMes.reduce((s, d) => s + d.valor, 0);
+  const pagamentoPorDespesa = new Map(pagamentos.filter((p) => p.origem === "despesa").map((p) => [p.id, p]));
+  const total = doMes.reduce((s, d) => s + d.valor, 0) + tarifas.reduce((s, d) => s + d.valor, 0) + dividas.reduce((s, d) => s + (d.valor_parcela || 0), 0);
 
   async function salvar(id, dados) {
     if (id) await api.atualizarDespesa(id, dados);
@@ -535,7 +537,7 @@ export function Despesas({ escopo, competencia, despesas, recarregar, fechamento
         <div>
           <span className="eyebrow">{escopo === "empresa" ? "DESPESAS DA EMPRESA" : "GASTOS PESSOAIS"} NO MÊS</span>
           <Dinheiro valor={total} tamanho="l" />
-          <small>{doMes.length} contas fixas em {grupos.length} grupos</small>
+          <small>{doMes.length} contas fixas{tarifas.length ? ` · ${tarifas.length} tarifas do Caixa` : ""}{dividas.length ? ` · ${dividas.length} dívidas ativas` : ""} em {grupos.length} grupos</small>
         </div>
         {fechamento.length > 0 && (
           <dl className="fin-fechamento">
@@ -548,6 +550,7 @@ export function Despesas({ escopo, competencia, despesas, recarregar, fechamento
           </dl>
         )}
         <button type="button" className="btn-primary" onClick={() => setAberto(aberto === "nova" ? null : "nova")}><Icon name="plus" size={14} /> Despesa</button>
+        <Link className="btn-secondary" to="/financeiro/pagamentos"><Icon name="calendar" size={14} /> Ver pagamentos</Link>
       </div>
       {aberto === "nova" && (
         <div className="card"><EditorDespesa escopo={escopo} competencia={competencia} grupos={grupos} aoCancelar={() => setAberto(null)} aoSalvar={(d) => salvar(null, d)} /></div>
@@ -558,7 +561,9 @@ export function Despesas({ escopo, competencia, despesas, recarregar, fechamento
       <div className="fin-grupos">
         {grupos.map((grupo) => {
           const itens = minhas.filter((d) => d.grupo === grupo);
-          const subtotal = itens.filter((d) => d.vale_no_mes && d.conta_no_resultado).reduce((s, d) => s + d.valor, 0);
+          const itensTarifa = grupo === "Taxas" ? tarifas : [];
+          const itensDivida = grupo === "Dívidas ativas" ? dividas : [];
+          const subtotal = itens.filter((d) => d.vale_no_mes && d.conta_no_resultado).reduce((s, d) => s + d.valor, 0) + itensTarifa.reduce((s, d) => s + d.valor, 0) + itensDivida.reduce((s, d) => s + (d.valor_parcela || 0), 0);
           return (
             <section key={grupo} className="card fin-grupo">
               <header><h3>{grupo}</h3><Dinheiro valor={subtotal} tamanho="xs" /></header>
@@ -578,6 +583,10 @@ export function Despesas({ escopo, competencia, despesas, recarregar, fechamento
                           )}
                           {d.entra_precificacao && <span className="fin-tag">{d.conta_no_resultado ? "custo fixo" : "só precificação"}</span>}
                           {!d.ativa && <span className="fin-tag">encerrada</span>}
+                          {d.vale_no_mes && d.conta_no_resultado && pagamentoPorDespesa.get(d.id)?.situacao === "pago" && <span className="fin-tag pago">pago</span>}
+                          {d.vale_no_mes && d.conta_no_resultado && pagamentoPorDespesa.get(d.id)?.situacao === "atrasado" && <span className="fin-tag atrasado">atrasado</span>}
+                          {d.vale_no_mes && d.conta_no_resultado && ["hoje", "a_vencer"].includes(pagamentoPorDespesa.get(d.id)?.situacao) && <span className="fin-tag a-vencer">a pagar</span>}
+                          {d.vale_no_mes && d.conta_no_resultado && pagamentoPorDespesa.get(d.id)?.situacao === "sem_data" && <span className="fin-tag">sem vencimento</span>}
                         </small>
                       </span>
                       <Dinheiro valor={d.valor} tamanho="xs" />
@@ -590,6 +599,27 @@ export function Despesas({ escopo, competencia, despesas, recarregar, fechamento
                         aoExcluir={async () => { await api.excluirDespesa(d.id); setAberto(null); await recarregar(); }}
                       />
                     )}
+                  </li>
+                ))}
+                {itensTarifa.map((tarifa) => (
+                  <li key={`tarifa-${tarifa.id}`}>
+                    <div className="fin-despesa-linha fin-despesa-caixa">
+                      <span className="fin-despesa-dia">dia<b>{Number(tarifa.data.slice(8))}</b></span>
+                      <span className="fin-despesa-texto"><strong>{tarifa.descricao}</strong><small><span className="fin-tag">lançada no Caixa</span></small></span>
+                      <Dinheiro valor={tarifa.valor} tamanho="xs" />
+                    </div>
+                  </li>
+                ))}
+                {itensDivida.map((divida) => (
+                  <li key={`divida-${divida.id}`}>
+                    <div className="fin-despesa-linha fin-despesa-caixa">
+                      <span className="fin-despesa-dia">{divida.proximo_pagamento ? <>dia<b>{Number(divida.proximo_pagamento.slice(8))}</b></> : <b>—</b>}</span>
+                      <span className="fin-despesa-texto">
+                        <strong>{divida.credor}</strong>
+                        <small>{divida.parcelas_total ? `${divida.parcelas_pagas} de ${divida.parcelas_total} parcelas pagas` : "Dívida ativa"}<Link className="fin-link" to="/financeiro/dividas">ver dívida</Link></small>
+                      </span>
+                      <Dinheiro valor={divida.valor_parcela} tamanho="xs" />
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -605,7 +635,7 @@ function EditorDivida({ divida, aoSalvar, aoExcluir, aoCancelar }) {
   const [form, setForm] = useState(() => ({
     credor: divida?.credor || "", valor_total: valorParaCampo(divida?.valor_total), valor_parcela: valorParaCampo(divida?.valor_parcela),
     parcelas_total: divida?.parcelas_total ?? "", parcelas_pagas: divida?.parcelas_pagas ?? 0, observacao: divida?.observacao || "",
-    quitada: divida?.quitada || false, proximo_pagamento: divida?.proximo_pagamento || "",
+    quitada: divida?.quitada || false, congelada: divida?.congelada || false, proximo_pagamento: divida?.proximo_pagamento || "",
   }));
   const [erro, setErro] = useState("");
   const [confirmar, setConfirmar] = useState(false);
@@ -622,6 +652,7 @@ function EditorDivida({ divida, aoSalvar, aoExcluir, aoCancelar }) {
         parcelas_total: total, parcelas_pagas: pagas, observacao: form.observacao, proximo_pagamento: form.proximo_pagamento || null,
         // Com parcelas, quitada e quando todas foram pagas; sem, vale a marcacao.
         quitada: total ? pagas >= total : form.quitada,
+        congelada: form.congelada,
       });
     } catch (err) {
       setErro(err.message);
@@ -644,6 +675,7 @@ function EditorDivida({ divida, aoSalvar, aoExcluir, aoCancelar }) {
         <label className="field"><span>Observação</span><input value={form.observacao} onChange={(e) => mudar("observacao", e.target.value)} placeholder="Ex.: A organizar" /></label>
       </div>
       {total > 0 && <small className="fin-dica">Ao registrar uma parcela paga, o próximo pagamento passa para o mês seguinte.</small>}
+      <label className="fin-check"><input type="checkbox" checked={form.congelada} onChange={(e) => mudar("congelada", e.target.checked)} /> Congelar dívida e pausar as parcelas em Gastos</label>
       {!total && <label className="fin-check"><input type="checkbox" checked={form.quitada} onChange={(e) => mudar("quitada", e.target.checked)} /> Quitada</label>}
       {erro && <Aviso tipo="error">{erro}</Aviso>}
       <footer className="fin-modal-rodape">
@@ -681,9 +713,9 @@ export function Dividas({ dividas, recarregar }) {
   const [erro, setErro] = useState("");
   const emAberto = dividas.filter((d) => !d.quitada);
   const restante = emAberto.reduce((s, d) => s + (d.restante ?? d.valor_total ?? 0), 0);
-  const parcelas = emAberto.reduce((s, d) => s + (d.valor_parcela || 0), 0);
+  const parcelas = emAberto.filter((d) => !d.congelada).reduce((s, d) => s + (d.valor_parcela || 0), 0);
   const editando = aberto && aberto !== "nova" ? dividas.find((d) => d.id === aberto) : null;
-  const proxima = emAberto.find((d) => d.proximo_pagamento);
+  const proxima = emAberto.find((d) => !d.congelada && d.proximo_pagamento);
 
   async function agir(acao, fechar = true) {
     setErro("");
@@ -716,13 +748,14 @@ export function Dividas({ dividas, recarregar }) {
           const pct = d.parcelas_total ? Math.round((d.parcelas_pagas / d.parcelas_total) * 100) : null;
           const organizar = d.valor_total === null || /organizar/i.test(d.observacao);
           return (
-            <section key={d.id} className={`card fin-divida ${d.quitada ? "quitada" : ""}`}>
+            <section key={d.id} className={`card fin-divida ${d.quitada ? "quitada" : ""} ${d.congelada ? "congelada" : ""}`}>
               <header>
                 <h3>{d.credor}</h3>
-                {d.quitada ? <b className="fin-situacao pago">Quitada</b> : organizar && <b className="fin-situacao hoje">A organizar</b>}
+                {d.quitada ? <b className="fin-situacao pago">Quitada</b> : d.congelada ? <b className="fin-situacao congelada">Congelada</b> : organizar && <b className="fin-situacao hoje">A organizar</b>}
                 <button type="button" className="icon-btn" aria-label={`Editar ${d.credor}`} title="Editar" onClick={() => setAberto(d.id)}><Icon name="edit" size={14} /></button>
               </header>
-              {!d.quitada && <DataPagamento dia={d.proximo_pagamento} />}
+              {!d.quitada && !d.congelada && <DataPagamento dia={d.proximo_pagamento} />}
+              {d.congelada && <span className="fin-pagamento congelada">Parcelas pausadas · não entra em Gastos</span>}
               <Dinheiro valor={d.restante ?? d.valor_total} tamanho="m" />
               <small className="fin-divida-sub">
                 {d.restante !== null ? `falta, de ${brl(d.valor_total ?? d.restante)}` : d.valor_total !== null ? "valor total" : "valor total a definir"}
@@ -734,7 +767,7 @@ export function Dividas({ dividas, recarregar }) {
                 </>
               )}
               {pct === null && Boolean(d.valor_parcela) && <small>Parcela de {brl(d.valor_parcela)}</small>}
-              {!d.quitada && Boolean(d.parcelas_total) && (
+              {!d.quitada && !d.congelada && Boolean(d.parcelas_total) && (
                 <button type="button" className="btn-secondary fin-divida-acao" onClick={() => agir(() => api.parcelaPaga(d.id)).catch(() => {})}>
                   <Icon name="check" size={14} /> Registrar parcela paga
                 </button>

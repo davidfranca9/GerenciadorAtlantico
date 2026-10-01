@@ -1,0 +1,206 @@
+{
+  "main": {
+    "id": "3afa43b891da1b69",
+    "type": "split",
+    "children": [
+      {
+        "id": "a6546f97fe6e0527",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "7bc4091f6b29f38d",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "- automação de disparo de whatsapp pra disparar a ordem de coleta pro whatsappno fluxo de caixa conseguir renomear o nome do que foi aquilo ali, mostrar o nome original e o próximo.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "- automação de disparo de whatsapp pra disparar a ordem de coleta pro whatsappno fluxo de caixa conseguir renomear o nome do que foi aquilo ali, mostrar o nome original e o próximo"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "65414f0ae2570161",
+    "type": "split",
+    "children": [
+      {
+        "id": "9a2deef7415583a4",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "1193e9e96f8f75f2",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de arquivos"
+            }
+          },
+          {
+            "id": "de49b7699f68e639",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Procurar"
+            }
+          },
+          {
+            "id": "84033c87f685d4ea",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "6f17938264d2b188",
+    "type": "split",
+    "children": [
+      {
+        "id": "ba442b71108be8d2",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "73ff532d86d65783",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Links inversos"
+            }
+          },
+          {
+            "id": "95d94a14f1317730",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Links de saída"
+            }
+          },
+          {
+            "id": "a066f69099a98bb4",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "1b11aa0256e4afff",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas as propriedades"
+            }
+          },
+          {
+            "id": "baac53de115790e8",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Sumário"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir a troca rápida": false,
+      "graph:Abrir visualização em gráfico": false,
+      "canvas:Criar novo canvas": false,
+      "daily-notes:Abrir a nota de hoje": false,
+      "templates:Inserir modelo": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Criar nova base": false
+    }
+  },
+  "active": "7bc4091f6b29f38d",
+  "lastOpenFiles": [
+    "- automação de disparo de whatsapp pra disparar a ordem de coleta pro whatsappno fluxo de caixa conseguir renomear o nome do que foi aquilo ali, mostrar o nome original e o próximo.md",
+    "frontend/node_modules/@babel/helper-globals/README.md",
+    "frontend/node_modules/jsesc/README.md",
+    "frontend/node_modules/caniuse-lite/README.md",
+    "backend/scripts/__pycache__/cte.cpython-311.pyc",
+    "backend/scripts/__pycache__",
+    "backend/scripts/cte.py",
+    "backend/scripts",
+    "frontend/dist/assets/index-D9HxFCj1.js",
+    "frontend/vite.config.js.timestamp-1788807469524-6cb1d0cc1e62a8.mjs",
+    "frontend/dist/assets/index-jQJCH7Rz.js",
+    "frontend/vite.config.js.timestamp-1788807017953-9d2f5cbda3c3a8.mjs",
+    "frontend/dist/assets/index-DDg9AC6N.js",
+    "frontend/vite.config.js.timestamp-1788806216102-183671d551d8f8.mjs",
+    "PERGUNTAS_SUPORTE_BSOFT.md"
+  ]
+}

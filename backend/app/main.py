@@ -94,6 +94,7 @@ def on_startup():
             conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS email_message_ids TEXT DEFAULT ''"))
             conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS modelo_veiculo VARCHAR(40) DEFAULT ''"))
             conn.execute(text("ALTER TABLE dividas ADD COLUMN IF NOT EXISTS proximo_pagamento DATE"))
+            conn.execute(text("ALTER TABLE dividas ADD COLUMN IF NOT EXISTS congelada BOOLEAN DEFAULT FALSE"))
             conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS origem VARCHAR(20) DEFAULT 'manual'"))
             conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS cliente VARCHAR(255) DEFAULT ''"))
             conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS contrato_frete VARCHAR(40) DEFAULT ''"))

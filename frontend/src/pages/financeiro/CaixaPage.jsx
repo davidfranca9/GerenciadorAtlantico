@@ -259,6 +259,9 @@ function NovoLancamento({ contas, diaPadrao, aoLancar }) {
 
   useEffect(() => setData(diaPadrao), [diaPadrao]);
   useEffect(() => {
+    if (tipo !== "saida" && forma === "TARIFA") setForma("OUTRO");
+  }, [tipo, forma]);
+  useEffect(() => {
     if (!contas.some((c) => String(c.id) === String(contaId))) setContaId(contas[0]?.id || "");
   }, [contas, contaId]);
 
@@ -307,7 +310,7 @@ function NovoLancamento({ contas, diaPadrao, aoLancar }) {
       <CampoValor valor={valor} aoMudar={setValor} grande id="fin-novo-valor" />
       {tipo !== "transferencia" && (
         <div className="fin-formas">
-          {FORMAS.map((f) => (
+          {FORMAS.filter((f) => tipo === "saida" || f.valor !== "TARIFA").map((f) => (
             <button key={f.valor} type="button" className={forma === f.valor ? "ativo" : ""} onClick={() => setForma(f.valor)}>
               <Icon name={f.icone} size={13} />{f.rotulo}
             </button>

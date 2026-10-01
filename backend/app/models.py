@@ -582,4 +582,6 @@ class Divida(Base):
     proximo_pagamento: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     observacao: Mapped[str] = mapped_column(String(300), default="")
     quitada: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Pausa a cobrança sem apagar nem quitar a dívida.
+    congelada: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

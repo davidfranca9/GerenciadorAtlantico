@@ -13,6 +13,7 @@ export const FORMAS = [
   { valor: "CHEQUE", rotulo: "Cheque", icone: "file" },
   { valor: "RENDIMENTO", rotulo: "Rendimento", icone: "trend" },
   { valor: "DINHEIRO", rotulo: "Dinheiro", icone: "coins" },
+  { valor: "TARIFA", rotulo: "Tarifa", icone: "coins" },
   { valor: "OUTRO", rotulo: "Outro", icone: "coins" },
 ];
 

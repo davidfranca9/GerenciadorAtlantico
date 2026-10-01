@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
 import { Aviso, CampoValor, Dinheiro } from "./comum";
-import { brl, competenciaDe, diaCurto, hojeIso, numeroBr, toneladas, valorParaCampo } from "./formato";
+import { brl, brlCurto, competenciaDe, diaCurto, hojeIso, isoDe, numeroBr, toneladas, valorParaCampo } from "./formato";
 
 const PARTES = [
   { chave: "frete_motorista", rotulo: "Motorista" },
@@ -363,6 +363,84 @@ function Ranking({ titulo, grupos }) {
   );
 }
 
+const DIAS_CALENDARIO = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+function resumoCarregamentos(itens) {
+  const validos = itens.filter((item) => !item.cancelado);
+  const completos = validos.filter((item) => item.totais?.completo);
+  const lucro = completos.reduce((soma, item) => soma + Number(item.totais.liquido || 0), 0);
+  const peso = validos.reduce((soma, item) => soma + Number(item.peso || 0), 0);
+  return { cargas: validos.length, peso, lucro, margem: peso ? lucro / peso : null };
+}
+
+function CalendarioLucro({ competencia, carregamentos }) {
+  const [modo, setModo] = useState("dia");
+  const hoje = hojeIso();
+  const [selecionado, setSelecionado] = useState(() => hoje.startsWith(competencia) ? hoje : `${competencia}-01`);
+  const [ano, mes] = competencia.split("-").map(Number);
+  const { semanas, porDia } = useMemo(() => {
+    const mapa = {};
+    for (const carga of carregamentos) {
+      if (carga.data_emissao) (mapa[carga.data_emissao] ||= []).push(carga);
+    }
+    const primeiro = new Date(ano, mes - 1, 1);
+    const ultimoDia = new Date(ano, mes, 0).getDate();
+    const dias = Array((primeiro.getDay() + 6) % 7).fill(null);
+    for (let dia = 1; dia <= ultimoDia; dia += 1) dias.push(isoDe(new Date(ano, mes - 1, dia)));
+    while (dias.length % 7) dias.push(null);
+    const blocos = [];
+    for (let i = 0; i < dias.length; i += 7) blocos.push(dias.slice(i, i + 7));
+    return { semanas: blocos, porDia: mapa };
+  }, [ano, mes, carregamentos]);
+
+  const semanaSelecionada = semanas.find((semana) => semana.includes(selecionado)) || semanas[0];
+  const periodo = modo === "dia" ? [selecionado] : semanaSelecionada.filter(Boolean);
+  const itensPeriodo = periodo.flatMap((dia) => porDia[dia] || []);
+  const resumoPeriodo = resumoCarregamentos(itensPeriodo);
+  const tituloPeriodo = modo === "dia"
+    ? new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date(`${selecionado}T12:00:00`))
+    : `${Number(periodo[0]?.slice(8))} a ${Number(periodo.at(-1)?.slice(8))} de ${new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(ano, mes - 1, 1))}`;
+
+  return (
+    <section className="card fin-lucro-calendario">
+      <header className="fin-lucro-cal-topo">
+        <div><span className="eyebrow">VISUALIZAÇÃO DO PERÍODO</span><h3>Resultado dia a dia</h3><p>Acompanhe cargas, toneladas e lucro em cada dia ou semana.</p></div>
+        <div className="fin-segmentado pequeno" role="tablist" aria-label="Período do calendário">
+          <button type="button" role="tab" aria-selected={modo === "dia"} className={modo === "dia" ? "ativo" : ""} onClick={() => setModo("dia")}>Diária</button>
+          <button type="button" role="tab" aria-selected={modo === "semana"} className={modo === "semana" ? "ativo" : ""} onClick={() => setModo("semana")}>Semanal</button>
+        </div>
+      </header>
+      <div className="fin-lucro-cal-grade">
+        <div className="fin-lucro-mes" aria-label="Calendário de resultados">
+          {DIAS_CALENDARIO.map((dia) => <span key={dia} className="fin-lucro-cal-dia-semana">{dia}</span>)}
+          {semanas.flatMap((semana, numeroSemana) => semana.map((iso, indice) => {
+            if (!iso) return <span key={`vazio-${numeroSemana}-${indice}`} className="fin-lucro-cal-vazio" />;
+            const resumo = resumoCarregamentos(porDia[iso] || []);
+            const naSemana = modo === "semana" && semanaSelecionada.includes(iso);
+            return <button type="button" key={iso} className={`fin-lucro-cal-dia ${iso === hoje ? "hoje" : ""} ${(modo === "dia" && iso === selecionado) || naSemana ? "selecionado" : ""} ${resumo.lucro < 0 ? "negativo" : ""}`} onClick={() => setSelecionado(iso)} aria-label={`${Number(iso.slice(8))}: ${resumo.cargas} cargas, ${brl(resumo.lucro)}`}>
+              <span className="fin-lucro-cal-numero">{Number(iso.slice(8))}</span>
+              {resumo.cargas > 0 && <><strong>{brlCurto(resumo.lucro)}</strong><small>{resumo.cargas} {resumo.cargas === 1 ? "carga" : "cargas"} · {toneladas(resumo.peso)}</small></>}
+            </button>;
+          }))}
+        </div>
+        <aside className="fin-lucro-periodo">
+          <div className="fin-lucro-periodo-titulo"><Icon name={modo === "dia" ? "calendar" : "chart"} size={18} /><div><span>{modo === "dia" ? "Dia selecionado" : "Semana selecionada"}</span><strong>{tituloPeriodo}</strong></div></div>
+          <dl className="fin-lucro-periodo-resumo">
+            <div><dt>Lucro bruto</dt><dd className={resumoPeriodo.lucro < 0 ? "negativo" : "positivo"}>{brl(resumoPeriodo.lucro)}</dd></div>
+            <div><dt>Carregamentos</dt><dd>{resumoPeriodo.cargas}</dd></div>
+            <div><dt>Toneladas</dt><dd>{toneladas(resumoPeriodo.peso)}</dd></div>
+            <div><dt>Lucro por tonelada</dt><dd>{resumoPeriodo.margem === null ? "—" : `${brl(resumoPeriodo.margem)}/t`}</dd></div>
+          </dl>
+          {itensPeriodo.length > 0 ? <ul className="fin-lucro-periodo-cargas">{itensPeriodo.map((carga) => <li key={carga.id}>
+            <div><strong>{carga.contratante || carga.cliente || "Sem contratante"}</strong><small>{carga.ctes ? `CT-e ${carga.ctes} · ` : ""}{carga.fabrica || carga.destino || "Carga"}</small></div>
+            <span className={Number(carga.totais?.liquido || 0) < 0 ? "negativo" : ""}>{carga.totais?.completo ? brl(carga.totais.liquido) : "Pendente"}</span>
+          </li>)}</ul> : <p className="fin-lucro-periodo-vazio">Nenhum carregamento neste período.</p>}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
 // Pagina "Lucro bruto": o resumo do mes. Cada carga fica em "Carregamentos".
 export function AbaLucroBruto({ competencia, dados, recarregar }) {
   const vazio = dados.carregamentos.length === 0;
@@ -373,6 +451,8 @@ export function AbaLucroBruto({ competencia, dados, recarregar }) {
         <CartaoLucro resumo={dados.resumo} />
         <CartaoCustoFixo precificacao={dados.precificacao} resumo={dados.resumo} />
       </div>
+
+      <CalendarioLucro key={competencia} competencia={competencia} carregamentos={dados.carregamentos} />
 
       {vazio ? (
         <section className="card fin-sem-itens">
