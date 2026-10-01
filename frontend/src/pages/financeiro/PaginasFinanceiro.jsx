@@ -4,7 +4,7 @@ import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
 import { Aviso, CampoValor, Dinheiro, ImportarPlanilha, NavegadorMes } from "./comum";
 import { AbaPagamentos, Despesas, Dividas } from "./ContasPagarPage";
-import { brl, competenciaDe, hojeIso, nomeCompetencia, numeroBr, toneladas, valorParaCampo } from "./formato";
+import { brl, competenciaDe, FORMAS, hojeIso, nomeCompetencia, numeroBr, toneladas, valorParaCampo } from "./formato";
 import { AbaLucroBruto } from "./ResultadoPage";
 import "./financeiro.css";
 
@@ -292,13 +292,50 @@ export function PagamentosPage() {
 }
 
 const SITUACAO_FATURA = {
-  prevista: "Prevista", hoje: "Vence hoje", vencida: "Vencida", sem_cte: "Aguardando CT-e", removida: "Fora da fatura",
+  prevista: "Prevista", hoje: "Vence hoje", vencida: "Vencida", sem_cte: "Aguardando CT-e", removida: "Fora da fatura", paga: "Paga",
 };
+
+function FormPagamentoFatura({ fatura, contas, competencia, aoSalvar, aoCancelar }) {
+  const [valor, setValor] = useState(valorParaCampo(fatura.valor));
+  const [pagoEm, setPagoEm] = useState(hojeIso());
+  const [contaId, setContaId] = useState(contas[0]?.id ? String(contas[0].id) : "");
+  const [forma, setForma] = useState("BOLETO");
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  async function salvar(e) {
+    e.preventDefault();
+    const numero = numeroBr(valor);
+    if (!numero || numero <= 0) return setErro("Informe o valor pago");
+    if (!contaId) return setErro("Escolha a conta de onde saiu o pagamento");
+    setSalvando(true);
+    setErro("");
+    try {
+      await aoSalvar({ competencia, chave_fatura: fatura.chave, valor: numero, pago_em: pagoEm, conta_id: Number(contaId), forma });
+    } catch (err) {
+      setErro(err.message);
+      setSalvando(false);
+    }
+  }
+  return <form className="fin-fatura-pagamento" onSubmit={salvar}>
+    <div><strong>Registrar pagamento da fatura</strong><small>A baixa também será lançada como saída no Caixa.</small></div>
+    <label className="field"><span>Valor pago</span><CampoValor valor={valor} aoMudar={setValor} /></label>
+    <label className="field"><span>Data do pagamento</span><input type="date" value={pagoEm} onChange={(e) => setPagoEm(e.target.value)} required /></label>
+    <label className="field"><span>Conta</span><select value={contaId} onChange={(e) => setContaId(e.target.value)} required><option value="">Selecione</option>{contas.map((conta) => <option key={conta.id} value={conta.id}>{conta.nome}</option>)}</select></label>
+    <label className="field"><span>Forma</span><select value={forma} onChange={(e) => setForma(e.target.value)}>{FORMAS.filter((f) => !["TARIFA", "RENDIMENTO"].includes(f.valor)).map((f) => <option key={f.valor} value={f.valor}>{f.rotulo}</option>)}</select></label>
+    {erro && <Aviso tipo="error">{erro}</Aviso>}
+    <div className="fin-editor-acoes"><button type="button" className="btn-secondary" onClick={aoCancelar}>Cancelar</button><button type="submit" className="btn-primary" disabled={salvando}>{salvando ? "Registrando..." : "Confirmar pagamento"}</button></div>
+  </form>;
+}
 
 export function FaturasPage() {
   const [competencia, setCompetencia] = useCompetencia();
-  const { dados, erro, carregar } = useDados(() => api.faturas(competencia), competencia);
+  const { dados, erro, carregar } = useDados(async () => {
+    const [faturas, contas] = await Promise.all([api.faturas(competencia), api.contas()]);
+    return { ...faturas, contas: contas.filter((conta) => conta.ativa) };
+  }, competencia);
   const [alterando, setAlterando] = useState(null);
+  const [faturaAberta, setFaturaAberta] = useState(null);
+  const [pagando, setPagando] = useState(null);
   const [visualizacao, setVisualizacao] = useState("todos");
   const [inicioSemana, setInicioSemana] = useState(() => inicioDaSemana(hojeIso()));
   useEffect(() => {
@@ -320,7 +357,8 @@ export function FaturasPage() {
   const fimSemanaData = new Date(`${inicioSemana}T12:00:00`);
   fimSemanaData.setDate(fimSemanaData.getDate() + 6);
   const fimSemana = fimSemanaData.toISOString().slice(0, 10);
-  const itensVisiveis = dados ? (visualizacao === "todos" ? dados.itens : dados.itens.filter((item) => item.vencimento && item.vencimento >= inicioSemana && item.vencimento <= fimSemana)) : [];
+  const faturasVisiveis = dados ? (visualizacao === "todos" ? dados.faturas : dados.faturas.filter((fatura) => fatura.vencimento && fatura.vencimento >= inicioSemana && fatura.vencimento <= fimSemana)) : [];
+  const itensVisiveis = faturasVisiveis.flatMap((fatura) => fatura.itens);
   const incluidosVisiveis = itensVisiveis.filter((item) => item.incluida);
   const totaisVisiveis = dados && visualizacao === "todos" ? dados.totais : {
     previsto: incluidosVisiveis.reduce((s, item) => s + item.valor, 0),
@@ -339,6 +377,16 @@ export function FaturasPage() {
       setAlterando(null);
     }
   }
+  async function pagar(dadosPagamento) {
+    await api.pagarFatura(dadosPagamento);
+    setPagando(null);
+    await carregar();
+  }
+  async function desfazer(fatura) {
+    if (!confirm("Desfazer o pagamento e remover a saída correspondente do Caixa?")) return;
+    await api.desfazerPagamentoFatura(fatura.pagamento.id);
+    await carregar();
+  }
   return (
     <Moldura competencia={competencia} aoMudarMes={setCompetencia} erro={erro} carregando={!dados} aoImportar={carregar}>
       {dados && <>
@@ -352,9 +400,22 @@ export function FaturasPage() {
             {visualizacao === "semana" && <div className="fin-nav-periodo"><button type="button" className="icon-btn" onClick={() => moverSemana(-7)} aria-label="Semana anterior"><Icon name="chevron-left" size={15} /></button><strong>{periodoSemana}</strong><button type="button" className="icon-btn" onClick={() => moverSemana(7)} aria-label="Próxima semana"><Icon name="chevron-right" size={15} /></button></div>}
             <div className="fin-segmentado pequeno"><button type="button" className={visualizacao === "semana" ? "ativo" : ""} onClick={() => setVisualizacao("semana")}>Semana</button><button type="button" className={visualizacao === "todos" ? "ativo" : ""} onClick={() => setVisualizacao("todos")}>Todos</button></div>
           </div></header>
-          {itensVisiveis.length === 0 ? <div className="fin-sem-itens"><Icon name="file" size={22} /><p>Nenhuma fatura prevista {visualizacao === "semana" ? "nesta semana" : "neste mês"}.</p></div> : <div className="fin-faturas-tabela"><table><thead><tr><th>Previsão</th><th>Autorização</th><th>Motorista</th><th>CT-e</th><th>Emissão</th><th>Situação</th><th>Valor</th><th></th></tr></thead><tbody>
-            {itensVisiveis.map((item) => <tr key={item.id} className={!item.incluida ? "removida" : ""}><td>{item.vencimento ? new Date(`${item.vencimento}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td>{item.autorizacao || `#${item.id}`}</td><td><strong>{item.motorista}</strong></td><td>{item.cte || "—"}</td><td>{item.data_cte ? new Date(`${item.data_cte}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td><span className={`fin-situacao ${item.situacao}`}>{SITUACAO_FATURA[item.situacao]}</span></td><td><Dinheiro valor={item.valor} tamanho="xs" /></td><td><button type="button" className={item.incluida ? "btn-ghost" : "btn-secondary"} disabled={alterando === item.id} onClick={() => alterar(item)}>{alterando === item.id ? "..." : item.incluida ? "Remover" : "Incluir"}</button></td></tr>)}
-          </tbody></table></div>}
+          {faturasVisiveis.length === 0 ? <div className="fin-sem-itens"><Icon name="file" size={22} /><p>Nenhuma fatura prevista {visualizacao === "semana" ? "nesta semana" : "neste mês"}.</p></div> : <div className="fin-faturas-lista">
+            {faturasVisiveis.map((fatura) => <article key={fatura.chave} className={`fin-fatura-card ${fatura.pagamento ? "paga" : ""}`}>
+              <button type="button" className="fin-fatura-resumo" onClick={() => setFaturaAberta(faturaAberta === fatura.chave ? null : fatura.chave)}>
+                <span><small>Fatura prevista</small><strong>{fatura.vencimento ? new Date(`${fatura.vencimento}T12:00:00`).toLocaleDateString("pt-BR") : "Aguardando CT-e"}</strong></span>
+                <span><small>Abastecimentos</small><strong>{fatura.quantidade}</strong></span>
+                <span><small>Situação</small><b className={`fin-situacao ${fatura.situacao}`}>{SITUACAO_FATURA[fatura.situacao]}</b></span>
+                <Dinheiro valor={fatura.valor} tamanho="s" />
+                <Icon name={faturaAberta === fatura.chave ? "chevron-left" : "chevron"} size={16} />
+              </button>
+              {faturaAberta === fatura.chave && <div className="fin-fatura-conteudo">
+                {fatura.pagamento ? <div className="fin-fatura-baixa"><span><Icon name="check" size={15} /> Pago em {new Date(`${fatura.pagamento.pago_em}T12:00:00`).toLocaleDateString("pt-BR")} pela conta {fatura.pagamento.conta} · {brl(fatura.pagamento.valor)}</span><button type="button" className="btn-ghost perigo" onClick={() => desfazer(fatura)}>Desfazer pagamento</button></div> : fatura.vencimento && <button type="button" className="btn-primary fin-fatura-pagar" onClick={() => setPagando(pagando === fatura.chave ? null : fatura.chave)}><Icon name="check" size={14} /> Registrar pagamento</button>}
+                {pagando === fatura.chave && !fatura.pagamento && <FormPagamentoFatura fatura={fatura} contas={dados.contas} competencia={competencia} aoSalvar={pagar} aoCancelar={() => setPagando(null)} />}
+                <div className="fin-faturas-tabela"><table><thead><tr><th>Autorização</th><th>Motorista</th><th>CT-e</th><th>Emissão</th><th>Valor</th><th></th></tr></thead><tbody>{fatura.itens.map((item) => <tr key={item.id} className={!item.incluida ? "removida" : ""}><td>{item.autorizacao || `#${item.id}`}</td><td><strong>{item.motorista}</strong></td><td>{item.cte || "—"}</td><td>{item.data_cte ? new Date(`${item.data_cte}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td><Dinheiro valor={item.valor} tamanho="xs" /></td><td><button type="button" className={item.incluida ? "btn-ghost" : "btn-secondary"} disabled={alterando === item.id || Boolean(fatura.pagamento)} onClick={() => alterar(item)}>{alterando === item.id ? "..." : item.incluida ? "Remover" : "Incluir"}</button></td></tr>)}</tbody></table></div>
+              </div>}
+            </article>)}
+          </div>}
         </section>
       </>}
     </Moldura>

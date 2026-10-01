@@ -28,6 +28,7 @@ from ..models import (
     MetaMensal,
     PagamentoAgenda,
     PagamentoComissao,
+    PagamentoFaturaAbastecimento,
 )
 
 FORMAS = ("PIX", "TRANSFERENCIA", "BOLETO", "DEBITO", "CARTAO", "CHEQUE", "RENDIMENTO", "DINHEIRO", "TARIFA", "OUTRO")
@@ -677,8 +678,37 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
     itens.sort(key=lambda i: (i["vencimento"] is None, i["vencimento"] or "9999", i["motorista"]))
     incluidos = [i for i in itens if i["incluida"]]
     previstos = [i for i in incluidos if i["vencimento"]]
+    contas = {c.id: c for c in db.query(ContaBancaria).all()}
+    pagamentos = {
+        p.chave_fatura: p for p in db.query(PagamentoFaturaAbastecimento)
+        .filter(PagamentoFaturaAbastecimento.competencia == competencia).all()
+    }
+    grupos: dict[str, dict] = {}
+    for item in itens:
+        chave = item["vencimento"] or "aguardando-cte"
+        grupo = grupos.setdefault(chave, {
+            "chave": chave, "vencimento": item["vencimento"], "itens": [], "valor": 0.0,
+            "quantidade": 0, "removidas": 0, "situacao": "sem_cte" if not item["vencimento"] else item["situacao"],
+            "pagamento": None,
+        })
+        grupo["itens"].append(item)
+        if item["incluida"]:
+            grupo["valor"] = dinheiro(grupo["valor"] + item["valor"])
+            grupo["quantidade"] += 1
+        else:
+            grupo["removidas"] += 1
+    for chave, grupo in grupos.items():
+        pagamento = pagamentos.get(chave)
+        if pagamento:
+            conta = contas.get(pagamento.conta_id)
+            grupo["situacao"] = "paga"
+            grupo["pagamento"] = {
+                "id": pagamento.id, "valor": dinheiro(pagamento.valor), "pago_em": pagamento.pago_em.isoformat(),
+                "conta_id": pagamento.conta_id, "conta": conta.nome if conta else "",
+            }
+    faturas = sorted(grupos.values(), key=lambda g: (g["vencimento"] is None, g["vencimento"] or "9999"))
     return {
-        "competencia": competencia, "prazo_dias": 20, "itens": itens,
+        "competencia": competencia, "prazo_dias": 20, "itens": itens, "faturas": faturas,
         "totais": {
             "previsto": dinheiro(sum(i["valor"] for i in previstos)),
             "vencido": dinheiro(sum(i["valor"] for i in previstos if i["situacao"] == "vencida")),
@@ -686,6 +716,46 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
             "quantidade": len(incluidos), "removidas": len(itens) - len(incluidos),
         },
     }
+
+
+def pagar_fatura_abastecimento(db: Session, *, competencia: str, chave_fatura: str, pago_em: date,
+                               valor: Optional[float], conta_id: int, forma: str, usuario: str = "") -> PagamentoFaturaAbastecimento:
+    conta = db.get(ContaBancaria, conta_id)
+    if conta is None or not conta.ativa:
+        raise ErroFinanceiro("Escolha uma conta bancária ativa")
+    painel = previsao_faturas_abastecimento(db, competencia)
+    fatura = next((f for f in painel["faturas"] if f["chave"] == chave_fatura), None)
+    if not fatura or not fatura["vencimento"] or fatura["quantidade"] == 0:
+        raise ErroFinanceiro("Fatura não encontrada ou ainda sem CT-e")
+    if fatura["pagamento"]:
+        raise ErroFinanceiro("Essa fatura já está paga")
+    valor_pago = dinheiro(valor if valor is not None else fatura["valor"])
+    if valor_pago <= 0:
+        raise ErroFinanceiro("Informe o valor pago")
+    lancamento = criar_lancamento(
+        db, conta_id=conta_id, data=pago_em, tipo="saida", valor=valor_pago,
+        descricao=f"Fatura de abastecimento - vencimento {fatura['vencimento']}", forma=forma,
+        usuario=usuario, origem="fatura", id_externo=f"fatura-abastecimento:{competencia}:{chave_fatura}",
+    )
+    pagamento = PagamentoFaturaAbastecimento(
+        competencia=competencia, chave_fatura=chave_fatura, valor=valor_pago, pago_em=pago_em,
+        conta_id=conta_id, lancamento_id=lancamento.id,
+    )
+    db.add(pagamento)
+    db.flush()
+    return pagamento
+
+
+def desfazer_pagamento_fatura_abastecimento(db: Session, pagamento_id: int) -> None:
+    pagamento = db.get(PagamentoFaturaAbastecimento, pagamento_id)
+    if pagamento is None:
+        raise ErroFinanceiro("Pagamento da fatura não encontrado")
+    if pagamento.lancamento_id:
+        lancamento = db.get(LancamentoCaixa, pagamento.lancamento_id)
+        if lancamento is not None:
+            db.delete(lancamento)
+    db.delete(pagamento)
+    db.flush()
 
 
 def painel_comissoes(db: Session, competencia: str) -> dict:

@@ -24,14 +24,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.auth import get_current_user, require_admin  # noqa: E402
 from app.database import get_db  # noqa: E402
 from app.models import (  # noqa: E402
-    CarregamentoFinanceiro, CartaFreteEnviada, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa, MetaMensal, PagamentoAgenda, PagamentoComissao,
+    CarregamentoFinanceiro, CartaFreteEnviada, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa, MetaMensal, PagamentoAgenda, PagamentoComissao, PagamentoFaturaAbastecimento,
 )
 from app.routers import financeiro as rotas  # noqa: E402
 from app.servicos import financeiro as fin  # noqa: E402
 from app.servicos import financeiro_importacao as imp  # noqa: E402
 from tests.apoio_documentos import banco_em_memoria  # noqa: E402
 
-TABELAS = (ContaBancaria, LancamentoCaixa, MetaMensal, CarregamentoFinanceiro, CartaFreteEnviada, Despesa, ContaAvulsa, PagamentoAgenda, PagamentoComissao, Divida)
+TABELAS = (ContaBancaria, LancamentoCaixa, MetaMensal, CarregamentoFinanceiro, CartaFreteEnviada, Despesa, ContaAvulsa, PagamentoAgenda, PagamentoComissao, PagamentoFaturaAbastecimento, Divida)
 DIA = date(2026, 9, 15)
 
 
@@ -248,6 +248,35 @@ def test_autorizacao_pode_sair_e_voltar_para_previsao_da_fatura(db):
     incluida = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
     assert incluida["totais"]["previsto"] == 1500
     assert incluida["itens"][0]["incluida"] is True
+
+
+def test_fatura_agrupa_autorizacoes_e_pagamento_vai_para_caixa(db):
+    banco = conta(db)
+    db.add_all([
+        CartaFreteEnviada(data="10/09/2026", condutor="MOTORISTA UM", valor_frete="1.500,00", status="enviada"),
+        CartaFreteEnviada(data="11/09/2026", condutor="MOTORISTA DOIS", valor_frete="2.000,00", status="enviada"),
+    ])
+    carregamento(db, ctes="5053", motorista="MOTORISTA UM", data_emissao=date(2026, 9, 12))
+    carregamento(db, ctes="5054", motorista="MOTORISTA DOIS", data_emissao=date(2026, 9, 12))
+    db.flush()
+
+    painel = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
+    assert len(painel["faturas"]) == 1
+    assert painel["faturas"][0]["quantidade"] == 2
+    assert painel["faturas"][0]["valor"] == 3500
+
+    pagamento = fin.pagar_fatura_abastecimento(
+        db, competencia="2026-10", chave_fatura="2026-10-02", pago_em=date(2026, 10, 2),
+        valor=None, conta_id=banco.id, forma="BOLETO",
+    )
+    db.flush()
+    lancamento = db.get(LancamentoCaixa, pagamento.lancamento_id)
+    assert (pagamento.valor, lancamento.valor, lancamento.origem) == (3500, 3500, "fatura")
+    assert fin.previsao_faturas_abastecimento(db, "2026-10")["faturas"][0]["situacao"] == "paga"
+
+    fin.desfazer_pagamento_fatura_abastecimento(db, pagamento.id)
+    db.flush()
+    assert db.query(PagamentoFaturaAbastecimento).count() == 0 and db.get(LancamentoCaixa, lancamento.id) is None
 
 
 def test_comissoes_sao_puxadas_das_cargas_e_pagamento_vai_para_caixa(db):

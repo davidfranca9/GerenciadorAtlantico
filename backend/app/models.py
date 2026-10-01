@@ -604,3 +604,19 @@ class PagamentoComissao(Base):
     lancamento_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     observacao: Mapped[str] = mapped_column(String(300), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PagamentoFaturaAbastecimento(Base):
+    """Baixa de uma fatura consolidada pelas autorizações com o mesmo vencimento."""
+
+    __tablename__ = "pagamentos_faturas_abastecimento"
+    __table_args__ = (UniqueConstraint("competencia", "chave_fatura", name="uq_pagamento_fatura_abastecimento"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    competencia: Mapped[str] = mapped_column(String(7), index=True)
+    chave_fatura: Mapped[str] = mapped_column(String(40), index=True)
+    valor: Mapped[float] = mapped_column(_dinheiro())
+    pago_em: Mapped[date] = mapped_column(Date, index=True)
+    conta_id: Mapped[int] = mapped_column(Integer)
+    lancamento_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

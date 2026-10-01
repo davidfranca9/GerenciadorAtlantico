@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ..auth import require_admin
 from ..database import get_db
 from ..models import (CarregamentoFinanceiro, CartaFreteEnviada, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa,
-                      MetaMensal, PagamentoAgenda, User)
+                      MetaMensal, PagamentoAgenda, PagamentoFaturaAbastecimento, User)
 from ..servicos import financeiro as fin
 from ..servicos import financeiro_importacao as importacao
 
@@ -127,6 +127,15 @@ class LancamentoPatch(BaseModel):
 
 class FaturaAbastecimentoPatch(BaseModel):
     incluida: bool
+
+
+class PagamentoFaturaAbastecimentoIn(BaseModel):
+    competencia: str
+    chave_fatura: str = Field(min_length=1, max_length=40)
+    valor: Optional[float] = Field(default=None, gt=0)
+    pago_em: date
+    conta_id: int
+    forma: str = "BOLETO"
 
 
 class PagamentoComissaoIn(BaseModel):
@@ -283,6 +292,31 @@ def alterar_fatura(autorizacao_id: int, dados: FaturaAbastecimentoPatch, db: Ses
     carta.incluida_fatura = dados.incluida
     db.commit()
     return {"ok": True, "incluida": carta.incluida_fatura}
+
+
+@router.post("/faturas/pagamentos")
+def pagar_fatura(dados: PagamentoFaturaAbastecimentoIn, db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    try:
+        pagamento = fin.pagar_fatura_abastecimento(
+            db, competencia=dados.competencia, chave_fatura=dados.chave_fatura, pago_em=dados.pago_em,
+            valor=dados.valor, conta_id=dados.conta_id, forma=dados.forma.upper(), usuario=_usuario(user),
+        )
+        db.commit()
+        return {"id": pagamento.id, "ok": True}
+    except fin.ErroFinanceiro as exc:
+        db.rollback()
+        raise _erro(exc)
+
+
+@router.delete("/faturas/pagamentos/{pagamento_id}")
+def desfazer_pagamento_fatura(pagamento_id: int, db: Session = Depends(get_db)):
+    try:
+        fin.desfazer_pagamento_fatura_abastecimento(db, pagamento_id)
+        db.commit()
+        return {"ok": True}
+    except fin.ErroFinanceiro as exc:
+        db.rollback()
+        raise _erro(exc)
 
 
 @router.get("/comissoes")
