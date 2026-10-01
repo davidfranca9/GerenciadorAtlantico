@@ -6,6 +6,23 @@ import { useContrato } from "../context/ContratoContext";
 
 const SUPPLIER_LABEL = { AFL: "Fertimaxi", HERINGER: "Heringer" };
 
+// Alerta de pedido parado (o backend decide os dias). "produto" pinta o nome;
+// "saldo", so as toneladas que sobraram.
+const CLASSE_ALERTA = { amarelo: "parado-amarelo", vermelho: "parado-vermelho" };
+
+function classeAlerta(alerta, onde) {
+  return alerta && alerta.onde === onde ? CLASSE_ALERTA[alerta.nivel] || "" : "";
+}
+
+function alertaDoGrupo(itens) {
+  return itens.reduce((pior, p) => (p.alerta && (!pior || p.alerta.dias > pior.dias) ? p.alerta : pior), null);
+}
+
+function textoParado(alerta) {
+  const desde = `${alerta.dias} dias sem agendamento`;
+  return alerta.onde === "produto" ? `Pedido inteiro em aberto, ${desde}.` : `Sobrou saldo ${desde}.`;
+}
+
 function parseNumero(texto) {
   const num = parseFloat(String(texto ?? "").replace(",", "."));
   return Number.isFinite(num) ? num : 0;
@@ -414,6 +431,7 @@ export default function PedidosPage() {
             const temSelecionado = grupo.itens.some((p) => selecionados[p.id] !== undefined);
             const expandido = expandidos[chave] ?? temSelecionado;
             const restanteGrupo = grupo.itens.reduce((soma, p) => soma + p.toneladas_restante, 0);
+            const alertaGrupo = alertaDoGrupo(grupo.itens);
             return (
             <div key={chave} className={`pedido-card ${grupo.fechado ? "fechado" : ""}`}>
               <button type="button" className="pedido-card-header" onClick={() => toggleExpandido(chave)}>
@@ -434,7 +452,14 @@ export default function PedidosPage() {
                   {grupo.fechado ? (
                     <span className="pedido-fechado-tag"><Icon name="check" size={11} />Carregamento fechado</span>
                   ) : (
-                    <span>{grupo.itens.length} produto{grupo.itens.length === 1 ? "" : "s"} · {formatTon(restanteGrupo)} t restantes</span>
+                    <span>
+                      {grupo.itens.length} produto{grupo.itens.length === 1 ? "" : "s"} · {formatTon(restanteGrupo)} t restantes
+                      {alertaGrupo && (
+                        <span className={`pedido-parado ${CLASSE_ALERTA[alertaGrupo.nivel]}`} title={textoParado(alertaGrupo)}>
+                          {alertaGrupo.dias} dias sem agendar
+                        </span>
+                      )}
+                    </span>
                   )}
                   <Icon name="chevron" size={14} className={`pedido-chevron ${expandido ? "open" : ""}`} />
                 </div>
@@ -458,7 +483,9 @@ export default function PedidosPage() {
                   return (
                     <div key={p.id} className={`pedido-item ${selecionado ? "selected" : ""}`}>
                       <div className="pedido-item-top">
-                        <strong>{p.produto || "Produto"}</strong>
+                        <strong className={classeAlerta(p.alerta, "produto")} title={p.alerta ? textoParado(p.alerta) : undefined}>
+                          {p.produto || "Produto"}
+                        </strong>
                         <div className="pedido-item-actions">
                           <span className="pedido-embalagem"><Icon name="truck" size={12} />{p.embalagem || "-"}</span>
                           {!p.fechado && (
@@ -482,7 +509,12 @@ export default function PedidosPage() {
                           {p.fechado ? (
                             <span className="pedido-restante fechado">fechado</span>
                           ) : (
-                            <span className={`pedido-restante ${esgotando ? "low" : ""}`}>{formatTon(p.toneladas_restante)} t restantes</span>
+                            <span
+                              className={`pedido-restante ${esgotando ? "low" : ""} ${classeAlerta(p.alerta, "saldo")}`}
+                              title={p.alerta ? textoParado(p.alerta) : undefined}
+                            >
+                              {formatTon(p.toneladas_restante)} t restantes
+                            </span>
                           )}
                         </div>
                       </div>

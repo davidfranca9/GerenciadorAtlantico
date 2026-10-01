@@ -8,11 +8,12 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import AgendamentoItem, BaixaPedido, Cidade, Pedido
+from ..models import Agendamento, AgendamentoItem, BaixaPedido, Cidade, Pedido
 from ..servicos import ocr, saldo_pedidos
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"], dependencies=[Depends(get_current_user)])
@@ -21,6 +22,12 @@ router = APIRouter(prefix="/pedidos", tags=["pedidos"], dependencies=[Depends(ge
 # Tres dias cobrem um fim de semana: o que chega na sexta a noite ainda
 # aparece como novo na segunda.
 JANELA_PEDIDO_NOVO = timedelta(days=3)
+
+# Pedido parado chama atencao: passou desse tanto de dias sem ninguem agendar
+# o que sobrou, a tela pinta o produto de amarelo; do segundo em diante, de
+# vermelho.
+ALERTA_AMARELO = 10
+ALERTA_VERMELHO = 20
 
 
 def _eh_novo(p: Pedido, agora: datetime | None = None) -> bool:
@@ -46,7 +53,68 @@ def _fechado(p: Pedido) -> bool:
     return (p.toneladas_total or 0) > 0 and _restante(p) <= 0.001
 
 
-def _to_dict(p: Pedido) -> dict:
+def _ultimo_agendamento(db: Session, pedidos: list[Pedido]) -> dict[int, datetime]:
+    """Quando cada produto foi agendado pela ultima vez."""
+    ids = [p.id for p in pedidos]
+    if not ids:
+        return {}
+    contratos = sorted({p.contrato for p in pedidos if p.contrato})
+    condicoes = [AgendamentoItem.pedido_ref_id.in_(ids)]
+    if contratos:
+        condicoes.append(AgendamentoItem.pedido.in_(contratos))
+    linhas = (
+        db.query(AgendamentoItem.pedido_ref_id, AgendamentoItem.pedido, AgendamentoItem.produto, Agendamento.created_at)
+        .join(Agendamento, Agendamento.id == AgendamentoItem.agendamento_id)
+        .filter(or_(*condicoes))
+        .all()
+    )
+    por_id: dict[int, datetime] = {}
+    por_produto: dict[tuple[str, str], datetime] = {}
+    for ref, numero, produto, quando in linhas:
+        if quando is None:
+            continue
+        if ref is not None and quando > por_id.get(ref, quando - timedelta(seconds=1)):
+            por_id[ref] = quando
+        chave = (numero or "", produto or "")
+        if quando > por_produto.get(chave, quando - timedelta(seconds=1)):
+            por_produto[chave] = quando
+    # Item antigo ficou sem pedido_ref_id: ai vale o numero do pedido + produto.
+    achados = {}
+    for pedido in pedidos:
+        quando = por_id.get(pedido.id) or por_produto.get((pedido.contrato or "", pedido.produto or ""))
+        if quando is not None:
+            achados[pedido.id] = quando
+    return achados
+
+
+def _alerta(p: Pedido, ultimo: datetime | None, agora: datetime) -> dict | None:
+    """Produto parado: ninguem agendou o que sobrou ha dias demais.
+
+    Tudo agendado nao acende nada. Nada agendado ainda pinta o nome do
+    produto; agendado pela metade pinta so as toneladas que sobraram."""
+    if _fechado(p) or _restante(p) <= 0.001:
+        return None
+    desde = ultimo or p.created_at
+    if desde is None:
+        return None
+    dias = (agora - desde).days
+    if dias <= ALERTA_AMARELO:
+        return None
+    return {
+        "dias": dias,
+        "nivel": "vermelho" if dias > ALERTA_VERMELHO else "amarelo",
+        "onde": "produto" if (p.toneladas_usadas or 0) <= 0.001 else "saldo",
+    }
+
+
+def _lista(db: Session, pedidos: list[Pedido]) -> list[dict]:
+    """Os pedidos prontos pra tela, ja com o alerta de parado."""
+    ultimos = _ultimo_agendamento(db, pedidos)
+    agora = datetime.utcnow()
+    return [_to_dict(p, _alerta(p, ultimos.get(p.id), agora)) for p in pedidos]
+
+
+def _to_dict(p: Pedido, alerta: dict | None = None) -> dict:
     return {
         "id": p.id,
         "created_at": p.created_at,
@@ -63,6 +131,7 @@ def _to_dict(p: Pedido) -> dict:
         "cidades_candidatas": _candidatas(p),
         "fechado": _fechado(p),
         "retirado_em": getattr(p, "retirado_em", None),
+        "alerta": alerta,
         "baixas": [
             {
                 "id": b.id,
@@ -86,7 +155,7 @@ def listar_pedidos(
     alguem ja tirou da lista. Se o saldo voltar (agendamento cancelado), o
     pedido tirado reaparece - tem carga pra agendar de novo."""
     query = db.query(Pedido).order_by(Pedido.created_at.desc())
-    pedidos = [_to_dict(p) for p in query.all()]
+    pedidos = _lista(db, query.all())
     if not mostrar_esgotados:
         pedidos = [p for p in pedidos if p["toneladas_restante"] > 0.001]
     if ocultar_retirados:
@@ -123,7 +192,7 @@ def retirar_da_lista(payload: PedidosIn, db: Session = Depends(get_db)):
     for pedido in pedidos:
         pedido.retirado_em = agora
     db.commit()
-    return {"pedidos": [_to_dict(p) for p in pedidos]}
+    return {"pedidos": _lista(db, pedidos)}
 
 
 @router.post("/devolver")
@@ -133,7 +202,7 @@ def devolver_para_lista(payload: PedidosIn, db: Session = Depends(get_db)):
     for pedido in pedidos:
         pedido.retirado_em = None
     db.commit()
-    return {"pedidos": [_to_dict(p) for p in pedidos]}
+    return {"pedidos": _lista(db, pedidos)}
 
 
 @router.post("/importar-pdf")
@@ -171,7 +240,7 @@ async def importar_pdf(file: UploadFile, supplier: str = "AFL", db: Session = De
     db.commit()
     for pedido in criados:
         db.refresh(pedido)
-    return {"pedidos": [_to_dict(p) for p in criados], "cidades_candidatas": resultado.get("cidades_candidatas") or []}
+    return {"pedidos": _lista(db, criados), "cidades_candidatas": resultado.get("cidades_candidatas") or []}
 
 
 class DefinirCidadeIn(BaseModel):
@@ -222,7 +291,7 @@ def definir_cidade(payload: DefinirCidadeIn, db: Session = Depends(get_db)):
         pedido.cidade = texto
         pedido.cidades_candidatas = ""
     db.commit()
-    return {"cidade": texto, "pedidos": [_to_dict(p) for p in pedidos], "agendamento_itens_corrigidos": itens_corrigidos}
+    return {"cidade": texto, "pedidos": _lista(db, pedidos), "agendamento_itens_corrigidos": itens_corrigidos}
 
 
 class BaixaIn(BaseModel):
@@ -250,7 +319,7 @@ def dar_baixa(pedido_id: int, payload: BaixaIn, db: Session = Depends(get_db), u
     pedido.toneladas_usadas = round((pedido.toneladas_usadas or 0.0) + toneladas, 4)
     db.commit()
     db.refresh(pedido)
-    return _to_dict(pedido)
+    return _lista(db, [pedido])[0]
 
 
 @router.delete("/baixas/{baixa_id}")
@@ -267,7 +336,7 @@ def desfazer_baixa(baixa_id: int, db: Session = Depends(get_db)):
     if pedido is None:
         return {"ok": True}
     db.refresh(pedido)
-    return _to_dict(pedido)
+    return _lista(db, [pedido])[0]
 
 
 @router.get("/conciliacao")
