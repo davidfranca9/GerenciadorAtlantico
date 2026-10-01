@@ -344,6 +344,7 @@ function Agenda({ competencia, dados, contas, recarregar }) {
   const doDia = itens.filter((i) => i.vencimento === dia);
   const semData = itens.filter((i) => !i.vencimento);
   const atrasadas = itens.filter((i) => i.situacao === "atrasado" && i.vencimento !== dia);
+  const outrosDias = itens.filter((i) => i.vencimento && i.vencimento !== dia && i.situacao !== "atrasado");
   const grupos = [...new Set(despesas.map((d) => d.grupo).filter(Boolean))];
   const despesaDe = (item) => despesas.find((d) => d.id === item.id) || null;
 
@@ -432,8 +433,16 @@ function Agenda({ competencia, dados, contas, recarregar }) {
             {lista(atrasadas)}
           </details>
         )}
+        {outrosDias.length > 0 && (
+          <details className="fin-secao" open>
+            <summary className="fin-subtitulo">
+              Outros vencimentos do mês <b>{outrosDias.length} · {brl(outrosDias.reduce((s, i) => s + (i.pagamento?.valor ?? i.valor ?? 0), 0))}</b>
+            </summary>
+            {lista(outrosDias)}
+          </details>
+        )}
         {semData.length > 0 && (
-          <details className="fin-secao">
+          <details className="fin-secao" open>
             <summary className="fin-subtitulo">
               Sem dia de vencimento <b>{semData.length} · {brl(semData.reduce((s, i) => s + (i.pagamento?.valor ?? i.valor ?? 0), 0))}</b>
             </summary>
