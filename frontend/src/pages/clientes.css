@@ -1,0 +1,22 @@
+.cli-pagina { display: flex; flex-direction: column; gap: 20px; }
+.cli-form { display: flex; flex-direction: column; gap: 12px; }
+.cli-form-acoes { display: flex; gap: 10px; flex-wrap: wrap; }
+.cli-busca { max-width: 300px; }
+.cli-localizacao-campo { display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px; border: 1px solid var(--border); border-radius: 9px; color: var(--muted); background: var(--panel); }
+.cli-localizacao-campo:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent); }
+.cli-localizacao-campo input { flex: 1; height: 38px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.cli-localizacao-campo input:focus { box-shadow: none; }
+.cli-mapas { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 12px; margin-top: 7px; color: var(--muted); font-size: 11.5px; }
+.cli-mapas a { color: var(--accent); font-weight: 700; text-decoration: none; }
+.cli-mapas a:hover { text-decoration: underline; }
+.cli-mapas-tabela { margin: 0; flex-wrap: nowrap; }
+.cli-observacoes { min-height: 64px; resize: none; overflow: hidden; line-height: 1.5; field-sizing: content; }
+.cli-lista { padding: 0; overflow: hidden; }
+.cli-tabela { overflow-x: auto; }
+.cli-tabela table { width: 100%; }
+.cli-tabela td:first-child strong, .cli-tabela td:first-child small { display: block; }
+.cli-tabela td:first-child small { margin-top: 3px; color: var(--muted); }
+.cli-acoes { display: flex; gap: 6px; justify-content: flex-end; }
+.cli-acoes button { white-space: nowrap; }
+.cli-vazio { color: var(--muted); }
+@media (max-width: 900px) { .cli-acoes { flex-wrap: wrap; } .cli-mapas-tabela { flex-direction: column; align-items: flex-start; gap: 3px; } }

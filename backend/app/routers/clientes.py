@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
@@ -14,15 +14,16 @@ router = APIRouter(prefix="/clientes", tags=["clientes"], dependencies=[Depends(
 
 
 class ClienteIn(BaseModel):
-    nome: str
-    cnpj_cpf: str = ""
-    cidade: str = ""
-    uf: str = ""
-    contato: str = ""
-    email: str = ""
-    telefone: str = ""
-    roteiro: str = ""
-    observacoes: str = ""
+    nome: str = Field(min_length=1, max_length=255)
+    cnpj_cpf: str = Field(default="", max_length=32)
+    cidade: str = Field(default="", max_length=255)
+    uf: str = Field(default="", max_length=2)
+    contato: str = Field(default="", max_length=64)
+    email: str = Field(default="", max_length=255)
+    telefone: str = Field(default="", max_length=64)
+    roteiro: str = Field(default="", max_length=2000)
+    localizacao: str = Field(default="", max_length=1000)
+    observacoes: str = Field(default="", max_length=1000)
 
 
 def _to_dict(c: Cliente) -> dict:
@@ -36,6 +37,7 @@ def _to_dict(c: Cliente) -> dict:
         "email": c.email,
         "telefone": c.telefone,
         "roteiro": c.roteiro,
+        "localizacao": c.localizacao,
         "observacoes": c.observacoes,
         "created_at": c.created_at,
         "updated_at": c.updated_at,

@@ -42,6 +42,7 @@ class Cliente(Base):
     email: Mapped[str] = mapped_column(String(255), default="")
     telefone: Mapped[str] = mapped_column(String(64), default="")
     roteiro: Mapped[str] = mapped_column(String(2000), default="")
+    localizacao: Mapped[str] = mapped_column(String(1000), default="")
     observacoes: Mapped[str] = mapped_column(String(1000), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
