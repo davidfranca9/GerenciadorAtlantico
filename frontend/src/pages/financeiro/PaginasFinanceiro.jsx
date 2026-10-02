@@ -412,7 +412,7 @@ export function FaturasPage() {
           {faturasVisiveis.length === 0 ? <div className="fin-sem-itens"><Icon name="file" size={22} /><p>Nenhuma fatura prevista {visualizacao === "semana" ? "nesta semana" : "neste mês"}.</p></div> : <div className="fin-faturas-lista">
             {faturasVisiveis.map((fatura) => <article key={fatura.chave} className={`fin-fatura-card ${fatura.pagamento ? "paga" : ""}`}>
               <button type="button" className="fin-fatura-resumo" onClick={() => setFaturaAberta(faturaAberta === fatura.chave ? null : fatura.chave)}>
-                <span><small>Fatura prevista</small><strong>{fatura.vencimento ? new Date(`${fatura.vencimento}T12:00:00`).toLocaleDateString("pt-BR") : "Aguardando CT-e"}</strong><small>Lote de {new Date(`${fatura.data_lote}T12:00:00`).toLocaleDateString("pt-BR")}</small></span>
+                <span><small>Fatura prevista</small><strong>{fatura.vencimento ? new Date(`${fatura.vencimento}T12:00:00`).toLocaleDateString("pt-BR") : "Aguardando CT-e"}</strong></span>
                 <span><small>Abastecimentos</small><strong>{fatura.quantidade}</strong></span>
                 <span><small>Situação</small><b className={`fin-situacao ${fatura.situacao}`}>{SITUACAO_FATURA[fatura.situacao]}</b></span>
                 <Dinheiro valor={fatura.valor} tamanho="s" />

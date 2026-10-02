@@ -722,8 +722,8 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
         # O CT-e pode sair no dia seguinte (como no caso do Mauro), sem criar
         # uma fatura separada para a mesma remessa de autorizacoes.
         data_origem_lote = item["data_abastecimento"] or item["data_autorizacao"]
-        data_lote = data_origem_lote
-        chave = f"abastecimentos-{data_lote}"
+        data_lote = item["vencimento"] or data_origem_lote
+        chave = f"vencimento-{item['vencimento']}" if item["vencimento"] else f"aguardando-cte-{data_origem_lote}"
         grupo = grupos.setdefault(chave, {
             "chave": chave, "data_lote": data_lote, "vencimento": None, "itens": [], "valor": 0.0,
             "quantidade": 0, "removidas": 0, "situacao": "sem_cte" if not item["vencimento"] else item["situacao"],
