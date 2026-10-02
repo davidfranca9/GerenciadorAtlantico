@@ -205,36 +205,57 @@ def test_divida_ativa_substitui_copia_antiga_em_gastos(db):
     assert fin.despesas_do_mes(db, "2026-09") == []
 
 
-def test_fatura_de_abastecimento_vence_vinte_dias_depois_do_cte(db):
-    db.add(CartaFreteEnviada(data="10/09/2026", condutor="JOÃO DA SILVA", valor_frete="R$ 1.500,00", autorizacao_num="AUT-9", status="enviada"))
-    carregamento(db, ctes="5053", motorista="Joao da Silva", data_emissao=date(2026, 9, 12))
+def test_fatura_conta_da_autorizacao_e_nao_do_cte(db):
+    """O 2382 do Mauro: autorizacao e abastecimento no dia 11, CT-e emitido no
+    dia 12. Contando pelo CT-e ele caia na fatura do dia 2, que nao e a dele."""
+    db.add(CartaFreteEnviada(
+        data="11/09/2026", condutor="MAURO ALVES CORREIA", valor_frete="R$ 9.600,00",
+        autorizacao_num="2382", status="enviada",
+    ))
+    carregamento(db, ctes="5093", motorista="MAURO ALVES CORREIA", data_emissao=date(2026, 9, 12))
     db.flush()
 
     outubro = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
 
     assert outubro["prazo_dias"] == 20
-    assert outubro["totais"]["previsto"] == 1500
-    assert outubro["itens"][0]["cte"] == "5053"
+    assert outubro["totais"]["previsto"] == 9600
+    # O CT-e continua aparecendo: e ele que diz qual carga foi aquela.
+    assert outubro["itens"][0]["cte"] == "5093"
     assert outubro["itens"][0]["data_cte"] == "2026-09-12"
-    assert outubro["itens"][0]["vencimento"] == "2026-10-02"
-    assert outubro["itens"][0]["situacao"] == "prevista"
+    assert outubro["itens"][0]["vencimento"] == "2026-10-01"
+    assert outubro["itens"][0]["situacao"] == "hoje"
 
 
-def test_autorizacao_sem_cte_fica_pendente_sem_inventar_vencimento(db):
+def test_abastecimento_corrigido_na_mao_manda_na_data_da_fatura(db):
+    """Autorizacao emitida num dia e abastecida noutro: vale quando abasteceu."""
+    carta = CartaFreteEnviada(data="11/09/2026", condutor="MAURO ALVES CORREIA",
+                              valor_frete="9.600,00", autorizacao_num="2382", status="enviada")
+    db.add(carta)
+    db.flush()
+    cliente_http(db).patch(f"/financeiro/faturas/{carta.id}", json={"incluida": True, "data_abastecimento": "2026-09-16"})
+
+    outubro = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
+
+    assert outubro["itens"][0]["vencimento"] == "2026-10-06"
+
+
+def test_autorizacao_sem_cte_tambem_tem_vencimento(db):
+    """Sem carga casada a conta nao fica no limbo: a autorizacao ja tem data."""
     db.add(CartaFreteEnviada(data="01/10/2026", condutor="SEM CARGA", valor_frete="900,00", status="enviada"))
     db.flush()
 
     outubro = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
 
-    assert outubro["totais"]["sem_cte"] == 900
-    assert outubro["itens"][0]["vencimento"] is None
-    assert outubro["itens"][0]["situacao"] == "sem_cte"
+    assert outubro["totais"]["previsto"] == 900
+    assert outubro["itens"][0]["cte"] == ""
+    assert outubro["itens"][0]["vencimento"] == "2026-10-21"
+    assert outubro["itens"][0]["situacao"] == "prevista"
 
 
 def test_autorizacao_pode_sair_e_voltar_para_previsao_da_fatura(db):
-    carta = CartaFreteEnviada(data="10/09/2026", condutor="JOÃO", valor_frete="1.500,00", status="enviada")
+    carta = CartaFreteEnviada(data="15/09/2026", condutor="JOÃO", valor_frete="1.500,00", status="enviada")
     db.add(carta)
-    carregamento(db, ctes="5053", motorista="JOÃO", data_emissao=date(2026, 9, 12))
+    carregamento(db, ctes="5053", motorista="JOÃO", data_emissao=date(2026, 9, 15))
     db.flush()
     http = cliente_http(db)
 
@@ -244,12 +265,12 @@ def test_autorizacao_pode_sair_e_voltar_para_previsao_da_fatura(db):
     assert removida["totais"]["removidas"] == 1
     assert removida["itens"][0]["situacao"] == "removida"
 
-    http.patch(f"/financeiro/faturas/{carta.id}", json={"incluida": True, "data_abastecimento": "2026-09-13"})
+    http.patch(f"/financeiro/faturas/{carta.id}", json={"incluida": True, "data_abastecimento": "2026-09-16"})
     incluida = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
     assert incluida["totais"]["previsto"] == 1500
     assert incluida["itens"][0]["incluida"] is True
-    assert incluida["itens"][0]["data_abastecimento"] == "2026-09-13"
-    assert incluida["faturas"][0]["chave"] == "vencimento-2026-10-02"
+    assert incluida["itens"][0]["data_abastecimento"] == "2026-09-16"
+    assert incluida["faturas"][0]["chave"] == "vencimento-2026-10-06"
 
 
 def test_vencimento_em_fim_de_semana_e_feriado_vai_para_proximo_dia_util():
@@ -259,12 +280,34 @@ def test_vencimento_em_fim_de_semana_e_feriado_vai_para_proximo_dia_util():
     assert fin.proximo_dia_util("2026-09-07") == date(2026, 9, 8)   # independencia, segunda
 
 
+def test_pagamento_antigo_feito_pela_conta_do_cte_continua_valendo(db):
+    """Baixa registrada quando a fatura saia do CT-e: a conta mudou de dia,
+    mas o pagamento tem que continuar colado nela."""
+    banco = conta(db)
+    db.add(CartaFreteEnviada(data="11/09/2026", condutor="MAURO ALVES CORREIA",
+                             valor_frete="9.600,00", autorizacao_num="2382", status="enviada"))
+    carregamento(db, ctes="5093", motorista="MAURO ALVES CORREIA", data_emissao=date(2026, 9, 12))
+    db.flush()
+    # Baixa como ficou gravada na epoca: chave do CT-e (12/09) + 20 dias.
+    db.add(PagamentoFaturaAbastecimento(
+        competencia="2026-10", chave_fatura="vencimento-2026-10-02", valor=9600,
+        pago_em=date(2026, 10, 2), conta_id=banco.id,
+    ))
+    db.flush()
+
+    painel = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 5))
+
+    assert painel["faturas"][0]["vencimento"] == "2026-10-01"
+    assert painel["faturas"][0]["situacao"] == "paga"
+    assert painel["faturas"][0]["pagamento"]["valor"] == 9600
+
+
 def test_anderson_com_vencimento_no_domingo_aparece_na_segunda(db):
     db.add(CartaFreteEnviada(
         data="14/09/2026", condutor="ANDERSON TEIXEIRA ALVES", valor_frete="8.000,00",
         autorizacao_num="2387", status="enviada",
     ))
-    carregamento(db, ctes="5096", motorista="ANDERSON TEIXEIRA ALVES", data_emissao=date(2026, 9, 14))
+    carregamento(db, ctes="5096", motorista="ANDERSON TEIXEIRA ALVES", data_emissao=date(2026, 9, 15))
     db.flush()
 
     outubro = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
@@ -280,8 +323,8 @@ def test_anderson_com_vencimento_no_domingo_aparece_na_segunda(db):
 def test_fatura_agrupa_autorizacoes_e_pagamento_vai_para_caixa(db):
     banco = conta(db)
     db.add_all([
-        CartaFreteEnviada(data="10/09/2026", condutor="MOTORISTA UM", valor_frete="1.500,00", status="enviada"),
-        CartaFreteEnviada(data="10/09/2026", condutor="MOTORISTA DOIS", valor_frete="2.000,00", status="enviada"),
+        CartaFreteEnviada(data="12/09/2026", condutor="MOTORISTA UM", valor_frete="1.500,00", status="enviada"),
+        CartaFreteEnviada(data="12/09/2026", condutor="MOTORISTA DOIS", valor_frete="2.000,00", status="enviada"),
     ])
     carregamento(db, ctes="5053", motorista="MOTORISTA UM", data_emissao=date(2026, 9, 12))
     carregamento(db, ctes="5054", motorista="MOTORISTA DOIS", data_emissao=date(2026, 9, 12))

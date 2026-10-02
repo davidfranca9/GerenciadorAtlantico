@@ -661,7 +661,13 @@ def proximo_dia_util(valor: str | date) -> date:
 
 
 def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional[date] = None) -> dict:
-    """Autorizações de abastecimento previstas para faturar 20 dias após o CT-e."""
+    """Autorizações de abastecimento previstas para faturar 20 dias depois.
+
+    A contagem sai da autorização - da data em que o motorista abasteceu,
+    que por padrão é a da emissão. O CT-e só entra para mostrar qual carga
+    foi aquela: ele costuma ser emitido no dia seguinte, e contar por ele
+    jogava a autorização para a fatura do dia errado.
+    """
     hoje = hoje or date.today()
     inicio, fim = limites_competencia(competencia)
     cartas = db.query(CartaFreteEnviada).filter(CartaFreteEnviada.status != "cancelada").all()
@@ -693,22 +699,24 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
         carga = min(candidatas, default=(None, None, None))[2]
         if carga:
             usadas.add(carga.id)
-        vencimento = proximo_dia_util(carga.data_emissao + timedelta(days=20)) if carga else None
-        if vencimento and not (inicio <= vencimento <= fim):
+        abasteceu = carta.data_abastecimento or data_autorizacao
+        vencimento = proximo_dia_util(abasteceu + timedelta(days=20))
+        if not (inicio <= vencimento <= fim):
             continue
-        if not vencimento and competencia != competencia_de(hoje):
-            continue
+        # Baixa feita quando a conta saia do CT-e: a chave antiga ainda vale.
+        vencimento_antigo = proximo_dia_util(carga.data_emissao + timedelta(days=20)) if carga else None
         incluida = carta.incluida_fatura is not False
-        situacao = "removida" if not incluida else "sem_cte" if not vencimento else "vencida" if vencimento < hoje else "hoje" if vencimento == hoje else "prevista"
+        situacao = "removida" if not incluida else "vencida" if vencimento < hoje else "hoje" if vencimento == hoje else "prevista"
         itens.append({
             "id": carta.id, "autorizacao": carta.autorizacao_num, "motorista": carta.condutor,
             "valor": valor_br(carta.valor_frete), "data_autorizacao": data_autorizacao.isoformat(),
             "cte": carga.ctes if carga else "", "data_cte": carga.data_emissao.isoformat() if carga else None,
-            "vencimento": vencimento.isoformat() if vencimento else None, "situacao": situacao, "incluida": incluida,
+            "vencimento": vencimento.isoformat(), "situacao": situacao, "incluida": incluida,
             "data_abastecimento": carta.data_abastecimento.isoformat() if carta.data_abastecimento else None,
+            "chave_antiga": f"vencimento-{vencimento_antigo.isoformat()}" if vencimento_antigo else "",
         })
 
-    itens.sort(key=lambda i: (i["vencimento"] is None, i["vencimento"] or "9999", i["motorista"]))
+    itens.sort(key=lambda i: (i["vencimento"], i["motorista"]))
     contas = {c.id: c for c in db.query(ContaBancaria).all()}
     pagamentos = {
         p.chave_fatura: p for p in db.query(PagamentoFaturaAbastecimento)
@@ -718,16 +726,17 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
     for item in itens:
         # Cada fatura consolida as autorizacoes com a mesma previsao final.
         data_origem_lote = item["data_abastecimento"] or item["data_autorizacao"]
-        data_lote = item["vencimento"] or data_origem_lote
-        chave = f"vencimento-{item['vencimento']}" if item["vencimento"] else f"aguardando-cte-{data_origem_lote}"
+        chave = f"vencimento-{item['vencimento']}"
         grupo = grupos.setdefault(chave, {
-            "chave": chave, "data_lote": data_lote, "vencimento": None, "itens": [], "valor": 0.0,
-            "quantidade": 0, "removidas": 0, "situacao": "sem_cte" if not item["vencimento"] else item["situacao"],
-            "pagamento": None, "datas_origem": [],
+            "chave": chave, "data_lote": item["vencimento"], "vencimento": None, "itens": [], "valor": 0.0,
+            "quantidade": 0, "removidas": 0, "situacao": item["situacao"],
+            "pagamento": None, "datas_origem": [], "chaves_antigas": [],
         })
         grupo["itens"].append(item)
         if data_origem_lote not in grupo["datas_origem"]:
             grupo["datas_origem"].append(data_origem_lote)
+        if item["chave_antiga"] and item["chave_antiga"] not in grupo["chaves_antigas"]:
+            grupo["chaves_antigas"].append(item["chave_antiga"])
         if item["incluida"]:
             grupo["valor"] = dinheiro(grupo["valor"] + item["valor"])
             grupo["quantidade"] += 1
@@ -740,6 +749,7 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
         # quando a chave da fatura era somente a data de vencimento.
         pagamento = (
             pagamentos.get(chave)
+            or next((pagamentos[k] for k in grupo["chaves_antigas"] if k in pagamentos), None)
             or pagamentos.get(f"autorizacoes-{grupo['data_lote']}")
             or pagamentos.get(grupo["vencimento"] or "")
             or next((pagamentos.get(f"abastecimentos-{d}") for d in grupo["datas_origem"] if pagamentos.get(f"abastecimentos-{d}")), None)
@@ -752,24 +762,22 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
                 "conta_id": pagamento.conta_id, "conta": conta.nome if conta else "",
             }
         elif grupo["quantidade"] == 0:
-            grupo["vencimento"] = min((i["vencimento"] for i in grupo["itens"] if i["vencimento"]), default=None)
+            grupo["vencimento"] = min(i["vencimento"] for i in grupo["itens"])
             grupo["situacao"] = "removida"
-        elif not grupo["vencimento"]:
-            grupo["situacao"] = "sem_cte"
         elif grupo["vencimento"] < hoje.isoformat():
             grupo["situacao"] = "vencida"
         elif grupo["vencimento"] == hoje.isoformat():
             grupo["situacao"] = "hoje"
         else:
             grupo["situacao"] = "prevista"
-    faturas = sorted(grupos.values(), key=lambda g: (g["vencimento"] is None, g["vencimento"] or "9999"))
+    faturas = sorted(grupos.values(), key=lambda g: g["vencimento"] or "9999")
     faturas_ativas = [f for f in faturas if f["quantidade"] > 0]
     return {
         "competencia": competencia, "prazo_dias": 20, "itens": itens, "faturas": faturas,
         "totais": {
-            "previsto": dinheiro(sum(f["valor"] for f in faturas_ativas if f["vencimento"])),
+            "previsto": dinheiro(sum(f["valor"] for f in faturas_ativas)),
             "vencido": dinheiro(sum(f["valor"] for f in faturas_ativas if f["situacao"] == "vencida")),
-            "sem_cte": dinheiro(sum(f["valor"] for f in faturas_ativas if f["situacao"] == "sem_cte")),
+            "sem_cte": 0.0,
             "quantidade": sum(f["quantidade"] for f in faturas_ativas),
             "removidas": sum(f["removidas"] for f in faturas),
         },
