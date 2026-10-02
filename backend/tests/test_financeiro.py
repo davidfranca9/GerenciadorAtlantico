@@ -272,6 +272,10 @@ def test_anderson_com_vencimento_no_domingo_aparece_na_segunda(db):
     assert outubro["itens"][0]["vencimento"] == "2026-10-05"
     assert outubro["faturas"][0]["vencimento"] == "2026-10-05"
 
+    vencida = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 6))
+    assert vencida["faturas"][0]["situacao"] == "vencida"
+    assert vencida["totais"]["vencido"] == vencida["faturas"][0]["valor"] == 8000
+
 
 def test_fatura_agrupa_autorizacoes_e_pagamento_vai_para_caixa(db):
     banco = conta(db)

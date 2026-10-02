@@ -358,14 +358,12 @@ export function FaturasPage() {
   fimSemanaData.setDate(fimSemanaData.getDate() + 6);
   const fimSemana = fimSemanaData.toISOString().slice(0, 10);
   const faturasVisiveis = dados ? (visualizacao === "todos" ? dados.faturas : dados.faturas.filter((fatura) => fatura.vencimento && fatura.vencimento >= inicioSemana && fatura.vencimento <= fimSemana)) : [];
-  const itensVisiveis = faturasVisiveis.flatMap((fatura) => fatura.itens);
-  const incluidosVisiveis = itensVisiveis.filter((item) => item.incluida);
   const totaisVisiveis = dados && visualizacao === "todos" ? dados.totais : {
-    previsto: incluidosVisiveis.reduce((s, item) => s + item.valor, 0),
-    vencido: incluidosVisiveis.filter((item) => item.situacao === "vencida").reduce((s, item) => s + item.valor, 0),
-    sem_cte: 0,
-    quantidade: incluidosVisiveis.length,
-    removidas: itensVisiveis.length - incluidosVisiveis.length,
+    previsto: faturasVisiveis.filter((fatura) => fatura.vencimento).reduce((s, fatura) => s + fatura.valor, 0),
+    vencido: faturasVisiveis.filter((fatura) => fatura.situacao === "vencida").reduce((s, fatura) => s + fatura.valor, 0),
+    sem_cte: faturasVisiveis.filter((fatura) => fatura.situacao === "sem_cte").reduce((s, fatura) => s + fatura.valor, 0),
+    quantidade: faturasVisiveis.reduce((s, fatura) => s + fatura.quantidade, 0),
+    removidas: faturasVisiveis.reduce((s, fatura) => s + fatura.removidas, 0),
   };
   const periodoSemana = `${new Date(`${inicioSemana}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} a ${fimSemanaData.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}`;
   async function alterar(item) {

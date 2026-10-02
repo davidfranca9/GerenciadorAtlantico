@@ -709,8 +709,6 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
         })
 
     itens.sort(key=lambda i: (i["vencimento"] is None, i["vencimento"] or "9999", i["motorista"]))
-    incluidos = [i for i in itens if i["incluida"]]
-    previstos = [i for i in incluidos if i["vencimento"]]
     contas = {c.id: c for c in db.query(ContaBancaria).all()}
     pagamentos = {
         p.chave_fatura: p for p in db.query(PagamentoFaturaAbastecimento)
@@ -718,9 +716,7 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
     }
     grupos: dict[str, dict] = {}
     for item in itens:
-        # A fatura do posto reune as autorizacoes emitidas no mesmo lote/dia.
-        # O CT-e pode sair no dia seguinte (como no caso do Mauro), sem criar
-        # uma fatura separada para a mesma remessa de autorizacoes.
+        # Cada fatura consolida as autorizacoes com a mesma previsao final.
         data_origem_lote = item["data_abastecimento"] or item["data_autorizacao"]
         data_lote = item["vencimento"] or data_origem_lote
         chave = f"vencimento-{item['vencimento']}" if item["vencimento"] else f"aguardando-cte-{data_origem_lote}"
@@ -767,13 +763,15 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
         else:
             grupo["situacao"] = "prevista"
     faturas = sorted(grupos.values(), key=lambda g: (g["vencimento"] is None, g["vencimento"] or "9999"))
+    faturas_ativas = [f for f in faturas if f["quantidade"] > 0]
     return {
         "competencia": competencia, "prazo_dias": 20, "itens": itens, "faturas": faturas,
         "totais": {
-            "previsto": dinheiro(sum(i["valor"] for i in previstos)),
-            "vencido": dinheiro(sum(i["valor"] for i in previstos if i["situacao"] == "vencida")),
-            "sem_cte": dinheiro(sum(i["valor"] for i in incluidos if i["situacao"] == "sem_cte")),
-            "quantidade": len(incluidos), "removidas": len(itens) - len(incluidos),
+            "previsto": dinheiro(sum(f["valor"] for f in faturas_ativas if f["vencimento"])),
+            "vencido": dinheiro(sum(f["valor"] for f in faturas_ativas if f["situacao"] == "vencida")),
+            "sem_cte": dinheiro(sum(f["valor"] for f in faturas_ativas if f["situacao"] == "sem_cte")),
+            "quantidade": sum(f["quantidade"] for f in faturas_ativas),
+            "removidas": sum(f["removidas"] for f in faturas),
         },
     }
 
