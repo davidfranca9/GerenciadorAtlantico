@@ -405,7 +405,7 @@ export function FaturasPage() {
           <div className="card"><span className="eyebrow">AGUARDANDO CT-e</span><Dinheiro valor={totaisVisiveis.sem_cte} tamanho="l" /><small>{visualizacao === "semana" ? "Disponível na visualização Todos" : "Sem data de vencimento até o CT-e ser liberado"}</small></div>
         </section>
         <section className="card fin-faturas">
-          <header className="fin-extrato-topo"><div><h3>Faturas de abastecimento</h3><p>Previsão: CT-e + {dados.prazo_dias} dias · fim de semana e feriado entram no lote do último dia útil</p></div><div className="fin-fatura-controles">
+          <header className="fin-extrato-topo"><div><h3>Faturas de abastecimento</h3><p>Previsão: CT-e + {dados.prazo_dias} dias · vencimento em fim de semana ou feriado passa para o próximo dia útil</p></div><div className="fin-fatura-controles">
             {visualizacao === "semana" && <div className="fin-nav-periodo"><button type="button" className="icon-btn" onClick={() => moverSemana(-7)} aria-label="Semana anterior"><Icon name="chevron-left" size={15} /></button><strong>{periodoSemana}</strong><button type="button" className="icon-btn" onClick={() => moverSemana(7)} aria-label="Próxima semana"><Icon name="chevron-right" size={15} /></button></div>}
             <div className="fin-segmentado pequeno"><button type="button" className={visualizacao === "semana" ? "ativo" : ""} onClick={() => setVisualizacao("semana")}>Semana</button><button type="button" className={visualizacao === "todos" ? "ativo" : ""} onClick={() => setVisualizacao("todos")}>Todos</button></div>
           </div></header>

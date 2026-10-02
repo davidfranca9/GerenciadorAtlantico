@@ -652,11 +652,11 @@ def _feriados_operacao(ano: int) -> set[date]:
     }
 
 
-def data_lote_abastecimento(valor: str | date) -> date:
-    """Fim de semana/feriado pertence ao lote do ultimo dia util."""
+def proximo_dia_util(valor: str | date) -> date:
+    """Vencimento em fim de semana/feriado passa para o proximo dia util."""
     data = date.fromisoformat(valor) if isinstance(valor, str) else valor
     while data.weekday() >= 5 or data in _feriados_operacao(data.year):
-        data -= timedelta(days=1)
+        data += timedelta(days=1)
     return data
 
 
@@ -693,7 +693,7 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
         carga = min(candidatas, default=(None, None, None))[2]
         if carga:
             usadas.add(carga.id)
-        vencimento = carga.data_emissao + timedelta(days=20) if carga else None
+        vencimento = proximo_dia_util(carga.data_emissao + timedelta(days=20)) if carga else None
         if vencimento and not (inicio <= vencimento <= fim):
             continue
         if not vencimento and competencia != competencia_de(hoje):
@@ -722,7 +722,7 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
         # O CT-e pode sair no dia seguinte (como no caso do Mauro), sem criar
         # uma fatura separada para a mesma remessa de autorizacoes.
         data_origem_lote = item["data_abastecimento"] or item["data_autorizacao"]
-        data_lote = data_lote_abastecimento(data_origem_lote).isoformat()
+        data_lote = data_origem_lote
         chave = f"abastecimentos-{data_lote}"
         grupo = grupos.setdefault(chave, {
             "chave": chave, "data_lote": data_lote, "vencimento": None, "itens": [], "valor": 0.0,

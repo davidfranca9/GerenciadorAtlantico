@@ -249,14 +249,28 @@ def test_autorizacao_pode_sair_e_voltar_para_previsao_da_fatura(db):
     assert incluida["totais"]["previsto"] == 1500
     assert incluida["itens"][0]["incluida"] is True
     assert incluida["itens"][0]["data_abastecimento"] == "2026-09-13"
-    assert incluida["faturas"][0]["chave"] == "abastecimentos-2026-09-11"
+    assert incluida["faturas"][0]["chave"] == "abastecimentos-2026-09-13"
 
 
-def test_fim_de_semana_e_feriado_entram_no_lote_do_ultimo_dia_util():
-    assert fin.data_lote_abastecimento("2026-09-11") == date(2026, 9, 11)  # sexta
-    assert fin.data_lote_abastecimento("2026-09-12") == date(2026, 9, 11)  # sabado
-    assert fin.data_lote_abastecimento("2026-09-13") == date(2026, 9, 11)  # domingo
-    assert fin.data_lote_abastecimento("2026-09-07") == date(2026, 9, 4)   # independencia, segunda
+def test_vencimento_em_fim_de_semana_e_feriado_vai_para_proximo_dia_util():
+    assert fin.proximo_dia_util("2026-10-02") == date(2026, 10, 2)  # sexta
+    assert fin.proximo_dia_util("2026-10-03") == date(2026, 10, 5)  # sabado
+    assert fin.proximo_dia_util("2026-10-04") == date(2026, 10, 5)  # domingo
+    assert fin.proximo_dia_util("2026-09-07") == date(2026, 9, 8)   # independencia, segunda
+
+
+def test_anderson_com_vencimento_no_domingo_aparece_na_segunda(db):
+    db.add(CartaFreteEnviada(
+        data="14/09/2026", condutor="ANDERSON TEIXEIRA ALVES", valor_frete="8.000,00",
+        autorizacao_num="2387", status="enviada",
+    ))
+    carregamento(db, ctes="5096", motorista="ANDERSON TEIXEIRA ALVES", data_emissao=date(2026, 9, 14))
+    db.flush()
+
+    outubro = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))
+
+    assert outubro["itens"][0]["vencimento"] == "2026-10-05"
+    assert outubro["faturas"][0]["vencimento"] == "2026-10-05"
 
 
 def test_fatura_agrupa_autorizacoes_e_pagamento_vai_para_caixa(db):
