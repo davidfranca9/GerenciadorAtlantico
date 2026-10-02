@@ -660,6 +660,25 @@ def proximo_dia_util(valor: str | date) -> date:
     return data
 
 
+PRAZO_FATURA_ABASTECIMENTO = 20
+
+
+def data_da_autorizacao(carta) -> date:
+    """O dia em que a autorização foi emitida."""
+    try:
+        return datetime.strptime(carta.data or "", "%d/%m/%Y").date()
+    except ValueError:
+        return carta.created_at.date()
+
+
+def vencimento_da_autorizacao(carta) -> date:
+    """Quando essa autorização entra na fatura: 20 dias depois de o motorista
+    abastecer - a data confirmada na tela ou, enquanto ninguém mexe, a da
+    emissão."""
+    abasteceu = carta.data_abastecimento or data_da_autorizacao(carta)
+    return proximo_dia_util(abasteceu + timedelta(days=PRAZO_FATURA_ABASTECIMENTO))
+
+
 def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional[date] = None) -> dict:
     """Autorizações de abastecimento previstas para faturar 20 dias depois.
 
@@ -685,10 +704,7 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
             return 0.0
 
     for carta in sorted(cartas, key=lambda c: c.id):
-        try:
-            data_autorizacao = datetime.strptime(carta.data or "", "%d/%m/%Y").date()
-        except ValueError:
-            data_autorizacao = carta.created_at.date()
+        data_autorizacao = data_da_autorizacao(carta)
         candidatas = []
         for carga in cargas:
             if carga.id in usadas or not carga.data_emissao:
@@ -699,12 +715,11 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
         carga = min(candidatas, default=(None, None, None))[2]
         if carga:
             usadas.add(carga.id)
-        abasteceu = carta.data_abastecimento or data_autorizacao
-        vencimento = proximo_dia_util(abasteceu + timedelta(days=20))
+        vencimento = vencimento_da_autorizacao(carta)
         if not (inicio <= vencimento <= fim):
             continue
         # Baixa feita quando a conta saia do CT-e: a chave antiga ainda vale.
-        vencimento_antigo = proximo_dia_util(carga.data_emissao + timedelta(days=20)) if carga else None
+        vencimento_antigo = proximo_dia_util(carga.data_emissao + timedelta(days=PRAZO_FATURA_ABASTECIMENTO)) if carga else None
         incluida = carta.incluida_fatura is not False
         situacao = "removida" if not incluida else "vencida" if vencimento < hoje else "hoje" if vencimento == hoje else "prevista"
         itens.append({
@@ -773,7 +788,7 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
     faturas = sorted(grupos.values(), key=lambda g: g["vencimento"] or "9999")
     faturas_ativas = [f for f in faturas if f["quantidade"] > 0]
     return {
-        "competencia": competencia, "prazo_dias": 20, "itens": itens, "faturas": faturas,
+        "competencia": competencia, "prazo_dias": PRAZO_FATURA_ABASTECIMENTO, "itens": itens, "faturas": faturas,
         "totais": {
             "previsto": dinheiro(sum(f["valor"] for f in faturas_ativas)),
             "vencido": dinheiro(sum(f["valor"] for f in faturas_ativas if f["situacao"] == "vencida")),

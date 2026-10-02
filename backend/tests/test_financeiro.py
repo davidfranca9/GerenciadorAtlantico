@@ -802,3 +802,27 @@ def test_editar_conta_avulsa(db):
     guardada = db.get(ContaAvulsa, avulsa["id"])
     assert (guardada.descricao, guardada.escopo, guardada.valor) == ("Posto Ipiranga", "pessoal", 350.0)
     assert guardada.data.isoformat() == "2026-09-12"
+
+
+def test_trocar_a_data_diz_para_qual_fatura_a_autorizacao_foi(db):
+    """O Carlos Muniz sumiu da tela ao trocar a data: o vencimento mudou de
+    mes. A resposta agora diz onde ele foi parar."""
+    carta = CartaFreteEnviada(data="11/09/2026", condutor="CARLOS MUNIZ",
+                              valor_frete="7.000,00", autorizacao_num="2390", status="enviada")
+    db.add(carta)
+    db.flush()
+    http = cliente_http(db)
+
+    # Mesmo mes: muda de fatura, continua na tela.
+    resposta = http.patch(f"/financeiro/faturas/{carta.id}", json={"incluida": True, "data_abastecimento": "2026-09-16"})
+    assert resposta.json()["vencimento"] == "2026-10-06"
+    assert resposta.json()["competencia"] == "2026-10"
+    assert resposta.json()["chave_fatura"] == "vencimento-2026-10-06"
+
+    # Outro mes: sai da tela de outubro - e a resposta avisa.
+    resposta = http.patch(f"/financeiro/faturas/{carta.id}", json={"incluida": True, "data_abastecimento": "2026-10-15"})
+    assert resposta.json()["competencia"] == "2026-11"
+    assert fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 1))["itens"] == []
+    novembro = fin.previsao_faturas_abastecimento(db, "2026-11", hoje=date(2026, 10, 1))
+    assert novembro["itens"][0]["motorista"] == "CARLOS MUNIZ"
+    assert novembro["itens"][0]["vencimento"] == "2026-11-04"

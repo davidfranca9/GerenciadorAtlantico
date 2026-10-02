@@ -334,6 +334,7 @@ export function FaturasPage() {
     return { ...faturas, contas: contas.filter((conta) => conta.ativa) };
   }, competencia);
   const [alterando, setAlterando] = useState(null);
+  const [mudou, setMudou] = useState(null);
   const [faturaAberta, setFaturaAberta] = useState(null);
   const [pagando, setPagando] = useState(null);
   const [visualizacao, setVisualizacao] = useState("todos");
@@ -380,8 +381,13 @@ export function FaturasPage() {
   async function alterarDataAbastecimento(item, data) {
     setAlterando(item.id);
     try {
-      await api.alterarFatura(item.id, item.incluida, data || null);
+      const destino = await api.alterarFatura(item.id, item.incluida, data || null);
       await carregar();
+      // A autorizacao pode ter trocado de fatura (ou de mes) por causa do
+      // novo vencimento: aqui a tela diz pra onde ela foi.
+      setMudou({ motorista: item.motorista, ...destino });
+      setFaturaAberta(destino.chave_fatura);
+      if (destino.vencimento) setInicioSemana(inicioDaSemana(destino.vencimento));
     } finally {
       setAlterando(null);
     }
@@ -399,6 +405,15 @@ export function FaturasPage() {
   return (
     <Moldura competencia={competencia} aoMudarMes={setCompetencia} erro={erro} carregando={!dados} aoImportar={carregar}>
       {dados && <>
+        {mudou && <div className={`fin-fatura-mudou ${mudou.competencia === competencia ? "" : "outro-mes"}`}>
+          <Icon name="calendar" size={16} />
+          <span>
+            <b>{mudou.motorista}</b> passou para a fatura de {new Date(`${mudou.vencimento}T12:00:00`).toLocaleDateString("pt-BR")}
+            {mudou.competencia === competencia ? "." : `, que é de ${new Date(`${mudou.competencia}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })} - por isso saiu desta tela.`}
+          </span>
+          {mudou.competencia !== competencia && <button type="button" className="btn-secondary" onClick={() => { setCompetencia(mudou.competencia); setMudou(null); }}>Ver essa fatura</button>}
+          <button type="button" className="icon-btn" aria-label="Fechar aviso" onClick={() => setMudou(null)}><Icon name="close" size={14} /></button>
+        </div>}
         <section className="fin-resumo-contas">
           <div className="card"><span className="eyebrow">PREVISÃO {visualizacao === "semana" ? "DA SEMANA" : "DO MÊS"}</span><Dinheiro valor={totaisVisiveis.previsto} tamanho="l" /><small>{totaisVisiveis.quantidade} autorizações incluídas · prazo padrão de {dados.prazo_dias} dias após a autorização{totaisVisiveis.removidas ? ` · ${totaisVisiveis.removidas} fora da fatura` : ""}</small></div>
           <div className={`card ${totaisVisiveis.vencido > 0 ? "alerta" : ""}`}><span className="eyebrow">VENCIDO</span><Dinheiro valor={totaisVisiveis.vencido} tamanho="l" /><small>Valores cuja previsão já passou</small></div>

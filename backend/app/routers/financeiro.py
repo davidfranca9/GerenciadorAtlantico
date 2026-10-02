@@ -293,7 +293,14 @@ def alterar_fatura(autorizacao_id: int, dados: FaturaAbastecimentoPatch, db: Ses
     carta.incluida_fatura = dados.incluida
     carta.data_abastecimento = dados.data_abastecimento
     db.commit()
-    return {"ok": True, "incluida": carta.incluida_fatura, "data_abastecimento": carta.data_abastecimento}
+    # Mudar a data move a autorizacao de fatura, as vezes pra outro mes: a
+    # tela precisa saber pra onde ela foi, senao ela some sem explicacao.
+    vencimento = fin.vencimento_da_autorizacao(carta)
+    return {
+        "ok": True, "incluida": carta.incluida_fatura, "data_abastecimento": carta.data_abastecimento,
+        "vencimento": vencimento.isoformat(), "competencia": vencimento.strftime("%Y-%m"),
+        "chave_fatura": f"vencimento-{vencimento.isoformat()}",
+    }
 
 
 @router.post("/faturas/pagamentos")
