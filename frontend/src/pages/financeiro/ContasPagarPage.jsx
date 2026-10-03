@@ -349,9 +349,13 @@ function Agenda({ competencia, dados, contas, recarregar }) {
   );
   const itens = dados.itens.filter(combina);
   const filtrando = itens.length !== dados.itens.length;
+  // Conta do fim do mes que caiu em sabado/feriado paga no mes seguinte: ela
+  // e deste mes, mas nao tem dia no calendario daqui - sem secao propria,
+  // sumiria da tela.
+  const noMesQueVem = itens.filter((i) => i.vencimento && !i.vencimento.startsWith(competencia));
   const doDia = itens.filter((i) => i.vencimento === dia);
   const semData = itens.filter((i) => !i.vencimento);
-  const atrasadas = itens.filter((i) => i.situacao === "atrasado" && i.vencimento !== dia);
+  const atrasadas = itens.filter((i) => i.situacao === "atrasado" && i.vencimento !== dia && !noMesQueVem.includes(i));
   const outrosDias = itens.filter((i) => i.vencimento && i.vencimento !== dia && i.situacao !== "atrasado");
   const grupos = [...new Set(despesas.map((d) => d.grupo).filter(Boolean))];
   const despesaDe = (item) => despesas.find((d) => d.id === item.id) || null;
@@ -447,6 +451,15 @@ function Agenda({ competencia, dados, contas, recarregar }) {
               Outros vencimentos do mês <b>{outrosDias.length} · {brl(outrosDias.reduce((s, i) => s + (i.pagamento?.valor ?? i.valor ?? 0), 0))}</b>
             </summary>
             {lista(outrosDias)}
+          </details>
+        )}
+        {noMesQueVem.length > 0 && (
+          <details className="fin-secao" open>
+            <summary className="fin-subtitulo">
+              Paga no mês que vem <b>{noMesQueVem.length} · {brl(noMesQueVem.reduce((s, i) => s + (i.pagamento?.valor ?? i.valor ?? 0), 0))}</b>
+            </summary>
+            <p className="fin-dica">Venceu no fim do mês, em dia sem banco: só dá para pagar no próximo dia útil.</p>
+            {lista(noMesQueVem)}
           </details>
         )}
         {semData.length > 0 && (

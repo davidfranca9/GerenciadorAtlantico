@@ -1141,15 +1141,13 @@ def agenda(db: Session, competencia: str, hoje: Optional[date] = None, escopo: O
         a conta aparece na segunda, senao a agenda acusa atraso de uma coisa
         que ninguem tinha como pagar.
 
-        Quando a segunda cai no mes seguinte (conta do dia 31 num sabado), a
-        conta fica no dia original: ela e deste mes, e jogada pro mes que vem
-        sumiria do calendario de quem esta olhando."""
+        Conta do fim do mes pode cair no mes seguinte (dia 31 num sabado vira
+        dia 2). Ela continua sendo deste mes - e aqui que ela e cobrada e paga
+        - e a tela mostra de que dia ela veio, numa secao a parte."""
         if dia is None:
             return None, None
         util = proximo_dia_util(dia)
-        if util == dia:
-            return dia, None
-        return (util, dia) if util <= fim else (dia, None)
+        return (util, dia) if util != dia else (dia, None)
 
     def pagamento_dict(p):
         if not p:

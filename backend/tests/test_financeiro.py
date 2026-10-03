@@ -904,13 +904,15 @@ def test_feriado_tambem_empurra_e_dia_util_fica_como_esta(db):
     assert itens["Internet"]["vencia_em"] is None
 
 
-def test_conta_do_ultimo_dia_no_sabado_nao_pula_pro_mes_seguinte(db):
-    """31/10/2026 e sabado. Jogar pra 02/11 sumiria do calendario de outubro,
-    que e onde o dono esta olhando."""
+def test_conta_do_ultimo_dia_no_sabado_vai_pro_mes_seguinte_dizendo_de_onde_veio(db):
+    """31/10/2026 e sabado e a segunda, 02/11, e Finados: so da pra pagar
+    terca, 03/11. A conta continua sendo de outubro, mas aparece no dia em
+    que o dinheiro sai."""
     db.add(Despesa(escopo="empresa", grupo="Fixas", descricao="Contador", valor=900,
                    dia_vencimento=31, competencia_inicio="2026-10"))
     db.flush()
 
     item = fin.agenda(db, "2026-10", hoje=date(2026, 10, 1))["itens"][0]
 
-    assert item["vencimento"] == "2026-10-31" and item["vencia_em"] is None
+    assert item["vencimento"] == "2026-11-03"
+    assert item["vencia_em"] == "2026-10-31"
