@@ -867,3 +867,50 @@ def test_mes_mostra_quem_abasteceu_nele_mas_vence_em_outro(db):
         "id": outubro["fora_da_competencia"][0]["id"], "autorizacao": "", "motorista": "RONALD",
         "valor": 4000.0, "abasteceu_em": "2026-10-15", "vencimento": "2026-11-04", "competencia": "2026-11",
     }]
+
+
+def test_conta_que_vence_no_fim_de_semana_aparece_na_segunda(db):
+    """Banco nao abre sabado: a conta do dia 3 (sabado) so da pra pagar dia 5."""
+    db.add(Despesa(escopo="empresa", grupo="Fixas", descricao="Aluguel", valor=2000,
+                   dia_vencimento=3, competencia_inicio="2026-10"))
+    db.add(ContaAvulsa(escopo="empresa", descricao="Pneu", valor=800, data=date(2026, 10, 4)))
+    db.flush()
+
+    itens = {i["descricao"]: i for i in fin.agenda(db, "2026-10", hoje=date(2026, 10, 1))["itens"]}
+
+    # 03/10 e sabado, 04/10 e domingo: as duas vao pra segunda, 05/10.
+    assert itens["Aluguel"]["vencimento"] == "2026-10-05"
+    assert itens["Aluguel"]["vencia_em"] == "2026-10-03"
+    assert itens["Pneu"]["vencimento"] == "2026-10-05"
+    assert itens["Pneu"]["vencia_em"] == "2026-10-04"
+
+
+def test_feriado_tambem_empurra_e_dia_util_fica_como_esta(db):
+    db.add_all([
+        Despesa(escopo="empresa", grupo="Fixas", descricao="Luz", valor=500,
+                dia_vencimento=12, competencia_inicio="2026-10"),
+        Despesa(escopo="empresa", grupo="Fixas", descricao="Internet", valor=200,
+                dia_vencimento=13, competencia_inicio="2026-10"),
+    ])
+    db.flush()
+
+    itens = {i["descricao"]: i for i in fin.agenda(db, "2026-10", hoje=date(2026, 10, 1))["itens"]}
+
+    # 12/10 e feriado (Nossa Senhora Aparecida), entao cai no dia 13.
+    assert itens["Luz"]["vencimento"] == "2026-10-13"
+    assert itens["Luz"]["vencia_em"] == "2026-10-12"
+    # Dia util nao mexe, e sem data nenhuma a conta continua sem data.
+    assert itens["Internet"]["vencimento"] == "2026-10-13"
+    assert itens["Internet"]["vencia_em"] is None
+
+
+def test_conta_do_ultimo_dia_no_sabado_nao_pula_pro_mes_seguinte(db):
+    """31/10/2026 e sabado. Jogar pra 02/11 sumiria do calendario de outubro,
+    que e onde o dono esta olhando."""
+    db.add(Despesa(escopo="empresa", grupo="Fixas", descricao="Contador", valor=900,
+                   dia_vencimento=31, competencia_inicio="2026-10"))
+    db.flush()
+
+    item = fin.agenda(db, "2026-10", hoje=date(2026, 10, 1))["itens"][0]
+
+    assert item["vencimento"] == "2026-10-31" and item["vencia_em"] is None

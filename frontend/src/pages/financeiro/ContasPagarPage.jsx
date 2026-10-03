@@ -157,6 +157,7 @@ function ItemAgenda({ item, contas, competencia, grupos, despesaDe, aoPagar, aoD
           <small>
             <span className={`fin-tipo ${fixa ? "fixa" : "avulsa"}`}>{fixa ? "Fixa" : "Avulsa"}</span>
             <span className={`fin-escopo ${item.escopo}`}>{item.escopo === "empresa" ? "Empresa" : "Pessoal"}</span>
+            {item.vencia_em && <span className="fin-adiada" title={`Vencia ${diaBr(item.vencia_em)}, em fim de semana ou feriado`}>de {diaBr(item.vencia_em)}</span>}
             {fixa ? item.grupo : ""}
             {item.pagamento && ` · pago em ${diaBr(item.pagamento.pago_em)}${item.pagamento.conta ? ` pelo ${item.pagamento.conta}` : ""}`}
           </small>

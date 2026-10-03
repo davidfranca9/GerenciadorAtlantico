@@ -1136,6 +1136,21 @@ def agenda(db: Session, competencia: str, hoje: Optional[date] = None, escopo: O
             return "atrasado"
         return "hoje" if vencimento == hoje else "a_vencer"
 
+    def vencimento_util(dia: Optional[date]) -> tuple[Optional[date], Optional[date]]:
+        """(dia de pagar, dia original). Banco nao abre sabado nem domingo:
+        a conta aparece na segunda, senao a agenda acusa atraso de uma coisa
+        que ninguem tinha como pagar.
+
+        Quando a segunda cai no mes seguinte (conta do dia 31 num sabado), a
+        conta fica no dia original: ela e deste mes, e jogada pro mes que vem
+        sumiria do calendario de quem esta olhando."""
+        if dia is None:
+            return None, None
+        util = proximo_dia_util(dia)
+        if util == dia:
+            return dia, None
+        return (util, dia) if util <= fim else (dia, None)
+
     def pagamento_dict(p):
         if not p:
             return None
@@ -1147,13 +1162,16 @@ def agenda(db: Session, competencia: str, hoje: Optional[date] = None, escopo: O
     for despesa, parcela in despesas_do_mes(db, competencia, escopo):
         if not despesa.conta_no_resultado:
             continue
-        vencimento = date(inicio.year, inicio.month, min(despesa.dia_vencimento, fim.day)) if despesa.dia_vencimento else None
+        vencimento, vencia_em = vencimento_util(
+            date(inicio.year, inicio.month, min(despesa.dia_vencimento, fim.day)) if despesa.dia_vencimento else None
+        )
         pagamento = pagos.get(("despesa", despesa.id))
         itens.append({
             "origem": "despesa", "id": despesa.id, "escopo": despesa.escopo, "grupo": despesa.grupo,
             "descricao": despesa.descricao, "parcela": f"{parcela}/{despesa.parcelas_total}" if parcela else None,
             # Conta fixa com valor zerado (agua, taxa variavel) e "valor a definir".
             "valor": dinheiro(despesa.valor) or None, "vencimento": vencimento.isoformat() if vencimento else None,
+            "vencia_em": vencia_em.isoformat() if vencia_em else None,
             "situacao": situacao(vencimento, pagamento), "pagamento": pagamento_dict(pagamento),
         })
 
@@ -1161,12 +1179,14 @@ def agenda(db: Session, competencia: str, hoje: Optional[date] = None, escopo: O
     if escopo:
         avulsas = avulsas.filter(ContaAvulsa.escopo == escopo)
     for avulsa in avulsas.all():
+        vencimento, vencia_em = vencimento_util(avulsa.data)
         pagamento = pagos.get(("avulsa", avulsa.id))
         itens.append({
             "origem": "avulsa", "id": avulsa.id, "escopo": avulsa.escopo, "grupo": "Avulsa",
             "descricao": avulsa.descricao, "parcela": None,
             "valor": dinheiro(avulsa.valor) if avulsa.valor is not None else None,
-            "vencimento": avulsa.data.isoformat(), "situacao": situacao(avulsa.data, pagamento),
+            "vencimento": vencimento.isoformat(), "vencia_em": vencia_em.isoformat() if vencia_em else None,
+            "situacao": situacao(vencimento, pagamento),
             "pagamento": pagamento_dict(pagamento),
         })
 
