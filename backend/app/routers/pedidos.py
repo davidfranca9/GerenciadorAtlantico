@@ -223,14 +223,17 @@ async def importar_pdf(file: UploadFile, supplier: str = "AFL", db: Session = De
         toneladas = float(item.get("toneladas") or 0)
         if toneladas <= 0:
             continue
+        # A oferta "De acordo" ja diz de que fabrica ela e - vale ela, nao o
+        # botao da tela, que pode ter ficado na outra fabrica.
+        fabrica = str(item.get("supplier") or supplier).upper()
         pedido = Pedido(
             contrato=str(item.get("contrato") or ""),
             produto=str(item.get("produto") or ""),
             embalagem=str(item.get("embalagem") or ""),
             cidade=str(item.get("cidade") or ""),
             cliente=str(item.get("cliente") or ""),
-            supplier=supplier.upper() if supplier.upper() in ("AFL", "HERINGER") else "AFL",
-            cidades_candidatas="" if item.get("cidade") else ocr.candidatas_para_guardar(resultado),
+            supplier=fabrica if fabrica in ("AFL", "HERINGER") else "AFL",
+            cidades_candidatas="" if item.get("cidade") else ocr.candidatas_do_item(resultado, item),
             toneladas_total=toneladas,
             toneladas_usadas=0,
         )

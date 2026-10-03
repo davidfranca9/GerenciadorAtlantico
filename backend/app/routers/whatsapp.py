@@ -3,7 +3,9 @@
 Fluxo automatico: cliente manda um PDF de pedido pro numero do WhatsApp
 Business -> Meta chama nosso webhook -> baixamos o arquivo, extraimos os
 produtos com o mesmo parser ja usado em /pedidos/importar-pdf, criamos os
-Pedidos no banco e respondemos confirmando pro remetente.
+Pedidos no banco e respondemos confirmando pro remetente. Vale pros dois
+documentos que a fabrica manda: o contrato de pedido e o "De acordo" da
+oferta - o parser reconhece qual chegou.
 
 Toda mensagem recebida (texto, documento, imagem) e toda mensagem enviada
 (automatica ou manual pela tela) fica guardada em WhatsAppMensagem, pra dar
@@ -172,8 +174,10 @@ def _processar_arquivo_recebido(numero_remetente: str, mensagem_id: int, media_i
                         embalagem=str(item.get("embalagem") or ""),
                         cidade=str(item.get("cidade") or ""),
                         cliente=str(item.get("cliente") or ""),
-                        supplier=settings.whatsapp_supplier_padrao or "AFL",
-                        cidades_candidatas="" if item.get("cidade") else ocr.candidatas_para_guardar(resultado),
+                        # A oferta "De acordo" ja diz de que fabrica ela e; o
+                        # contrato de pedido nao, e ai vale o padrao configurado.
+                        supplier=str(item.get("supplier") or "") or settings.whatsapp_supplier_padrao or "AFL",
+                        cidades_candidatas="" if item.get("cidade") else ocr.candidatas_do_item(resultado, item),
                         toneladas_total=toneladas,
                         toneladas_usadas=0,
                     )

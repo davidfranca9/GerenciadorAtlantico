@@ -460,6 +460,36 @@ def candidatas_para_guardar(resultado: dict) -> str:
     )
 
 
+def candidatas_do_item(resultado: dict, item: dict) -> str:
+    """As cidades possiveis daquele produto, em JSON, pra guardar no pedido.
+
+    Vale a lista do proprio item quando a leitura devolveu uma: a oferta da
+    Fertimaxi tem um destino por rota, e guardar a lista do documento inteiro
+    faria a tela sugerir, no produto de uma rota, a cidade da outra.
+    """
+    return candidatas_para_guardar(item if "cidades_candidatas" in item else resultado)
+
+
+def embalagem_do_texto(texto: str) -> str:
+    """Traduz o que o documento escreveu pro vocabulario de embalagem do
+    pedido: GRANEL, BIG BAG ou SACARIA.
+
+    Fica num lugar so porque e por esse vocabulario que a especie do CT-e e
+    escolhida (ver servicos/cte_montagem.py), e cada formato de pedido escreve
+    a embalagem do seu jeito.
+    """
+    upper = normalizar_texto_sem_acento(texto)
+    if "GRANEL" in upper:
+        return "GRANEL"
+    if "BIG BAG" in upper:
+        return "BIG BAG"
+    if "SACARIA" in upper or "SACO" in upper:
+        return "SACARIA"
+    if "BAG" in upper:
+        return "BIG BAG"
+    return "DESCONHECIDA"
+
+
 def texto_com_cliente_separado(pdf) -> str:
     """Texto do pedido com o quadro do CLIENTE lido sozinho.
 
@@ -493,11 +523,187 @@ def texto_com_cliente_separado(pdf) -> str:
     return ""
 
 
+# ---------------------------------------------------------------------------
+# "De acordo" da Fertimaxi: o PDF que ela manda quando aceita o lance de uma
+# oferta. Chega pelos mesmos caminhos do contrato de pedido - a tela de Pedidos
+# e o WhatsApp -, so que em outro layout: um cabecalho com o cliente e o
+# numero, e uma rota numerada ("2.1", "2.2", ...) por carregamento. Por isso e
+# reconhecido pelo texto do documento, sem ninguem escolher formato na tela.
+
+# "AFL" e como o pedido da Fertimaxi sempre foi gravado (ver
+# servicos/oc_html.py e o seletor da tela de Pedidos). A oferta grava o mesmo
+# valor pra cair nos mesmos filtros de fabrica: e-mail de autorizacao,
+# autorizacao de carregamento, cotacao.
+SUPPLIER_FERTIMAXI = "AFL"
+
+# Duas marcas que nenhum contrato de pedido tem: so a oferta fala de
+# "Descricao da Oferta" e lista "Rotas".
+_ANCORAS_OFERTA = ("DESCRICAO DA OFERTA", "ROTAS")
+
+# Os tres marcadores que abrem campo na oferta: secao ("2)"), subitem da secao
+# ("2.1 -") e campo do subitem ("- Quantidade:").
+_MARCADOR_OFERTA = re.compile(r"^(?:(?P<secao>\d+)\s*\)|(?P<pai>\d+)\.\d+\s*-|-)\s*(?P<resto>.*)$")
+
+# Rodape de pagina ("1 of 1"): sem tirar, ele cola no ultimo campo da pagina
+# como se fosse continuacao do valor.
+_RODAPE_OFERTA = re.compile(r"^\d+\s*(?:of|de)\s*\d+$", re.IGNORECASE)
+
+# Campo que a Fertimaxi deixou em branco vem com tracinhos.
+_VAZIOS_OFERTA = {"", "-", "--", "---"}
+
+_QUANTIDADE_OFERTA = re.compile(r"\d{1,3}(?:\.\d{3})*,\d{1,4}|\d+(?:,\d{1,4})?")
+
+
+def eh_oferta_fertimaxi(texto: str) -> bool:
+    """O documento e um "De acordo" de oferta, e nao o contrato de pedido."""
+    normalizado = normalizar_texto_sem_acento(texto or "")
+    return all(ancora in normalizado for ancora in _ANCORAS_OFERTA)
+
+
+def _valor_da_oferta(texto: str) -> str:
+    limpo = (texto or "").strip()
+    return "" if limpo in _VAZIOS_OFERTA else limpo
+
+
+def _toneladas_da_oferta(texto: str) -> float:
+    achado = _QUANTIDADE_OFERTA.search(texto or "")
+    return float(achado.group().replace(".", "").replace(",", ".")) if achado else 0.0
+
+
+def _destino_da_rota(titulo: str) -> tuple[str, str]:
+    """A cidade de descarga da rota: "Conceicao do Jacuipe/BA - Monjolos/MG"
+    vira ("Monjolos", "MG").
+
+    A fabrica vem primeiro no titulo da rota, entao o destino e o ultimo
+    "Cidade/UF" - o que o pedido precisa. O nome fica depois do " - " que
+    separa origem e destino; cidade com hifen no nome (Embu-Guacu) nao se
+    perde porque ali o hifen nao tem espaco em volta.
+    """
+    pares = re.findall(r"([^/\n]+?)\s*/\s*([A-Za-z]{2})\b", titulo or "")
+    if not pares:
+        return "", ""
+    nome, uf = pares[-1]
+    return re.split(r"\s+-\s+", nome)[-1].strip(" -"), uf.upper()
+
+
+def _campos_da_oferta(texto: str) -> list[tuple[str, int | None, str, str]]:
+    """Os campos da oferta na ordem do documento, como (tipo, numero da secao,
+    rotulo sem acento, valor).
+
+    Valor comprido continua na linha de baixo - o telefone do local de
+    descarga, o nome do cliente. A linha sem marcador volta pro campo de cima,
+    senao o valor chegaria cortado.
+    """
+    itens: list[list] = []
+    for linha in ((l or "").strip() for l in (texto or "").splitlines()):
+        if not linha or _RODAPE_OFERTA.match(linha):
+            continue
+        marcador = _MARCADOR_OFERTA.match(linha)
+        if marcador is None:
+            if itens:
+                itens[-1][2] = f"{itens[-1][2]} {linha}".strip()
+            continue
+        if marcador.group("secao"):
+            itens.append(["secao", int(marcador.group("secao")), marcador.group("resto")])
+        elif marcador.group("pai"):
+            itens.append(["subitem", int(marcador.group("pai")), marcador.group("resto")])
+        else:
+            itens.append(["campo", None, marcador.group("resto")])
+
+    campos = []
+    for tipo, numero, conteudo in itens:
+        rotulo, tem_rotulo, valor = conteudo.partition(":")
+        if not tem_rotulo:
+            # Titulo da rota ("2.1 - Conceicao do Jacuipe/BA - Monjolos/MG"):
+            # nao tem rotulo, o conteudo todo e o valor.
+            campos.append((tipo, numero, "", conteudo.strip()))
+        else:
+            campos.append((tipo, numero, normalizar_texto_sem_acento(rotulo), valor.strip()))
+    return campos
+
+
+def extrair_oferta_fertimaxi(texto: str, cidades: list[tuple[str, str]]) -> dict:
+    """Le o "De acordo" da Fertimaxi no mesmo formato que a tela de Pedidos e o
+    WhatsApp ja esperam do contrato: um produto por rota.
+
+    O numero do pedido e o do contrato quando a oferta traz um; vindo "--",
+    vale a observacao - e por ela que a Fertimaxi se acha (43184 na oferta
+    493582). A cidade passa pelo mesmo casamento com o cadastro do contrato,
+    inclusive a duvida que a tela resolve.
+    """
+    cliente = ""
+    contrato = ""
+    observacao = ""
+    secao_rotas: int | None = None
+    rota_atual: dict | None = None
+    rotas: list[dict] = []
+
+    for tipo, numero, rotulo, valor in _campos_da_oferta(texto):
+        if tipo == "secao":
+            # Campo solto depois daqui e da secao nova, nao da ultima rota.
+            rota_atual = None
+            if "DESCRICAO DA OFERTA" in rotulo:
+                cliente = _valor_da_oferta(valor)
+            elif "ROTAS" in rotulo:
+                secao_rotas = numero
+        elif tipo == "subitem" and numero == secao_rotas:
+            rota_atual = {"titulo": valor, "produto": "", "embalagem": "", "toneladas": 0.0}
+            rotas.append(rota_atual)
+        elif tipo == "subitem":
+            rota_atual = None
+            if "NUMERO DO CONTRATO" in rotulo:
+                contrato = _valor_da_oferta(valor)
+        elif rota_atual is not None:
+            if "QUANTIDADE" in rotulo:
+                rota_atual["toneladas"] = _toneladas_da_oferta(valor)
+            elif "PRODUTO" in rotulo:
+                rota_atual["produto"] = _valor_da_oferta(valor)
+            elif "EMBALAGEM" in rotulo:
+                rota_atual["embalagem"] = embalagem_do_texto(valor)
+        elif "OBS" in rotulo:
+            observacao = _valor_da_oferta(valor)
+
+    produtos = []
+    candidatas_do_documento: list[tuple[str, str]] = []
+    for rota in rotas:
+        nome, uf = _destino_da_rota(rota["titulo"])
+        # So cidade do cadastro entra no pedido, no formato "Nome-UF" que a
+        # cotacao usa pra achar a tarifa. Procurar so no destino da rota (e nao
+        # no documento todo) e o que deixa cada rota com a sua cidade.
+        candidatas = encontrar_cidades_candidatas(f"{nome}/{uf}", cidades) if nome and uf else []
+        for candidata in candidatas:
+            if candidata not in candidatas_do_documento:
+                candidatas_do_documento.append(candidata)
+        produtos.append(
+            {
+                "cliente": cliente,
+                "contrato": contrato or observacao,
+                "produto": rota["produto"],
+                "toneladas": rota["toneladas"],
+                "embalagem": rota["embalagem"],
+                "cidade": formatar_cidade(*candidatas[0]) if len(candidatas) == 1 else "",
+                "supplier": SUPPLIER_FERTIMAXI,
+                "cidades_candidatas": [{"cidade": c, "uf": u} for c, u in candidatas],
+            }
+        )
+
+    return {
+        "produtos": produtos,
+        "cidades_candidatas": [{"cidade": c, "uf": u} for c, u in candidatas_do_documento],
+    }
+
+
 def parse_pdf_fields(pdf_path: str, cidades: list[tuple[str, str]]) -> dict:
     """Retorna {"produtos": [...], "cidades_candidatas": [...]} deixando a
-    escolha final da cidade (quando ambigua) para o frontend."""
+    escolha final da cidade (quando ambigua) para o frontend.
+
+    Serve os dois documentos que a fabrica manda - o contrato de pedido e o
+    "De acordo" da oferta -, cada um reconhecido pelo proprio texto: quem
+    chama (tela de Pedidos, WhatsApp) nao precisa saber qual chegou."""
     with pdfplumber.open(pdf_path) as pdf:
         text = "\n".join((p.extract_text(x_tolerance=2, y_tolerance=3) or "") for p in pdf.pages)
+        if eh_oferta_fertimaxi(text):
+            return extrair_oferta_fertimaxi(text, cidades)
         texto_cliente = texto_com_cliente_separado(pdf)
 
     candidatas = encontrar_cidades_candidatas(texto_cliente or text, cidades)
@@ -525,8 +731,7 @@ def parse_pdf_fields(pdf_path: str, cidades: list[tuple[str, str]]) -> dict:
             produto_nome = m_prod.group(1).strip() if m_prod else line.strip()
             raw_qtd = re.search(r"\d{1,3}(?:\.\d{3})*,\d{1,4}|\d+,\d{1,4}", line).group()
             qtd = float(raw_qtd.replace(".", "").replace(",", "."))
-            line_up = line.upper()
-            embalagem = "GRANEL" if "GRANEL" in line_up else "BIG BAG" if "BIG BAG" in line_up else "SACARIA" if "SACO" in line_up else "DESCONHECIDA"
+            embalagem = embalagem_do_texto(line)
             produtos.append({"cliente": cliente, "contrato": pedido, "produto": produto_nome, "toneladas": qtd, "embalagem": embalagem, "cidade": cidade})
     else:
         product_names = [m.group(1).strip() for m in re.finditer(r"^\d{3,}\s*:\s*(.+)", text, re.MULTILINE)]
@@ -539,8 +744,7 @@ def parse_pdf_fields(pdf_path: str, cidades: list[tuple[str, str]]) -> dict:
         for line in detail_lines:
             match_qtd = re.search(r"\d{1,3}(?:\.\d{3})*,\d{1,4}|\d+,\d{1,4}", line)
             qtd = float(match_qtd.group().replace(".", "").replace(",", ".")) if match_qtd else 0
-            line_up = line.upper()
-            embalagem = "GRANEL" if "GRANEL" in line_up else "BIG BAG" if "BIG BAG" in line_up else "SACARIA" if "SACO" in line_up else "DESCONHECIDA"
+            embalagem = embalagem_do_texto(line)
             details.append({"toneladas": qtd, "embalagem": embalagem})
         for i in range(min(len(product_names), len(details))):
             produtos.append(
