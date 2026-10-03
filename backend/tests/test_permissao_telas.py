@@ -305,3 +305,22 @@ def test_quem_nao_via_nada_continua_sem_ver_nada(db_usuarios):
     bloqueado = nao_migrado(db_usuarios, "c@x", ",".join(TELAS_LIBERAVEIS))
     migrar_para_lista_de_permissao(db_usuarios)
     assert telas_liberadas(bloqueado) == {"/trocar-senha"}
+
+
+def test_coluna_nula_vale_a_lista_antiga_se_a_migracao_nao_rodou():
+    """A migracao roda no startup dentro de try/except: se falhar calada, ler
+    NULL como "nao ve nada" deixaria quem trabalha sem menu nenhum."""
+    from types import SimpleNamespace
+
+    from app import auth
+
+    nunca_migrado = SimpleNamespace(role="operador", paginas_liberadas=None, paginas_bloqueadas="/pedidos")
+    telas = auth.telas_liberadas(nunca_migrado)
+
+    assert "/pedidos" not in telas
+    assert "/agendamentos" in telas
+    # Financeiro nunca esteve na lista antiga: ninguem ganha de brinde.
+    assert "/financeiro/caixa" not in telas
+    # Coluna vazia continua sendo "nenhuma aba" - usuario novo.
+    novo = SimpleNamespace(role="operador", paginas_liberadas="", paginas_bloqueadas="")
+    assert auth.telas_liberadas(novo) == set(auth.TELAS_SEMPRE_LIBERADAS)

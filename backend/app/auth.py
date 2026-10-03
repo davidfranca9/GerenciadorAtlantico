@@ -142,7 +142,15 @@ def telas_liberadas(user) -> set[str]:
     """Telas que esse usuario pode abrir. Administrador ve todas, sempre."""
     if getattr(user, "role", "") == "admin":
         return set(ROTAS_TELAS)
-    return set(telas_do_texto(getattr(user, "paginas_liberadas", ""))) | set(TELAS_SEMPRE_LIBERADAS)
+    gravado = getattr(user, "paginas_liberadas", "")
+    if gravado is None:
+        # Coluna NULL e usuario nunca migrado. A migracao roda no startup
+        # dentro de um try/except: se ela falhar calada, ler NULL como "nao ve
+        # nada" tiraria o menu de quem trabalha. Entao aqui vale o que a lista
+        # negra antiga dizia - o mesmo criterio da migracao.
+        bloqueadas = {p.strip() for p in (getattr(user, "paginas_bloqueadas", "") or "").split(",") if p.strip()}
+        return {r for r in TELAS_DA_LISTA_NEGRA_ANTIGA if r not in bloqueadas} | set(TELAS_SEMPRE_LIBERADAS)
+    return set(telas_do_texto(gravado)) | set(TELAS_SEMPRE_LIBERADAS)
 
 
 def tem_tela(user, *rotas: str) -> bool:
