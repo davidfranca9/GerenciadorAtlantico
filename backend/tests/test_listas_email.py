@@ -94,7 +94,7 @@ def test_autorizacao_de_abastecimento_vai_pra_lista_salva(db, monkeypatch, tmp_p
     carta_frete.enviar_agora(
         db, {"DATA": "17/09/2026", "CONDUTOR": "JOSE", "PLACA_CAVALO": "ABC-1D23"},
         gerar=lambda dados: "a.docx", converter=lambda caminho: "a.pdf",
-        enviar=lambda para, assunto, corpo, anexos: enviados.append(para),
+        enviar=lambda para, assunto, corpo, anexos, **kw: enviados.append(para),
     )
     assert enviados == [["financeiro@atlantico.com"]]
     assert db.query(CartaFreteEnviada).one().destinatarios == "financeiro@atlantico.com"

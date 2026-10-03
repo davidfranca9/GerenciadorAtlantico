@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import exigir_tela
+from ..auth import exigir_tela, get_current_user
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem, CartaFreteEnviada, Pedido
 from ..servicos import carta_frete, emails_agendamento, listas_email, respostas_fabrica, saldo_pedidos
@@ -96,6 +96,8 @@ class CartaFreteRequest(BaseModel):
     VALOR_FRETE: str = ""
     AUTORIZACAO_NUM: str = ""
     formato: str = "docx"
+    # Envio de teste vai so pro endereco de teste, nunca pro posto.
+    teste: bool = False
 
 
 def _nome_do_documento(payload: OrdemColetaRequest, produtos: list) -> str:
@@ -416,7 +418,7 @@ def gerar_carta_frete(payload: CartaFreteRequest):
 @router.post("/cartas-frete/enviar-email")
 def enviar_carta_frete_email(payload: CartaFreteRequest, db: Session = Depends(get_db)):
     try:
-        registro = carta_frete.enviar_agora(db, payload.model_dump())
+        registro = carta_frete.enviar_agora(db, payload.model_dump(exclude={"teste"}), teste=payload.teste)
     except carta_frete.CartaFreteInvalida as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -454,6 +456,34 @@ def cancelar_carta_frete(carta_id: int, db: Session = Depends(get_db)):
     return _carta_para_dict(registro)
 
 
+class CorrecaoCartaFreteRequest(BaseModel):
+    valor_frete: str
+    motivo: str = ""
+
+
+@router.post("/cartas-frete/{carta_id}/corrigir-valor")
+def corrigir_valor_carta_frete(
+    carta_id: int,
+    payload: CorrecaoCartaFreteRequest,
+    db: Session = Depends(get_db),
+    usuario=Depends(get_current_user),
+):
+    """Corrige o valor do frete de uma autorizacao ja enviada: registra a
+    correcao e manda o acerto na mesma conversa do e-mail original."""
+    try:
+        registro = carta_frete.corrigir_valor(
+            db, carta_id, payload.valor_frete, payload.motivo,
+            usuario=getattr(usuario, "email", "") or "",
+        )
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Autorização de abastecimento não encontrada")
+    except carta_frete.CartaFreteInvalida as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"A correção foi registrada, mas o e-mail não saiu: {exc}")
+    return _carta_para_dict(registro)
+
+
 def _carta_para_dict(r: CartaFreteEnviada) -> dict:
     return {
         "id": r.id,
@@ -469,6 +499,14 @@ def _carta_para_dict(r: CartaFreteEnviada) -> dict:
         "agendada_para": r.agendada_para,
         "enviada_em": r.enviada_em,
         "erro": r.erro,
+        "correcoes": [
+            {
+                "id": c.id, "valor_anterior": c.valor_anterior, "valor_novo": c.valor_novo,
+                "motivo": c.motivo, "criado_em": c.criado_em, "criado_por": c.criado_por,
+                "erro": c.erro,
+            }
+            for c in getattr(r, "correcoes", [])
+        ],
     }
 
 

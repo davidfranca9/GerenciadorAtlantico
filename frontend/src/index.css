@@ -355,3 +355,14 @@ span.resposta-fabrica-chip:hover{background:transparent}
 .acoes-agendamento .icon-btn.perigo:hover:not(:disabled){color:var(--danger);border-color:var(--danger);background:color-mix(in srgb,var(--danger) 7%,transparent)}
 .tabela-agendamentos .link-motorista:focus-visible,.acoes-agendamento .icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (max-width:1320px){.tabela-agendamentos th,.tabela-agendamentos td{padding:10px 5px}.tabela-agendamentos select{width:188px;font-size:11.5px;padding-left:8px;padding-right:26px;background-position:right 8px center}.acoes-agendamento{gap:3px}.acoes-agendamento .icon-btn{width:30px;height:30px;min-height:30px}}
+.carta-corrigida{margin-left:6px;padding:1px 6px;border-radius:999px;border:1px solid var(--warning);color:var(--warning);font-size:9.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase}
+.carta-detalhe>td{background:var(--panel-soft);padding:10px 14px}
+.carta-correcoes{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.carta-correcoes li{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;font-size:12px;color:var(--muted)}
+.carta-correcoes li b{color:var(--text);font-size:12.5px}
+.carta-correcoes li em{font-style:normal;color:var(--text)}
+.carta-correcao{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;margin-top:10px}
+.carta-correcao .field{margin:0}
+.carta-correcao-motivo{flex:1;min-width:220px}
+.carta-correcao-acoes{display:flex;gap:8px}
+.carta-correcao>small{flex-basis:100%;color:var(--muted);font-size:11.5px}

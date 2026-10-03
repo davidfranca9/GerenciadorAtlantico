@@ -376,7 +376,37 @@ class CartaFreteEnviada(Base):
     incluida_fatura: Mapped[bool] = mapped_column(Boolean, default=True)
     # Confirmada manualmente; enquanto vazia, a fatura usa a data da autorizacao.
     data_abastecimento: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # Message-ID do e-mail que saiu: a correcao do valor responde ele, pra
+    # cair na mesma conversa de quem recebeu a autorizacao errada.
+    email_message_id: Mapped[str] = mapped_column(String(255), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    correcoes: Mapped[list["CartaFreteCorrecao"]] = relationship(
+        back_populates="carta", cascade="all, delete-orphan", order_by="CartaFreteCorrecao.criado_em"
+    )
+
+
+class CartaFreteCorrecao(Base):
+    """Cada vez que o valor do frete de uma autorizacao foi corrigido.
+
+    Fica guardado porque o posto ja recebeu o valor antigo: quando alguem
+    pergunta "mas nao era 1.200?", a resposta tem que estar na tela - quem
+    mudou, quando e por que."""
+
+    __tablename__ = "cartas_frete_correcoes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    carta_id: Mapped[int] = mapped_column(ForeignKey("cartas_frete_enviadas.id", ondelete="CASCADE"), index=True)
+    valor_anterior: Mapped[str] = mapped_column(String(32), default="")
+    valor_novo: Mapped[str] = mapped_column(String(32), default="")
+    motivo: Mapped[str] = mapped_column(String(300), default="")
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    criado_por: Mapped[str] = mapped_column(String(255), default="")
+    # Vazio quando o e-mail da correcao nao saiu (fica o registro e o erro).
+    email_message_id: Mapped[str] = mapped_column(String(255), default="")
+    erro: Mapped[str] = mapped_column(String(500), default="")
+
+    carta: Mapped[CartaFreteEnviada] = relationship(back_populates="correcoes")
 
 
 class EstadoSefaz(Base):

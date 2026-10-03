@@ -32,7 +32,8 @@ from docx import Document
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from ..models import CartaFreteEnviada
+from ..config import settings
+from ..models import CartaFreteCorrecao, CartaFreteEnviada
 from . import listas_email
 from .comunicacao import send_email_message
 from .documentos import fill_carta_frete_docx
@@ -100,16 +101,34 @@ def gerar_docx(dados: dict) -> str:
     return caminho
 
 
-def _mandar(dados: dict, destinatarios: list[str] | None = None, *, gerar=None, converter=None, enviar=None) -> None:
-    """Gera o PDF e manda. As tres etapas entram por parametro pra teste."""
+def _assunto_teste(dados: dict, teste: bool) -> str:
+    """[TESTE] no titulo, como nos outros e-mails da casa: quem recebe tem que
+    saber na lista que aquilo nao e pra valer."""
+    return f"[TESTE] {assunto(dados)}" if teste else assunto(dados)
+
+
+def _mandar(dados: dict, destinatarios: list[str] | None = None, *, gerar=None, converter=None,
+            enviar=None, corpo: str | None = None, responder_a: str = "",
+            assunto_do_email: str | None = None) -> str:
+    """Gera o PDF e manda; devolve o Message-ID. As tres etapas entram por
+    parametro pra teste.
+
+    `responder_a` faz a mensagem cair na mesma conversa de um envio anterior -
+    e assim que a correcao chega embaixo da autorizacao que ela corrige."""
     gerar = gerar or gerar_docx
     converter = converter or docx_to_pdf
     enviar = enviar or send_email_message
     pdf = converter(gerar(dados))
-    enviar(destinatarios or DESTINATARIOS, assunto(dados), CORPO, [pdf])
+    return enviar(destinatarios or DESTINATARIOS, assunto_do_email or assunto(dados), corpo or CORPO, [pdf],
+                  responder_a=responder_a) or ""
 
 
-def _destinatarios(db: Session) -> list[str]:
+def _destinatarios(db: Session, teste: bool = False) -> list[str]:
+    """Em teste vai so pro endereco de teste: experimentar o fluxo nao pode
+    cair na caixa do posto. O registro guarda pra quem foi, entao a correcao
+    de uma autorizacao de teste tambem fica no teste."""
+    if teste:
+        return [settings.email_teste_fabrica]
     return listas_email.destinatarios(db, "abastecimento")
 
 
@@ -127,16 +146,18 @@ def _novo_registro(dados: dict, status: str, destinatarios: list[str] | None = N
     )
 
 
-def enviar_agora(db: Session, payload: dict, **etapas) -> CartaFreteEnviada:
+def enviar_agora(db: Session, payload: dict, teste: bool = False, **etapas) -> CartaFreteEnviada:
     """Manda na hora. O registro fica na lista mesmo quando o envio falha."""
     dados = dados_de(payload)
     _validar_envio(dados)
-    para = _destinatarios(db)
+    para = _destinatarios(db, teste)
     registro = _novo_registro(dados, "enviando", para)
     db.add(registro)
     db.commit()
     try:
-        _mandar(dados, para, **etapas)
+        registro.email_message_id = _mandar(
+            dados, para, assunto_do_email=_assunto_teste(dados, teste), **etapas
+        )
     except Exception as exc:
         registro.status = "erro"
         registro.erro = str(exc)[:500]
@@ -217,3 +238,80 @@ def enviar_agendadas(db: Session, agora: datetime | None = None, **etapas) -> in
             enviadas += 1
         db.commit()
     return enviadas
+
+
+def _foi_teste(registro: CartaFreteEnviada) -> bool:
+    """Autorizacao que saiu como teste tem a correcao tambem como teste."""
+    return settings.email_teste_fabrica in (registro.destinatarios or "")
+
+
+CORPO_CORRECAO = """
+    <p>Prezados,</p>
+    <p><b>Correção da autorização de abastecimento acima.</b></p>
+    <p>O valor do frete passa de <b>{anterior}</b> para <b>{novo}</b>. Vale o documento em anexo,
+    que substitui o anterior.{motivo}</p>
+    <p>Por favor, confirme o recebimento. Em caso de dúvidas, estamos à disposição.</p>
+"""
+
+
+def corrigir_valor(db: Session, carta_id: int, valor: str, motivo: str = "", usuario: str = "", **etapas) -> CartaFreteEnviada:
+    """Troca o valor do frete de uma autorizacao ja enviada.
+
+    O posto ja recebeu o valor antigo, entao duas coisas acontecem juntas: a
+    correcao fica registrada (quem, quando e por que) e um e-mail novo sai NA
+    MESMA CONVERSA do primeiro, pra quem recebeu ler o acerto logo abaixo da
+    autorizacao errada - e nao num e-mail solto que ninguem liga ao outro.
+    """
+    registro = db.get(CartaFreteEnviada, carta_id)
+    if registro is None:
+        raise LookupError(carta_id)
+    if registro.status != "enviada":
+        raise CartaFreteInvalida(
+            f"So da pra corrigir autorizacao que ja foi enviada (situacao: {registro.status})."
+        )
+    novo = str(valor or "").strip()
+    if not novo:
+        raise CartaFreteInvalida("Informe o novo valor do frete.")
+    anterior = registro.valor_frete or ""
+    if novo == anterior:
+        raise CartaFreteInvalida("O valor informado e o mesmo que ja esta na autorizacao.")
+
+    try:
+        dados = json.loads(registro.dados or "{}")
+    except ValueError:
+        dados = {}
+    dados = {**dados, **{campo: getattr(registro, atributo) for campo, atributo in (
+        ("DATA", "data"), ("CONDUTOR", "condutor"), ("CPF", "cpf"),
+        ("PLACA_CAVALO", "placa_cavalo"), ("AUTORIZACAO_NUM", "autorizacao_num"),
+    ) if not dados.get(campo)}}
+    dados["VALOR_FRETE"] = novo
+
+    motivo = (motivo or "").strip()[:300]
+    correcao = CartaFreteCorrecao(
+        carta_id=registro.id, valor_anterior=anterior, valor_novo=novo,
+        motivo=motivo, criado_por=usuario or "",
+    )
+    db.add(correcao)
+    corpo = CORPO_CORRECAO.format(
+        anterior=anterior or "—", novo=novo,
+        motivo=f" Motivo: {motivo}." if motivo else "",
+    )
+    para = [d.strip() for d in (registro.destinatarios or "").split(",") if d.strip()] or _destinatarios(db)
+    try:
+        # Sem o Message-ID do original (autorizacao antiga, de antes deste
+        # registro) o e-mail sai assim mesmo, em conversa propria: melhor
+        # chegar fora da conversa do que nao chegar.
+        correcao.email_message_id = _mandar(
+            dados, para, corpo=corpo, responder_a=registro.email_message_id or "",
+            assunto_do_email=_assunto_teste(dados, _foi_teste(registro)), **etapas
+        )
+    except Exception as exc:
+        correcao.erro = str(exc)[:500]
+        db.commit()
+        raise
+
+    registro.valor_frete = novo
+    registro.dados = json.dumps(dados, ensure_ascii=False)
+    db.commit()
+    db.refresh(registro)
+    return registro

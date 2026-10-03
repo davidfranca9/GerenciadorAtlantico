@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import * as api from "../api/client";
 import DateField from "../components/DateField";
 import { formatCPF, formatMoney, formatNome, formatPlaca } from "../utils/format";
@@ -36,6 +36,46 @@ const SITUACAO = {
   cancelada: ["Cancelada", "var(--muted)"],
 };
 
+// Correcao de valor: o posto ja recebeu a autorizacao, entao a tela mostra o
+// que mudou, quando e por que - e o acerto sai na mesma conversa do e-mail.
+function FormCorrecao({ carta, ocupado, aoSalvar, aoCancelar }) {
+  const [valor, setValor] = useState(carta.valor_frete || "");
+  const [motivo, setMotivo] = useState("");
+  const [erro, setErro] = useState("");
+
+  async function salvar(e) {
+    e.preventDefault();
+    setErro("");
+    try {
+      await aoSalvar(valor.trim(), motivo.trim());
+    } catch (err) {
+      setErro(err.message);
+    }
+  }
+
+  return (
+    <form className="carta-correcao" onSubmit={salvar}>
+      <div className="field">
+        <label>Novo valor do frete</label>
+        <input value={valor} onChange={(e) => setValor(e.target.value)} autoFocus />
+      </div>
+      <div className="field carta-correcao-motivo">
+        <label>Motivo (opcional)</label>
+        <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: valor acertado com o posto" />
+      </div>
+      <div className="carta-correcao-acoes">
+        <button type="button" className="btn-secondary" onClick={aoCancelar}>Cancelar</button>
+        <button type="submit" className="btn-primary" disabled={ocupado}>
+          {ocupado ? "Enviando..." : "Corrigir e reenviar"}
+        </button>
+      </div>
+      <small>O acerto vai por e-mail na mesma conversa em que a autorização foi enviada.</small>
+      {erro && <div className="inline-alert error">{erro}</div>}
+    </form>
+  );
+}
+
+
 export default function CartaFretePage() {
   const [data, setData] = useState(hoje());
   const [condutor, setCondutor] = useState("");
@@ -45,6 +85,7 @@ export default function CartaFretePage() {
   const [autorizacaoNum, setAutorizacaoNum] = useState("");
   const [enviarEm, setEnviarEm] = useState("");
   const [status, setStatus] = useState("");
+  const [corrigindo, setCorrigindo] = useState(null);
   const [acao, setAcao] = useState(""); // "email" | "pdf" | "docx" | "agendar" | "cancelar"
   const [enviadas, setEnviadas] = useState([]);
   const [carregandoLista, setCarregandoLista] = useState(true);
@@ -91,11 +132,11 @@ export default function CartaFretePage() {
     }
   }
 
-  function handleEnviar() {
-    executar("email", async () => {
-      await api.enviarCartaFreteEmail(dados());
+  function handleEnviar(teste = false) {
+    executar(teste ? "teste" : "email", async () => {
+      await api.enviarCartaFreteEmail({ ...dados(), teste });
       carregarEnviadas();
-    }, "E-mail enviado com sucesso.");
+    }, teste ? "E-mail de teste enviado - foi só pro endereço de teste, o posto não recebeu." : "E-mail enviado com sucesso.");
   }
 
   function handleBaixar(formato) {
@@ -118,6 +159,14 @@ export default function CartaFretePage() {
       setEnviarEm("");
       carregarEnviadas();
     }, `Envio agendado para ${rotulo}.`);
+  }
+
+  async function handleCorrigir(carta, valor, motivo) {
+    setStatus("");
+    const atualizada = await api.corrigirValorCartaFrete(carta.id, valor, motivo);
+    setCorrigindo(null);
+    setStatus(`Correção enviada: o valor de ${carta.condutor} passou para ${atualizada.valor_frete}.`);
+    await carregarEnviadas();
   }
 
   function handleCancelar(carta) {
@@ -157,7 +206,10 @@ export default function CartaFretePage() {
       </div>
 
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <button className="btn-primary" disabled={ocupado} onClick={handleEnviar}>
+        <button className="btn-secondary" disabled={ocupado} onClick={() => handleEnviar(true)} title="Manda só pro endereço de teste, sem tocar no posto">
+          {acao === "teste" ? "Enviando..." : "Enviar teste"}
+        </button>
+        <button className="btn-primary" disabled={ocupado} onClick={() => handleEnviar(false)}>
           {acao === "email" ? "Enviando..." : "Enviar por e-mail"}
         </button>
         <button className="btn-secondary" disabled={ocupado} onClick={() => handleBaixar("pdf")}>
@@ -207,12 +259,19 @@ export default function CartaFretePage() {
                 {enviadas.map((c) => {
                   const [rotulo, cor] = SITUACAO[c.status] || [c.status || "Enviada", "var(--muted)"];
                   const programada = c.agendada_para && (c.status === "agendada" || c.status === "cancelada");
+                  const correcoes = (c.correcoes || []).filter((corr) => !corr.erro);
                   return (
-                    <tr key={c.id}>
+                    <Fragment key={c.id}>
+                    <tr>
                       <td>{c.data}</td>
                       <td>{c.condutor}</td>
                       <td>{c.placa_cavalo}</td>
-                      <td>{c.valor_frete}</td>
+                      <td>
+                        {c.valor_frete}
+                        {correcoes.length > 0 && (
+                          <span className="carta-corrigida" title={`Valor original: ${correcoes[0].valor_anterior}`}>corrigido</span>
+                        )}
+                      </td>
                       <td>{c.autorizacao_num}</td>
                       <td>{programada ? `para ${formatarEnvio(c.agendada_para)}` : formatarEnvio(c.enviada_em || c.created_at)}</td>
                       <td>
@@ -224,8 +283,40 @@ export default function CartaFretePage() {
                             Cancelar
                           </button>
                         )}
+                        {c.status === "enviada" && (
+                          <button className="btn-secondary" disabled={ocupado} onClick={() => setCorrigindo(corrigindo === c.id ? null : c.id)}>
+                            {corrigindo === c.id ? "Fechar" : "Corrigir valor"}
+                          </button>
+                        )}
                       </td>
                     </tr>
+                    {(corrigindo === c.id || correcoes.length > 0) && (
+                      <tr className="carta-detalhe">
+                        <td colSpan={8}>
+                          {correcoes.length > 0 && (
+                            <ul className="carta-correcoes">
+                              {correcoes.map((corr) => (
+                                <li key={corr.id}>
+                                  <b>{corr.valor_anterior} → {corr.valor_novo}</b>
+                                  <span>{formatarEnvio(corr.criado_em)}</span>
+                                  {corr.criado_por && <span>por {corr.criado_por}</span>}
+                                  {corr.motivo && <em>{corr.motivo}</em>}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {corrigindo === c.id && (
+                            <FormCorrecao
+                              carta={c}
+                              ocupado={ocupado}
+                              aoCancelar={() => setCorrigindo(null)}
+                              aoSalvar={(valor, motivo) => handleCorrigir(c, valor, motivo)}
+                            />
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>

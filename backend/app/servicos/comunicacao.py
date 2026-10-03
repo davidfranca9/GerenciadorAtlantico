@@ -114,9 +114,15 @@ def send_email_message(
     corpo: str,
     anexos: list[str] | None = None,
     imagens_inline: dict[str, str] | None = None,
+    responder_a: str = "",
 ) -> str:
     """Devolve o Message-ID do e-mail que saiu: a resposta cita ele, e e
     assim que ela volta pro agendamento certo.
+
+    `responder_a` e o Message-ID de um e-mail que ja saiu: com ele a mensagem
+    entra NA MESMA CONVERSA daquele, em vez de comecar outra. E o contrario
+    do padrao da casa (cada envio e uma conversa nova) e serve pra correcao:
+    quem recebeu a autorizacao errada le o acerto logo abaixo dela.
 
     imagens_inline mapeia um Content-ID (sem os "<>") pro caminho de uma
     imagem no disco - referencie no HTML do corpo via <img src="cid:o_id">
@@ -139,7 +145,14 @@ def send_email_message(
     msg["From"] = settings.gmail_sender_email
     msg["To"] = ", ".join(destinatarios)
     msg["Subject"] = assunto
-    marcar_conversa_nova(msg, assunto)
+    if responder_a:
+        msg["Message-ID"] = make_msgid(idstring=uuid.uuid4().hex, domain="atlanticofertlog.com.br")
+        msg["Date"] = formatdate(localtime=True)
+        msg["In-Reply-To"] = responder_a
+        msg["References"] = responder_a
+        msg["Thread-Topic"] = assunto
+    else:
+        marcar_conversa_nova(msg, assunto)
     msg.attach(corpo_msg)
 
     for caminho_arquivo in anexos:

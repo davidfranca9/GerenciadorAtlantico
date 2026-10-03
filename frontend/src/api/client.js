@@ -601,6 +601,10 @@ export function cancelarCartaFrete(id) {
   return request(`/cartas-frete/${id}/cancelar`, { method: "POST" });
 }
 
+export function corrigirValorCartaFrete(id, valorFrete, motivo) {
+  return request(`/cartas-frete/${id}/corrigir-valor`, { method: "POST", body: { valor_frete: valorFrete, motivo } });
+}
+
 export function listarCartasFrete() {
   return request("/cartas-frete");
 }

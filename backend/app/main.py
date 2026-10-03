@@ -81,6 +81,8 @@ def on_startup():
             conn.execute(text("ALTER TABLE notas_fiscais_recebidas ADD COLUMN IF NOT EXISTS agendamento_id INTEGER"))
             conn.execute(text("ALTER TABLE notas_fiscais_recebidas ADD COLUMN IF NOT EXISTS casamento VARCHAR(300) DEFAULT ''"))
             conn.execute(text("ALTER TABLE notas_fiscais_recebidas ADD COLUMN IF NOT EXISTS rascunho_resultado VARCHAR(300) DEFAULT ''"))
+            # Correcao de valor responde o e-mail original: guarda o Message-ID.
+            conn.execute(text("ALTER TABLE cartas_frete_enviadas ADD COLUMN IF NOT EXISTS email_message_id VARCHAR(255) DEFAULT ''"))
             # Carta frete com envio agendado.
             conn.execute(text("ALTER TABLE cartas_frete_enviadas ADD COLUMN IF NOT EXISTS agendada_para TIMESTAMP"))
             conn.execute(text("ALTER TABLE cartas_frete_enviadas ADD COLUMN IF NOT EXISTS enviada_em TIMESTAMP"))
