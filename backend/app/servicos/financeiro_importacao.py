@@ -501,7 +501,7 @@ def _importar_dividas(db: Session, folha) -> dict:
 
 
 # --------------------------------------------------------------------------
-# Extrato do banco (OFX)
+# Extrato do banco: le o arquivo OFX e grava o extrato (de qualquer fonte)
 # --------------------------------------------------------------------------
 
 
@@ -570,19 +570,41 @@ def ler_ofx(conteudo: bytes) -> dict:
 
 
 def importar_extrato(db: Session, conta_id: int, conteudo: bytes, *, aplicar: bool = False, usuario: str = "") -> dict:
+    """Extrato OFX baixado no internet banking."""
+    if db.get(ContaBancaria, conta_id) is None:
+        # Checa antes de abrir o arquivo: erro de conta e mais util que erro
+        # de formato pra quem errou o banco na tela.
+        raise fin.ErroFinanceiro("Conta bancária não encontrada")
+    return gravar_extrato(db, conta_id, ler_ofx(conteudo), aplicar=aplicar, usuario=usuario)
+
+
+def gravar_extrato(db: Session, conta_id: int, lido: dict, *, prefixo: str = "ofx:", fonte: str = "ofx",
+                   aplicar: bool = False, usuario: str = "") -> dict:
+    """Joga no caixa o extrato ja lido, venha ele de onde vier.
+
+    `lido` e o formato que `ler_ofx` devolve (transacoes, saldo, linhas de
+    saldo e saldo anterior). O extrato puxado na API do Itau entra por aqui
+    tambem: a previa, a deduplicacao e o "saldo nao e lancamento" sao estes,
+    nao existe um segundo caminho de importacao.
+
+    `prefixo` identifica a FONTE dentro do id_externo ("ofx:" do arquivo,
+    "itau:" da API). Ele serve pra duas coisas: o mesmo lancamento puxado de
+    novo na mesma fonte nao duplica, e o que ja veio da OUTRA fonte entra na
+    conferencia de "parecidos" (mesmo dia, tipo e valor) - assim quem importou
+    o OFX do mes e depois puxou o mesmo mes na API nao lanca tudo em dobro.
+    """
     conta = db.get(ContaBancaria, conta_id)
     if conta is None:
         raise fin.ErroFinanceiro("Conta bancária não encontrada")
-    lido = ler_ofx(conteudo)
     try:
         existentes = {l.id_externo for l in db.query(LancamentoCaixa.id_externo).filter(LancamentoCaixa.conta_id == conta.id)}
-        ja_lancados = db.query(LancamentoCaixa).filter(LancamentoCaixa.conta_id == conta.id, LancamentoCaixa.id_externo.is_(None) | ~LancamentoCaixa.id_externo.like("ofx:%")).all()
+        ja_lancados = db.query(LancamentoCaixa).filter(LancamentoCaixa.conta_id == conta.id, LancamentoCaixa.id_externo.is_(None) | ~LancamentoCaixa.id_externo.like(f"{prefixo}%")).all()
         # O que ja foi digitado ou veio da planilha (mesmo dia, tipo e valor)
         # nao entra de novo pelo extrato.
         parecidos = Counter((l.data, l.tipo, fin.dinheiro(l.valor)) for l in ja_lancados)
         novos, repetidos, parecidos_ignorados, previa = 0, 0, 0, []
         for t in lido["transacoes"]:
-            id_externo = f"ofx:{t['fitid']}"[:160]
+            id_externo = f"{prefixo}{t['fitid']}"[:160]
             if id_externo in existentes:
                 repetidos += 1
                 continue
@@ -613,7 +635,9 @@ def importar_extrato(db: Session, conta_id: int, conteudo: bytes, *, aplicar: bo
             }
         datas = [t["data"] for t in lido["transacoes"]]
         resumo = {
-            "tipo": "extrato", "aplicado": aplicar, "conta": conta.nome,
+            # "fonte" diz de onde veio o extrato (arquivo OFX ou API do banco):
+            # a tela mostra o mesmo resumo pros dois.
+            "tipo": "extrato", "fonte": fonte, "aplicado": aplicar, "conta": conta.nome,
             "periodo": {"inicio": min(datas).isoformat(), "fim": max(datas).isoformat()} if datas else None,
             "lancamentos": {"novos": novos, "ja_existiam": repetidos, "parecidos_ignorados": parecidos_ignorados},
             "previa": previa, "conferencia": conferencia,

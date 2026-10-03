@@ -82,6 +82,34 @@ class Settings(BaseSettings):
 
     gemini_api_key: str = ""
 
+    # --- Extrato de conta corrente do Itau (API do devportal) -------------
+    # Credencial de BANCO: nada disso entra no codigo, nada e exposto no
+    # frontend e nada aparece em log (nem o token, nem o secret, nem o
+    # conteudo do certificado). Sem as variaveis preenchidas a rota responde
+    # "Configure as credenciais do Itau" em vez de tentar a chamada.
+    itau_client_id: str = ""
+    itau_client_secret: str = ""        # o devportal mostra o secret UMA vez
+    # Certificado dinamico (mTLS): o .crt que o Itau assinou a partir do CSR
+    # e a .key gerada com ele. Os arquivos ficam FORA do repositorio.
+    itau_cert_path: str = ""
+    itau_cert_key_path: str = ""
+    # A conta na URL do extrato e agencia(4) + "00" + conta(5) + DAC(1) - o
+    # exemplo da documentacao e 816100994788. Guardamos em pedacos pra nao
+    # errar a montagem na mao.
+    itau_agencia: str = ""             # 4 digitos
+    itau_conta: str = ""               # 5 digitos (aceita 6 com o DAC junto)
+    itau_conta_dac: str = ""           # 1 digito
+    # URLs de PRODUCAO. Homologacao (pra testar antes de valer dinheiro):
+    #   ITAU_TOKEN_URL=https://sts.rdhi.com.br/api/oauth/token
+    #   ITAU_EXTRATO_BASE_URL=https://account-statement.api.hom.itau.com/account-statement/v1
+    itau_token_url: str = "https://sts.itau.com.br/api/oauth/token"
+    itau_extrato_base_url: str = "https://account-statement.api.itau.com/account-statement/v1"
+    itau_timeout_segundos: int = 60
+    # A documentacao mostra page_size 8000 e 100. 100 e o tamanho seguro: com
+    # pagina grande um mes inteiro vem numa resposta so, mas o banco nao
+    # garante isso em lugar nenhum - o servico pagina de qualquer jeito.
+    itau_page_size: int = 100
+
     whatsapp_verify_token: str = ""
     whatsapp_access_token: str = ""
     whatsapp_phone_number_id: str = ""

@@ -150,6 +150,40 @@ async def importar_extrato(conta_id: int, arquivo: UploadFile = File(...), aplic
         raise _erro(exc)
 
 
+# Janela maxima de uma puxada. Nao e limite do banco (a doc nao diz qual e):
+# e pra ninguem pedir "o ano inteiro" sem querer e ficar esperando paginacao.
+DIAS_MAXIMOS_EXTRATO_ITAU = 92
+
+
+@router.post("/contas/{conta_id}/extrato-itau")
+def puxar_extrato_itau(conta_id: int, inicio: date, fim: date, aplicar: bool = False,
+                       db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    """Extrato do periodo direto na API do Itau, no mesmo fluxo do OFX.
+
+    Sem `aplicar`, so mostra o que entraria (a previa roda e desfaz). Com as
+    credenciais do banco em branco responde 400 dizendo isso, em vez de
+    estourar erro de conexao na cara de quem clicou.
+    """
+    from ..servicos import itau_extrato
+
+    if fim < inicio:
+        raise HTTPException(status_code=400, detail="O fim do período não pode ser antes do início")
+    if (fim - inicio).days > DIAS_MAXIMOS_EXTRATO_ITAU:
+        raise HTTPException(status_code=400, detail="Puxe no máximo 3 meses de extrato por vez")
+    try:
+        return itau_extrato.importar_extrato(db, conta_id, inicio, fim, aplicar=aplicar, usuario=_usuario(user))
+    except itau_extrato.CredencialItauAusente as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except itau_extrato.PayloadItauDesconhecido as exc:
+        # Campo que a documentacao nao mostrava: a mensagem traz o lancamento
+        # que veio, pra ajustar a leitura sem adivinhacao.
+        raise HTTPException(status_code=502, detail=str(exc)[:1200])
+    except itau_extrato.ErroItau as exc:
+        raise HTTPException(status_code=502, detail=f"O Itaú não respondeu: {str(exc)[:400]}")
+    except fin.ErroFinanceiro as exc:
+        raise _erro(exc)
+
+
 # --------------------------------------------------------------------------
 # Caixa
 # --------------------------------------------------------------------------

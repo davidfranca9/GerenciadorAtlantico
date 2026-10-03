@@ -346,6 +346,125 @@ function NovoLancamento({ contas, diaPadrao, aoLancar }) {
   );
 }
 
+// Previa do extrato, a mesma pro arquivo OFX e pro extrato puxado na API do
+// Itau: o backend devolve o mesmo resumo nos dois casos.
+function ResumoExtrato({ resumo, feito }) {
+  if (!resumo) return null;
+  return (
+    <div className="fin-previa">
+      <p className="fin-previa-titulo">
+        {feito ? "Importado:" : "Vão entrar"} <strong>{resumo.lancamentos.novos} lançamentos</strong>
+        {resumo.periodo && ` de ${diaBr(resumo.periodo.inicio)} a ${diaBr(resumo.periodo.fim)}`}
+        {resumo.lancamentos.ja_existiam > 0 && ` · ${resumo.lancamentos.ja_existiam} já importados antes`}
+        {resumo.lancamentos.parecidos_ignorados > 0 && ` · ${resumo.lancamentos.parecidos_ignorados} já lançados à mão (mesmo dia e valor) ficaram de fora`}
+      </p>
+      {resumo.linhas_de_saldo > 0 && (
+        <p className="fin-previa-nota">
+          {resumo.linhas_de_saldo} linha{resumo.linhas_de_saldo === 1 ? "" : "s"} de saldo do banco (tipo "SALDO TOTAL DISPONÍVEL DIA")
+          {resumo.linhas_de_saldo === 1 ? " foi ignorada" : " foram ignoradas"}: saldo não é lançamento.
+          {resumo.saldo_anterior && ` O extrato começa com saldo de ${brl(resumo.saldo_anterior.valor)} em ${diaBr(resumo.saldo_anterior.data)}.`}
+        </p>
+      )}
+      {resumo.conferencia && (
+        <ul className="fin-conferido">
+          <li className={Math.abs(resumo.conferencia.diferenca) < 0.01 ? "bate" : "diverge"}>
+            <span>Saldo em {diaBr(resumo.conferencia.data)}</span>
+            <span className="fin-conferido-valores"><small>banco {brl(resumo.conferencia.banco)}</small><strong>sistema {brl(resumo.conferencia.sistema)}</strong></span>
+            <Icon name={Math.abs(resumo.conferencia.diferenca) < 0.01 ? "check" : "alert"} size={15} />
+          </li>
+        </ul>
+      )}
+      {!feito && resumo.previa?.length > 0 && (
+        <ul className="fin-previa-lista">
+          {resumo.previa.map((l, i) => (
+            <li key={i}>
+              <span>{diaCurto(l.data)}</span>
+              <span>{l.descricao}</span>
+              <b className={l.tipo}>{brl(l.tipo === "entrada" ? l.valor : -l.valor, { sinal: true })}</b>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// Extrato do Itau sem arquivo: o sistema busca na API do banco e cai na mesma
+// conferencia do OFX (previa, deduplicacao, linha de saldo ignorada). Enquanto
+// as credenciais nao estiverem no servidor, a rota responde "Configure as
+// credenciais do Itaú" e e isso que aparece aqui - nada quebra.
+function PuxarDoItau({ contas, aoFechar, aoImportar }) {
+  const hoje = hojeIso();
+  const [contaId, setContaId] = useState(() => (contas.find((c) => /ita/i.test(c.nome || "")) || contas[0])?.id || "");
+  const [inicio, setInicio] = useState(`${hoje.slice(0, 7)}-01`);
+  const [fim, setFim] = useState(hoje);
+  const [previa, setPrevia] = useState(null);
+  const [feito, setFeito] = useState(null);
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(false);
+
+  async function puxar(aplicar) {
+    if (!contaId) return;
+    setErro("");
+    if (!aplicar) {
+      setPrevia(null);
+      setFeito(null);
+    }
+    setCarregando(true);
+    try {
+      const resultado = await api.puxarExtratoItau(contaId, inicio, fim, aplicar);
+      if (aplicar) {
+        setFeito(resultado);
+        aoImportar();
+      } else {
+        setPrevia(resultado);
+      }
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  const resumo = feito || previa;
+  return (
+    <Modal titulo="Puxar extrato do Itaú" subtitulo="Direto na API do banco, sem baixar arquivo" aoFechar={aoFechar}>
+      <label className="field"><span>Conta</span>
+        <select value={contaId} onChange={(e) => { setContaId(e.target.value); setPrevia(null); setFeito(null); }}>
+          {contas.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+        </select>
+      </label>
+      <div className="fin-editor-grade">
+        <label className="field"><span>De</span>
+          <input type="date" value={inicio} onChange={(e) => { setInicio(e.target.value); setPrevia(null); setFeito(null); }} />
+        </label>
+        <label className="field"><span>Até</span>
+          <input type="date" value={fim} onChange={(e) => { setFim(e.target.value); setPrevia(null); setFeito(null); }} />
+        </label>
+      </div>
+      {!resumo && !carregando && !erro && (
+        <Aviso>O extrato vem pela data contábil do banco; o que já foi lançado à mão ou importado antes não entra de novo.</Aviso>
+      )}
+      {carregando && <Aviso>Falando com o Itaú...</Aviso>}
+      {erro && <Aviso tipo="error">{erro}</Aviso>}
+      <ResumoExtrato resumo={resumo} feito={feito} />
+      <footer className="fin-modal-rodape">
+        <button type="button" className="btn-secondary" onClick={aoFechar}>{feito ? "Fechar" : "Cancelar"}</button>
+        {!feito && !previa && (
+          <button type="button" className="btn-primary" disabled={carregando || !contaId || !inicio || !fim} onClick={() => puxar(false)}>
+            Buscar no Itaú
+          </button>
+        )}
+        {!feito && previa && (
+          <button type="button" className="btn-primary" disabled={carregando || !previa.lancamentos.novos} onClick={() => puxar(true)}>
+            Importar lançamentos
+          </button>
+        )}
+      </footer>
+    </Modal>
+  );
+}
+
 function ImportarExtrato({ contas, aoFechar, aoImportar }) {
   const [contaId, setContaId] = useState(contas[0]?.id || "");
   const [arquivo, setArquivo] = useState(null);
@@ -397,43 +516,7 @@ function ImportarExtrato({ contas, aoFechar, aoImportar }) {
       </label>
       {carregando && <Aviso>Lendo o extrato...</Aviso>}
       {erro && <Aviso tipo="error">{erro}</Aviso>}
-      {resumo && (
-        <div className="fin-previa">
-          <p className="fin-previa-titulo">
-            {feito ? "Importado:" : "Vão entrar"} <strong>{resumo.lancamentos.novos} lançamentos</strong>
-            {resumo.periodo && ` de ${diaBr(resumo.periodo.inicio)} a ${diaBr(resumo.periodo.fim)}`}
-            {resumo.lancamentos.ja_existiam > 0 && ` · ${resumo.lancamentos.ja_existiam} já importados antes`}
-            {resumo.lancamentos.parecidos_ignorados > 0 && ` · ${resumo.lancamentos.parecidos_ignorados} já lançados à mão (mesmo dia e valor) ficaram de fora`}
-          </p>
-          {resumo.linhas_de_saldo > 0 && (
-            <p className="fin-previa-nota">
-              {resumo.linhas_de_saldo} linha{resumo.linhas_de_saldo === 1 ? "" : "s"} de saldo do banco (tipo "SALDO TOTAL DISPONÍVEL DIA")
-              {resumo.linhas_de_saldo === 1 ? " foi ignorada" : " foram ignoradas"}: saldo não é lançamento.
-              {resumo.saldo_anterior && ` O extrato começa com saldo de ${brl(resumo.saldo_anterior.valor)} em ${diaBr(resumo.saldo_anterior.data)}.`}
-            </p>
-          )}
-          {resumo.conferencia && (
-            <ul className="fin-conferido">
-              <li className={Math.abs(resumo.conferencia.diferenca) < 0.01 ? "bate" : "diverge"}>
-                <span>Saldo em {diaBr(resumo.conferencia.data)}</span>
-                <span className="fin-conferido-valores"><small>banco {brl(resumo.conferencia.banco)}</small><strong>sistema {brl(resumo.conferencia.sistema)}</strong></span>
-                <Icon name={Math.abs(resumo.conferencia.diferenca) < 0.01 ? "check" : "alert"} size={15} />
-              </li>
-            </ul>
-          )}
-          {!feito && resumo.previa?.length > 0 && (
-            <ul className="fin-previa-lista">
-              {resumo.previa.map((l, i) => (
-                <li key={i}>
-                  <span>{diaCurto(l.data)}</span>
-                  <span>{l.descricao}</span>
-                  <b className={l.tipo}>{brl(l.tipo === "entrada" ? l.valor : -l.valor, { sinal: true })}</b>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      <ResumoExtrato resumo={resumo} feito={feito} />
       <footer className="fin-modal-rodape">
         <button type="button" className="btn-secondary" onClick={aoFechar}>{feito ? "Fechar" : "Cancelar"}</button>
         {!feito && <button type="button" className="btn-primary" disabled={!previa || !previa.lancamentos.novos || carregando} onClick={aplicar}>Importar lançamentos</button>}
@@ -609,6 +692,7 @@ export default function CaixaPage() {
         {podeGravar && (
           <>
             <button type="button" className="btn-secondary" onClick={() => setModal("extrato")} disabled={!contas.length}><Icon name="file" size={15} /> Importar extrato</button>
+            <button type="button" className="btn-secondary" onClick={() => setModal("itau")} disabled={!contas.length}><Icon name="download" size={15} /> Puxar do Itaú</button>
             <button type="button" className="btn-secondary" onClick={() => setModal("planilha")}><Icon name="upload" size={15} /> Importar planilha</button>
           </>
         )}
@@ -707,6 +791,7 @@ export default function CaixaPage() {
 
       {modal === "planilha" && <ImportarPlanilha aoFechar={() => setModal(null)} aoImportar={(r) => { if (r.tipo === "fluxo_caixa") { setPeriodo("dia"); setDia(r.data); } carregar(); }} />}
       {modal === "extrato" && <ImportarExtrato contas={contas} aoFechar={() => setModal(null)} aoImportar={carregar} />}
+      {modal === "itau" && <PuxarDoItau contas={contas} aoFechar={() => setModal(null)} aoImportar={carregar} />}
       {contaEditando && (
         <EditorConta
           conta={contaEditando}

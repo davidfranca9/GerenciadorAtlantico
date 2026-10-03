@@ -651,6 +651,9 @@ export const financeiro = {
   atualizarConta: (id, dados) => request(`/financeiro/contas/${id}`, { method: "PATCH", body: dados }),
   importarExtrato: (contaId, arquivo, aplicar) =>
     enviarArquivoFinanceiro(`/financeiro/contas/${contaId}/importar-extrato${consulta({ aplicar })}`, arquivo),
+  // Extrato puxado direto na API do Itau: mesma previa e mesma gravacao do OFX.
+  puxarExtratoItau: (contaId, inicio, fim, aplicar) =>
+    request(`/financeiro/contas/${contaId}/extrato-itau${consulta({ inicio, fim, aplicar })}`, { method: "POST" }),
 
   caixa: (inicio, fim, contaId) => request(`/financeiro/caixa${consulta({ inicio, fim, conta_id: contaId })}`),
   criarLancamento: (dados) => request("/financeiro/lancamentos", { method: "POST", body: dados }),
