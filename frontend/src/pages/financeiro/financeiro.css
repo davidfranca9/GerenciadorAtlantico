@@ -414,6 +414,7 @@
 
 /* ---------- contas a pagar ---------- */
 .fin-resumo-contas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.fin-resumo-contas.quatro { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .fin-resumo-contas .card { display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; }
 .fin-resumo-contas small { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .fin-resumo-contas .card.alerta { border-color: color-mix(in srgb, var(--fin-saida) 40%, var(--panel-border)); }
@@ -740,3 +741,7 @@
 .fin-fatura-mudou > span { flex: 1; min-width: 0; }
 .fin-fatura-mudou .btn-secondary { min-height: 0; padding: 6px 12px; font-size: 12px; }
 .fin-fatura-mudou.outro-mes { border-color: color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning); }
+
+.fin-fatura-fora { display: flex; align-items: center; gap: 10px; margin: 14px 0; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent); border-radius: 12px; color: var(--warning); font-size: 12.5px; }
+.fin-fatura-fora > span { flex: 1; min-width: 0; color: var(--text); }
+.fin-fatura-fora .btn-secondary { min-height: 0; padding: 6px 12px; font-size: 12px; white-space: nowrap; }

@@ -826,3 +826,44 @@ def test_trocar_a_data_diz_para_qual_fatura_a_autorizacao_foi(db):
     novembro = fin.previsao_faturas_abastecimento(db, "2026-11", hoje=date(2026, 10, 1))
     assert novembro["itens"][0]["motorista"] == "CARLOS MUNIZ"
     assert novembro["itens"][0]["vencimento"] == "2026-11-04"
+
+
+def test_totais_separam_pago_do_que_ainda_vai_vencer(db):
+    """Na tela so havia o total do mes, com o pago dentro: nao dava pra ver
+    quanto ainda vai sair."""
+    banco = conta(db)
+    db.add_all([
+        CartaFreteEnviada(data="11/09/2026", condutor="JA PAGO", valor_frete="1.000,00", status="enviada"),
+        CartaFreteEnviada(data="15/09/2026", condutor="A VENCER", valor_frete="2.000,00", status="enviada"),
+    ])
+    db.flush()
+    fin.pagar_fatura_abastecimento(
+        db, competencia="2026-10", chave_fatura="vencimento-2026-10-01", pago_em=date(2026, 10, 1),
+        valor=None, conta_id=banco.id, forma="BOLETO",
+    )
+    db.flush()
+
+    totais = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 3))["totais"]
+
+    assert totais["pago"] == 1000
+    assert totais["a_vencer"] == 2000
+    assert totais["vencido"] == 0
+    assert totais["previsto"] == 3000
+
+
+def test_mes_mostra_quem_abasteceu_nele_mas_vence_em_outro(db):
+    """Ronald e Carlos sumiram da tela: abasteceram em outubro, mas os 20 dias
+    jogaram a fatura pra novembro."""
+    db.add_all([
+        CartaFreteEnviada(data="15/10/2026", condutor="RONALD", valor_frete="4.000,00", status="enviada"),
+        CartaFreteEnviada(data="02/10/2026", condutor="FICA EM OUTUBRO", valor_frete="1.000,00", status="enviada"),
+    ])
+    db.flush()
+
+    outubro = fin.previsao_faturas_abastecimento(db, "2026-10", hoje=date(2026, 10, 3))
+
+    assert [f["motorista"] for f in outubro["itens"]] == ["FICA EM OUTUBRO"]
+    assert outubro["fora_da_competencia"] == [{
+        "id": outubro["fora_da_competencia"][0]["id"], "autorizacao": "", "motorista": "RONALD",
+        "valor": 4000.0, "abasteceu_em": "2026-10-15", "vencimento": "2026-11-04", "competencia": "2026-11",
+    }]

@@ -359,14 +359,22 @@ export function FaturasPage() {
   fimSemanaData.setDate(fimSemanaData.getDate() + 6);
   const fimSemana = fimSemanaData.toISOString().slice(0, 10);
   const faturasVisiveis = dados ? (visualizacao === "todos" ? dados.faturas : dados.faturas.filter((fatura) => fatura.vencimento && fatura.vencimento >= inicioSemana && fatura.vencimento <= fimSemana)) : [];
-  const totaisVisiveis = dados && visualizacao === "todos" ? dados.totais : {
-    previsto: faturasVisiveis.filter((fatura) => fatura.vencimento).reduce((s, fatura) => s + fatura.valor, 0),
-    vencido: faturasVisiveis.filter((fatura) => fatura.situacao === "vencida").reduce((s, fatura) => s + fatura.valor, 0),
+  // Uma conta so pro mes e pra semana: o que esta na tela e o que soma.
+  const soma = (filtro) => faturasVisiveis.filter(filtro).reduce((s, fatura) => s + fatura.valor, 0);
+  const aVencer = faturasVisiveis.filter((fatura) => fatura.situacao === "prevista" || fatura.situacao === "hoje");
+  const pagas = faturasVisiveis.filter((fatura) => fatura.pagamento);
+  const totaisVisiveis = {
+    previsto: soma((fatura) => fatura.quantidade > 0),
+    a_vencer: aVencer.reduce((s, fatura) => s + fatura.valor, 0),
+    vencido: soma((fatura) => fatura.situacao === "vencida"),
+    pago: pagas.reduce((s, fatura) => s + fatura.pagamento.valor, 0),
     // Sem CT-e casado a conta ja tem vencimento (sai da autorizacao); o que
     // falta e saber de qual carga ela foi.
     sem_cte: faturasVisiveis.reduce((s, fatura) => s + fatura.itens.filter((i) => i.incluida && !i.cte).reduce((t, i) => t + i.valor, 0), 0),
     quantidade: faturasVisiveis.reduce((s, fatura) => s + fatura.quantidade, 0),
     removidas: faturasVisiveis.reduce((s, fatura) => s + fatura.removidas, 0),
+    faturas_a_vencer: aVencer.length,
+    faturas_pagas: pagas.length,
   };
   const periodoSemana = `${new Date(`${inicioSemana}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} a ${fimSemanaData.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}`;
   async function alterar(item) {
@@ -414,11 +422,25 @@ export function FaturasPage() {
           {mudou.competencia !== competencia && <button type="button" className="btn-secondary" onClick={() => { setCompetencia(mudou.competencia); setMudou(null); }}>Ver essa fatura</button>}
           <button type="button" className="icon-btn" aria-label="Fechar aviso" onClick={() => setMudou(null)}><Icon name="close" size={14} /></button>
         </div>}
-        <section className="fin-resumo-contas">
-          <div className="card"><span className="eyebrow">PREVISÃO {visualizacao === "semana" ? "DA SEMANA" : "DO MÊS"}</span><Dinheiro valor={totaisVisiveis.previsto} tamanho="l" /><small>{totaisVisiveis.quantidade} autorizações incluídas · prazo padrão de {dados.prazo_dias} dias após a autorização{totaisVisiveis.removidas ? ` · ${totaisVisiveis.removidas} fora da fatura` : ""}</small></div>
+        <section className="fin-resumo-contas quatro">
+          <div className="card"><span className="eyebrow">A VENCER {visualizacao === "semana" ? "NA SEMANA" : "NO MÊS"}</span><Dinheiro valor={totaisVisiveis.a_vencer} tamanho="l" /><small>{totaisVisiveis.faturas_a_vencer} {totaisVisiveis.faturas_a_vencer === 1 ? "fatura ainda não paga" : "faturas ainda não pagas"}</small></div>
           <div className={`card ${totaisVisiveis.vencido > 0 ? "alerta" : ""}`}><span className="eyebrow">VENCIDO</span><Dinheiro valor={totaisVisiveis.vencido} tamanho="l" /><small>Valores cuja previsão já passou</small></div>
-          <div className="card"><span className="eyebrow">SEM CT-e CASADO</span><Dinheiro valor={totaisVisiveis.sem_cte} tamanho="l" /><small>Já contam na previsão; falta achar a carga de cada uma</small></div>
+          <div className="card"><span className="eyebrow">PAGO</span><Dinheiro valor={totaisVisiveis.pago} tamanho="l" /><small>{totaisVisiveis.faturas_pagas} {totaisVisiveis.faturas_pagas === 1 ? "fatura já paga" : "faturas já pagas"}</small></div>
+          <div className="card"><span className="eyebrow">TOTAL {visualizacao === "semana" ? "DA SEMANA" : "DO MÊS"}</span><Dinheiro valor={totaisVisiveis.previsto} tamanho="l" /><small>{totaisVisiveis.quantidade} autorizações · pago e a vencer juntos{totaisVisiveis.removidas ? ` · ${totaisVisiveis.removidas} fora da fatura` : ""}{totaisVisiveis.sem_cte ? ` · ${brl(totaisVisiveis.sem_cte)} sem CT-e casado` : ""}</small></div>
         </section>
+        {dados.fora_da_competencia?.length > 0 && <div className="fin-fatura-fora">
+          <Icon name="alert" size={15} />
+          <span>
+            <b>{dados.fora_da_competencia.length} {dados.fora_da_competencia.length === 1 ? "autorização abastecida" : "autorizações abastecidas"} neste mês</b>
+            {" "}venceram em outro, por causa dos {dados.prazo_dias} dias:{" "}
+            {dados.fora_da_competencia.map((f) => `${f.motorista} (${new Date(`${f.vencimento}T12:00:00`).toLocaleDateString("pt-BR")})`).join(" · ")}
+          </span>
+          {[...new Set(dados.fora_da_competencia.map((f) => f.competencia))].map((mes) => (
+            <button key={mes} type="button" className="btn-secondary" onClick={() => setCompetencia(mes)}>
+              Ver {new Date(`${mes}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long" })}
+            </button>
+          ))}
+        </div>}
         <section className="card fin-faturas">
           <header className="fin-extrato-topo"><div><h3>Faturas de abastecimento</h3><p>Previsão: {dados.prazo_dias} dias depois do abastecimento · vencimento em fim de semana ou feriado passa para o próximo dia útil</p></div><div className="fin-fatura-controles">
             {visualizacao === "semana" && <div className="fin-nav-periodo"><button type="button" className="icon-btn" onClick={() => moverSemana(-7)} aria-label="Semana anterior"><Icon name="chevron-left" size={15} /></button><strong>{periodoSemana}</strong><button type="button" className="icon-btn" onClick={() => moverSemana(7)} aria-label="Próxima semana"><Icon name="chevron-right" size={15} /></button></div>}

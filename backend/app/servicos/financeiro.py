@@ -693,6 +693,9 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
     cargas = db.query(CarregamentoFinanceiro).filter(CarregamentoFinanceiro.cancelado.is_(False)).all()
     usadas: set[int] = set()
     itens = []
+    # Abasteceu neste mes mas a fatura caiu noutro: some da tela, e o usuario
+    # fica procurando. Fica guardado aqui pra tela dizer pra onde foi.
+    fora_da_competencia = []
 
     def valor_br(texto) -> float:
         limpo = re.sub(r"[^\d,.-]", "", str(texto or ""))
@@ -717,6 +720,13 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
             usadas.add(carga.id)
         vencimento = vencimento_da_autorizacao(carta)
         if not (inicio <= vencimento <= fim):
+            abasteceu = carta.data_abastecimento or data_autorizacao
+            if inicio <= abasteceu <= fim and carta.incluida_fatura is not False:
+                fora_da_competencia.append({
+                    "id": carta.id, "autorizacao": carta.autorizacao_num, "motorista": carta.condutor,
+                    "valor": valor_br(carta.valor_frete), "abasteceu_em": abasteceu.isoformat(),
+                    "vencimento": vencimento.isoformat(), "competencia": vencimento.strftime("%Y-%m"),
+                })
             continue
         # Baixa feita quando a conta saia do CT-e: a chave antiga ainda vale.
         vencimento_antigo = proximo_dia_util(carga.data_emissao + timedelta(days=PRAZO_FATURA_ABASTECIMENTO)) if carga else None
@@ -789,8 +799,13 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
     faturas_ativas = [f for f in faturas if f["quantidade"] > 0]
     return {
         "competencia": competencia, "prazo_dias": PRAZO_FATURA_ABASTECIMENTO, "itens": itens, "faturas": faturas,
+        "fora_da_competencia": sorted(fora_da_competencia, key=lambda f: (f["vencimento"], f["motorista"])),
         "totais": {
+            # "previsto" e o mes inteiro, pago junto. Quem olha a tela precisa
+            # dos tres separados: o que ja saiu, o que vai vencer e o atrasado.
             "previsto": dinheiro(sum(f["valor"] for f in faturas_ativas)),
+            "pago": dinheiro(sum(f["pagamento"]["valor"] for f in faturas if f["pagamento"])),
+            "a_vencer": dinheiro(sum(f["valor"] for f in faturas_ativas if f["situacao"] in ("prevista", "hoje"))),
             "vencido": dinheiro(sum(f["valor"] for f in faturas_ativas if f["situacao"] == "vencida")),
             "sem_cte": 0.0,
             "quantidade": sum(f["quantidade"] for f in faturas_ativas),
