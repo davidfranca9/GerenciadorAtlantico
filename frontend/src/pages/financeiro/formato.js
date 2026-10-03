@@ -14,6 +14,7 @@ export const FORMAS = [
   { valor: "RENDIMENTO", rotulo: "Rendimento", icone: "trend" },
   { valor: "DINHEIRO", rotulo: "Dinheiro", icone: "coins" },
   { valor: "TARIFA", rotulo: "Tarifa", icone: "coins" },
+  { valor: "COMISSAO", rotulo: "Comissão", icone: "percent" },
   { valor: "OUTRO", rotulo: "Outro", icone: "coins" },
 ];
 

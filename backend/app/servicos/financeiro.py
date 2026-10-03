@@ -32,7 +32,8 @@ from ..models import (
     PagamentoFaturaAbastecimento,
 )
 
-FORMAS = ("PIX", "TRANSFERENCIA", "BOLETO", "DEBITO", "CARTAO", "CHEQUE", "RENDIMENTO", "DINHEIRO", "TARIFA", "OUTRO")
+FORMAS = ("PIX", "TRANSFERENCIA", "BOLETO", "DEBITO", "CARTAO", "CHEQUE", "RENDIMENTO", "DINHEIRO",
+          "TARIFA", "COMISSAO", "OUTRO")
 ESCOPOS = ("empresa", "pessoal")
 
 
@@ -930,7 +931,7 @@ def pagar_comissao(db: Session, *, competencia: str, beneficiario: str, valor: f
     if conta_id:
         lancamento = criar_lancamento(
             db, conta_id=conta_id, data=pago_em, tipo="saida", valor=valor,
-            descricao=f"Agenciamento · {nome}", forma="PIX", origem="agenciamento", usuario=usuario,
+            descricao=f"Agenciamento · {nome}", forma="COMISSAO", origem="agenciamento", usuario=usuario,
         )
     pagamento = PagamentoComissao(
         competencia=competencia, beneficiario=nome, valor=valor, pago_em=pago_em,

@@ -25,6 +25,7 @@ const paths = {
   coins: <><ellipse cx="9" cy="7" rx="6" ry="3"/><path d="M3 7v5c0 1.7 2.7 3 6 3s6-1.3 6-3V7"/><path d="M9 18c0 1.7 2.7 3 6 3s6-1.3 6-3v-5c0-1.6-2.3-2.8-5.3-3"/></>,
   plus: <path d="M12 5v14M5 12h14"/>,
   check: <path d="m5 12.5 4.5 4.5L19 7.5"/>,
+  percent: <><path d="m19 5-14 14"/><circle cx="7.5" cy="7.5" r="2.5"/><circle cx="16.5" cy="16.5" r="2.5"/></>,
   "chevron-left": <path d="m15 5-7 7 7 7"/>,
   "chevron-right": <path d="m9 5 7 7-7 7"/>,
   alert: <><path d="M12 3 2.5 20h19z"/><path d="M12 10v4.5M12 17.5h.01"/></>,
