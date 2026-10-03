@@ -479,6 +479,14 @@ class DividaIn(BaseModel):
     congelada: bool = False
 
 
+class PagamentoDividaIn(BaseModel):
+    valor: float = Field(gt=0)
+    pago_em: date
+    observacao: str = Field(default="", max_length=300)
+    conta_id: Optional[int] = None
+    forma: str = "PIX"
+
+
 @router.get("/agenda")
 def ver_agenda(competencia: str, escopo: Optional[str] = None, db: Session = Depends(get_db)):
     try:
@@ -639,18 +647,30 @@ def excluir_avulsa(avulsa_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
-def _divida_para_dict(d: Divida) -> dict:
-    restante = None
-    if d.parcelas_total and d.valor_parcela:
-        restante = fin.dinheiro((d.parcelas_total - d.parcelas_pagas) * float(d.valor_parcela))
+def _divida_para_dict(db: Session, d: Divida, contas: Optional[dict[int, str]] = None) -> dict:
+    if contas is None:
+        contas = {c.id: c.nome for c in db.query(ContaBancaria).all()}
+    pagamentos = fin.pagamentos_da_divida(db, d.id)
+    totais = fin.totais_divida(d, pagamentos)
     return {
         "id": d.id, "credor": d.credor,
         "valor_total": fin.dinheiro(d.valor_total) if d.valor_total is not None else None,
         "parcelas_total": d.parcelas_total, "parcelas_pagas": d.parcelas_pagas,
         "valor_parcela": fin.dinheiro(d.valor_parcela) if d.valor_parcela is not None else None,
-        "restante": restante, "observacao": d.observacao, "quitada": d.quitada,
+        "restante": totais["restante"], "pago": totais["pago"],
+        "observacao": d.observacao, "quitada": d.quitada,
         "congelada": d.congelada,
         "proximo_pagamento": d.proximo_pagamento.isoformat() if d.proximo_pagamento else None,
+        # O historico vem junto: a tela de dividas carrega tudo de uma vez e
+        # abre o que foi pago sem outra ida ao servidor.
+        "pagamentos": [
+            {
+                "id": p.id, "valor": fin.dinheiro(p.valor), "pago_em": p.pago_em.isoformat(),
+                "observacao": p.observacao, "conta_id": p.conta_id, "conta": contas.get(p.conta_id or 0, ""),
+                "no_caixa": p.lancamento_id is not None,
+            }
+            for p in pagamentos
+        ],
     }
 
 
@@ -659,7 +679,8 @@ def listar_dividas(db: Session = Depends(get_db)):
     # Em aberto primeiro, a que vence antes no topo; sem data no fim.
     dividas = db.query(Divida).all()
     dividas.sort(key=lambda d: (d.quitada, d.proximo_pagamento is None, d.proximo_pagamento or date.max, d.id))
-    return [_divida_para_dict(d) for d in dividas]
+    contas = {c.id: c.nome for c in db.query(ContaBancaria).all()}
+    return [_divida_para_dict(db, d, contas) for d in dividas]
 
 
 @router.post("/dividas")
@@ -667,7 +688,7 @@ def criar_divida(dados: DividaIn, db: Session = Depends(get_db)):
     divida = Divida(**dados.model_dump())
     db.add(divida)
     db.commit()
-    return _divida_para_dict(divida)
+    return _divida_para_dict(db, divida)
 
 
 @router.put("/dividas/{divida_id}")
@@ -678,11 +699,13 @@ def atualizar_divida(divida_id: int, dados: DividaIn, db: Session = Depends(get_
     for campo, valor in dados.model_dump().items():
         setattr(divida, campo, valor)
     db.commit()
-    return _divida_para_dict(divida)
+    return _divida_para_dict(db, divida)
 
 
 @router.post("/dividas/{divida_id}/parcela-paga")
 def registrar_parcela(divida_id: int, db: Session = Depends(get_db)):
+    """Parcela paga sem dizer quanto nem quando - o atalho de sempre. Pra
+    guardar valor e data do que saiu, use /dividas/{id}/pagamentos."""
     divida = db.get(Divida, divida_id)
     if divida is None:
         raise HTTPException(status_code=404, detail="Dívida não encontrada")
@@ -690,14 +713,40 @@ def registrar_parcela(divida_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Todas as parcelas já estão pagas")
     if divida.congelada:
         raise HTTPException(status_code=400, detail="Reative a dívida antes de registrar uma parcela")
-    divida.parcelas_pagas += 1
-    if divida.parcelas_total and divida.parcelas_pagas >= divida.parcelas_total:
-        divida.quitada = True
-        divida.proximo_pagamento = None
-    elif divida.proximo_pagamento:
-        divida.proximo_pagamento = fin.somar_mes(divida.proximo_pagamento)
+    fin.avancar_parcela(divida)
     db.commit()
-    return _divida_para_dict(divida)
+    return _divida_para_dict(db, divida)
+
+
+@router.post("/dividas/{divida_id}/pagamentos")
+def lancar_pagamento_divida(divida_id: int, dados: PagamentoDividaIn, db: Session = Depends(get_db),
+                            user: User = Depends(require_admin)):
+    if db.get(Divida, divida_id) is None:
+        raise HTTPException(status_code=404, detail="Dívida não encontrada")
+    campos = dados.model_dump()
+    try:
+        fin.registrar_pagamento_divida(
+            db, divida_id=divida_id, **{**campos, "forma": (campos["forma"] or "PIX").upper()},
+            usuario=_usuario(user),
+        )
+        db.commit()
+    except fin.ErroFinanceiro as exc:
+        db.rollback()
+        raise _erro(exc)
+    return _divida_para_dict(db, db.get(Divida, divida_id))
+
+
+@router.delete("/dividas/pagamentos/{pagamento_id}")
+def desfazer_pagamento_divida(pagamento_id: int, db: Session = Depends(get_db)):
+    try:
+        divida = fin.desfazer_pagamento_divida(db, pagamento_id)
+        db.commit()
+    except fin.ErroFinanceiro as exc:
+        db.rollback()
+        raise _erro(exc)
+    if divida is None:
+        return {"ok": True}
+    return _divida_para_dict(db, divida)
 
 
 @router.delete("/dividas/{divida_id}")
@@ -705,6 +754,16 @@ def excluir_divida(divida_id: int, db: Session = Depends(get_db)):
     divida = db.get(Divida, divida_id)
     if divida is None:
         raise HTTPException(status_code=404, detail="Dívida não encontrada")
+    pagamentos = fin.pagamentos_da_divida(db, divida_id)
+    # Pagamento que virou saida no banco nao se apaga por tabela: o lancamento
+    # ficaria solto no caixa. O que nunca passou por conta vai junto.
+    if any(p.lancamento_id for p in pagamentos):
+        raise HTTPException(
+            status_code=400,
+            detail="Essa dívida tem pagamento lançado no Caixa. Desfaça o pagamento antes de excluir.",
+        )
+    for pagamento in pagamentos:
+        db.delete(pagamento)
     db.delete(divida)
     db.commit()
     return {"ok": True}

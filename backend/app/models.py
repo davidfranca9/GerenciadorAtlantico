@@ -592,6 +592,30 @@ class Divida(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class DividaPagamento(Base):
+    """Cada envio de dinheiro ao credor: quanto saiu e quando.
+
+    O contador de parcelas sozinho nao conta a historia - "mandei 3000 pro
+    Rodrigo" nao e "mais uma parcela" - e sem o historico nao da pra desfazer
+    um lancamento errado nem saber em que dia cada parte foi paga."""
+
+    __tablename__ = "dividas_pagamentos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    divida_id: Mapped[int] = mapped_column(Integer, index=True)
+    valor: Mapped[float] = mapped_column(_dinheiro())
+    pago_em: Mapped[date] = mapped_column(Date, index=True)
+    observacao: Mapped[str] = mapped_column(String(300), default="")
+    # Quantas parcelas esse dinheiro fechou: 0 quando foi so um pedaco. Fica
+    # gravado porque o valor da parcela pode mudar depois, e sem isso nao da
+    # pra saber quanto do contador veio dos pagamentos e quanto veio do botao.
+    parcelas: Mapped[int] = mapped_column(Integer, default=1)
+    # Vazios quando o pagamento nao passou por banco nenhum (dinheiro, acerto).
+    conta_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    lancamento_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class PagamentoComissao(Base):
     """Baixa de comissão apurada automaticamente nos carregamentos."""
 

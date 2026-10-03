@@ -679,6 +679,8 @@ export const financeiro = {
   criarDivida: (dados) => request("/financeiro/dividas", { method: "POST", body: dados }),
   atualizarDivida: (id, dados) => request(`/financeiro/dividas/${id}`, { method: "PUT", body: dados }),
   parcelaPaga: (id) => request(`/financeiro/dividas/${id}/parcela-paga`, { method: "POST" }),
+  pagarDivida: (id, dados) => request(`/financeiro/dividas/${id}/pagamentos`, { method: "POST", body: dados }),
+  desfazerPagamentoDivida: (pagamentoId) => request(`/financeiro/dividas/pagamentos/${pagamentoId}`, { method: "DELETE" }),
   excluirDivida: (id) => request(`/financeiro/dividas/${id}`, { method: "DELETE" }),
 
   importarPlanilha: (arquivo, aplicar, competencia) =>

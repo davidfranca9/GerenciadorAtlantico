@@ -24,6 +24,7 @@ from ..models import (
     ContaBancaria,
     Despesa,
     Divida,
+    DividaPagamento,
     LancamentoCaixa,
     MetaMensal,
     PagamentoAgenda,
@@ -951,6 +952,137 @@ def desfazer_comissao(db: Session, pagamento_id: int) -> None:
             db.delete(lancamento)
     db.delete(pagamento)
     db.flush()
+
+
+# --------------------------------------------------------------------------
+# Dividas ativas
+# --------------------------------------------------------------------------
+
+
+def pagamentos_da_divida(db: Session, divida_id: int) -> list[DividaPagamento]:
+    """Mais recente primeiro: o historico abre pelo ultimo envio."""
+    return (
+        db.query(DividaPagamento)
+        .filter(DividaPagamento.divida_id == divida_id)
+        .order_by(DividaPagamento.pago_em.desc(), DividaPagamento.id.desc())
+        .all()
+    )
+
+
+def totais_divida(divida: Divida, pagamentos: list[DividaPagamento]) -> dict:
+    """Quanto saiu e quanto falta, somando as duas fontes sem contar duas vezes.
+
+    Pagamento lancado entra pelo valor real que saiu. Parcela que so tem
+    contador - marcada pelo botao de parcela paga ou digitada no editor - entra
+    pelo valor da parcela, que e tudo que se sabe dela."""
+    pago = sum(float(p.valor) for p in pagamentos)
+    so_contador = max(0, divida.parcelas_pagas - sum(p.parcelas for p in pagamentos))
+    if divida.valor_parcela:
+        pago += so_contador * float(divida.valor_parcela)
+    if divida.parcelas_total and divida.valor_parcela:
+        base = dinheiro(divida.parcelas_total * float(divida.valor_parcela))
+    else:
+        base = dinheiro(divida.valor_total) if divida.valor_total is not None else None
+    return {
+        "pago": dinheiro(pago), "base": base,
+        "restante": dinheiro(max(0.0, base - pago)) if base is not None else None,
+    }
+
+
+def avancar_parcela(divida: Divida, quantas: int = 1) -> None:
+    """Parcelas a mais pagas: quita quando fecha o total, senao empurra a
+    cobranca pros meses seguintes. Serve o botao de parcela paga e o pagamento
+    com valor e data - os dois andam as mesmas casas."""
+    if quantas <= 0:
+        return
+    divida.parcelas_pagas += quantas
+    if divida.parcelas_total and divida.parcelas_pagas >= divida.parcelas_total:
+        divida.quitada = True
+        divida.proximo_pagamento = None
+    elif divida.proximo_pagamento:
+        for _ in range(quantas):
+            divida.proximo_pagamento = somar_mes(divida.proximo_pagamento)
+
+
+def parcelas_fechadas(divida: Divida, valor: float) -> int:
+    """Quantas parcelas esse dinheiro fecha.
+
+    Mandar 3.000 numa parcela de 10.000 nao paga parcela nenhuma: anda o
+    "falta", nao o contador. Antes todo pagamento andava uma casa, e varios
+    pedacos chegavam a quitar a divida com dinheiro faltando."""
+    parcela = float(divida.valor_parcela or 0)
+    if parcela <= 0:
+        return 0
+    fechadas = int((valor + 0.001) // parcela)
+    if divida.parcelas_total:
+        fechadas = min(fechadas, divida.parcelas_total - divida.parcelas_pagas)
+    return max(0, fechadas)
+
+
+def registrar_pagamento_divida(db: Session, *, divida_id: int, valor: float, pago_em: date, observacao: str = "",
+                               conta_id: Optional[int] = None, forma: str = "PIX", usuario: str = "") -> DividaPagamento:
+    divida = db.get(Divida, divida_id)
+    if divida is None:
+        raise ErroFinanceiro("Dívida não encontrada")
+    if divida.quitada:
+        raise ErroFinanceiro("Essa dívida já está quitada")
+    if divida.congelada:
+        raise ErroFinanceiro("Reative a dívida antes de lançar um pagamento")
+    if divida.parcelas_total and divida.parcelas_pagas >= divida.parcelas_total:
+        raise ErroFinanceiro("Todas as parcelas já estão pagas")
+    valor = dinheiro(valor)
+    if valor <= 0:
+        raise ErroFinanceiro("Informe o valor pago")
+    # Conta e opcional, como no agenciamento: divida acertada em dinheiro so
+    # vira historico. Escolhida a conta, a saida vai pro Caixa - e desfazer
+    # leva o lancamento junto, pro saldo do banco nao ficar com buraco.
+    lancamento = None
+    if conta_id:
+        lancamento = criar_lancamento(
+            db, conta_id=conta_id, data=pago_em, tipo="saida", valor=valor,
+            descricao=f"Dívida · {divida.credor}", forma=forma, origem="divida", usuario=usuario,
+        )
+    pagamento = DividaPagamento(
+        divida_id=divida.id, valor=valor, pago_em=pago_em, observacao=(observacao or "").strip()[:300],
+        parcelas=parcelas_fechadas(divida, valor),
+        conta_id=conta_id if lancamento else None, lancamento_id=lancamento.id if lancamento else None,
+    )
+    db.add(pagamento)
+    avancar_parcela(divida, pagamento.parcelas)
+    db.flush()
+    # Nao falta mais nada: quita mesmo sem parcela definida, porque o valor
+    # combinado já saiu inteiro.
+    if totais_divida(divida, pagamentos_da_divida(db, divida.id))["restante"] == 0:
+        divida.quitada = True
+        divida.proximo_pagamento = None
+        db.flush()
+    return pagamento
+
+
+def desfazer_pagamento_divida(db: Session, pagamento_id: int) -> Optional[Divida]:
+    pagamento = db.get(DividaPagamento, pagamento_id)
+    if pagamento is None:
+        raise ErroFinanceiro("Pagamento da dívida não encontrado")
+    divida = db.get(Divida, pagamento.divida_id)
+    if pagamento.lancamento_id:
+        lancamento = db.get(LancamentoCaixa, pagamento.lancamento_id)
+        if lancamento is not None:
+            db.delete(lancamento)
+    dia_pago = pagamento.pago_em
+    andou = pagamento.parcelas
+    db.delete(pagamento)
+    if divida is not None:
+        divida.parcelas_pagas = max(0, divida.parcelas_pagas - andou)
+        if divida.quitada:
+            # Quitar apagou a data de cobranca; a parcela volta a vencer no dia
+            # em que o dinheiro tinha saido, que e o mais perto que se sabe.
+            divida.quitada = False
+            divida.proximo_pagamento = divida.proximo_pagamento or dia_pago
+        elif divida.proximo_pagamento and andou:
+            for _ in range(andou):
+                divida.proximo_pagamento = somar_mes(divida.proximo_pagamento, -1)
+    db.flush()
+    return divida
 
 
 # --------------------------------------------------------------------------

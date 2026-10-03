@@ -52,6 +52,9 @@ app.include_router(financeiro_router)
 
 @app.on_event("startup")
 def on_startup():
+    # Tabela nova nasce aqui, pelo create_all - foi assim com operacoes_fiscais
+    # e com dividas_pagamentos (o historico de pagamento das dividas). O bloco
+    # de ALTER TABLE abaixo e so pra coluna nova em tabela que ja existe.
     Base.metadata.create_all(bind=engine)
     # Coleta as NF-e sozinho: e-mail a cada 10 min, SEFAZ a cada hora.
     from .servicos import coleta_automatica

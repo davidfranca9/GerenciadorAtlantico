@@ -704,6 +704,99 @@ function EditorDivida({ divida, aoSalvar, aoExcluir, aoCancelar }) {
   );
 }
 
+function FormPagamentoDivida({ divida, contas, aoSalvar }) {
+  // Sugere a parcela (ou o que falta): quase sempre e o valor que saiu.
+  const [valor, setValor] = useState(valorParaCampo(divida.valor_parcela ?? divida.restante));
+  const [data, setData] = useState(hojeIso());
+  const [contaId, setContaId] = useState("");
+  const [observacao, setObservacao] = useState("");
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar(e) {
+    e.preventDefault();
+    const numero = numeroBr(valor);
+    if (!numero || numero <= 0) return setErro("Informe o valor pago");
+    setSalvando(true);
+    setErro("");
+    try {
+      await aoSalvar({ valor: numero, pago_em: data, observacao, conta_id: contaId ? Number(contaId) : null });
+      setValor(valorParaCampo(divida.valor_parcela));
+      setObservacao("");
+    } catch (err) {
+      setErro(err.message);
+    }
+    setSalvando(false);
+  }
+
+  return (
+    <form className="fin-divida-pagar" onSubmit={salvar}>
+      <label className="field"><span>Valor pago</span><CampoValor valor={valor} aoMudar={setValor} autoFocus /></label>
+      <label className="field"><span>Data do pagamento</span><input type="date" value={data} onChange={(e) => setData(e.target.value)} required /></label>
+      {/* Dívida acertada em dinheiro não passou por banco: a conta é opcional, e
+          só com ela escolhida a saída aparece no Caixa. */}
+      <label className="field"><span>Saiu de</span>
+        <select value={contaId} onChange={(e) => setContaId(e.target.value)}>
+          <option value="">Não lançar no Caixa</option>
+          {contas.map((conta) => <option key={conta.id} value={conta.id}>{conta.nome}</option>)}
+        </select>
+      </label>
+      <label className="field fin-divida-largo"><span>Observação</span>
+        <input value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Opcional. Ex.: adiantamento, acerto no dinheiro" />
+      </label>
+      {erro && <Aviso tipo="error">{erro}</Aviso>}
+      <div className="fin-modal-rodape">
+        <span className="fin-espaco" />
+        <button type="submit" className="btn-primary" disabled={salvando}><Icon name="check" size={14} /> {salvando ? "Lançando..." : "Lançar pagamento"}</button>
+      </div>
+    </form>
+  );
+}
+
+// O que foi pago da divida: quanto, em que dia e com qual observacao.
+function PainelDivida({ divida, contas, aoLancar, aoDesfazer, aoEditar }) {
+  const pagamentos = divida.pagamentos || [];
+  const [desfazendo, setDesfazendo] = useState(null);
+  return (
+    <div className="fin-divida-painel">
+      <div className="fin-divida-painel-topo">
+        <div><span className="eyebrow">JÁ PAGUEI</span><Dinheiro valor={divida.pago} tamanho="m" /></div>
+        <div><span className="eyebrow">AINDA FALTA</span><Dinheiro valor={divida.restante} tamanho="m" /></div>
+        <button type="button" className="btn-secondary" onClick={aoEditar}><Icon name="edit" size={14} /> Editar dívida</button>
+      </div>
+      {divida.quitada ? <Aviso>Dívida quitada. Desfaça um pagamento pra reabrir.</Aviso>
+        : divida.congelada ? <Aviso tipo="warning">Dívida congelada. Reative no editor pra lançar pagamento.</Aviso>
+          : <FormPagamentoDivida divida={divida} contas={contas} aoSalvar={aoLancar} />}
+      <section className="fin-divida-historico">
+        <h3>Pagamentos lançados</h3>
+        {pagamentos.length === 0 ? (
+          <small>Nada lançado ainda. {divida.parcelas_pagas > 0 ? `As ${divida.parcelas_pagas} parcelas marcadas antes não guardaram valor nem data.` : ""}</small>
+        ) : (
+          <ul>
+            {pagamentos.map((pagamento) => (
+              <li key={pagamento.id}>
+                <div>
+                  <strong>{diaBr(pagamento.pago_em)}</strong>
+                  <small>{[pagamento.no_caixa ? `saiu de ${pagamento.conta}` : "fora do Caixa", pagamento.observacao].filter(Boolean).join(" · ")}</small>
+                </div>
+                <Dinheiro valor={pagamento.valor} tamanho="xs" />
+                <button type="button" className="btn-ghost perigo" disabled={desfazendo === pagamento.id}
+                  onClick={async () => {
+                    setDesfazendo(pagamento.id);
+                    try { await aoDesfazer(pagamento.id); } catch { /* o erro aparece no aviso da tela */ }
+                    setDesfazendo(null);
+                  }}>
+                  {desfazendo === pagamento.id ? "..." : "Desfazer"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function DataPagamento({ dia }) {
   if (!dia) return <span className="fin-pagamento sem-data">Sem data de pagamento</span>;
   const dias = diasAte(dia);
@@ -719,7 +812,16 @@ function DataPagamento({ dia }) {
 
 export function Dividas({ dividas, recarregar }) {
   const [aberto, setAberto] = useState(null);
+  const [modo, setModo] = useState("pagamentos");
+  const [contas, setContas] = useState([]);
   const [erro, setErro] = useState("");
+  // A tela de dividas carrega so as dividas; as contas vem pra ca porque o
+  // pagamento pode (se o dono quiser) sair de uma conta e virar saida no Caixa.
+  useEffect(() => {
+    let vivo = true;
+    api.contas().then((lista) => vivo && setContas(lista.filter((c) => c.ativa))).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
   const emAberto = dividas.filter((d) => !d.quitada);
   const restante = emAberto.reduce((s, d) => s + (d.restante ?? d.valor_total ?? 0), 0);
   const parcelas = emAberto.filter((d) => !d.congelada).reduce((s, d) => s + (d.valor_parcela || 0), 0);
@@ -738,6 +840,12 @@ export function Dividas({ dividas, recarregar }) {
     }
   }
 
+  function abrir(id, qual) {
+    setModo(qual);
+    setAberto(id);
+    setErro("");
+  }
+
   return (
     <div className="fin-despesas">
       <div className="fin-despesas-topo">
@@ -749,19 +857,27 @@ export function Dividas({ dividas, recarregar }) {
             {proxima && ` · próximo pagamento: ${proxima.credor}, ${diaBr(proxima.proximo_pagamento)}`}
           </small>
         </div>
-        <button type="button" className="btn-primary" onClick={() => setAberto("nova")}><Icon name="plus" size={14} /> Dívida</button>
+        <button type="button" className="btn-primary" onClick={() => abrir("nova", "editar")}><Icon name="plus" size={14} /> Dívida</button>
       </div>
       {erro && !aberto && <Aviso tipo="error">{erro}</Aviso>}
       <div className="fin-dividas">
         {dividas.map((d) => {
           const pct = d.parcelas_total ? Math.round((d.parcelas_pagas / d.parcelas_total) * 100) : null;
           const organizar = d.valor_total === null || /organizar/i.test(d.observacao);
+          const pagamentos = d.pagamentos || [];
+          const ultimo = pagamentos[0];
           return (
-            <section key={d.id} className={`card fin-divida ${d.quitada ? "quitada" : ""} ${d.congelada ? "congelada" : ""}`}>
+            // O card inteiro abre o historico: clicar na divida e ver o que ja
+            // foi pago e quando. Os botoes de dentro seguram o clique.
+            <section key={d.id} className={`card fin-divida ${d.quitada ? "quitada" : ""} ${d.congelada ? "congelada" : ""}`}
+              onClick={() => abrir(d.id, "pagamentos")}>
               <header>
                 <h3>{d.credor}</h3>
                 {d.quitada ? <b className="fin-situacao pago">Quitada</b> : d.congelada ? <b className="fin-situacao congelada">Congelada</b> : organizar && <b className="fin-situacao hoje">A organizar</b>}
-                <button type="button" className="icon-btn" aria-label={`Editar ${d.credor}`} title="Editar" onClick={() => setAberto(d.id)}><Icon name="edit" size={14} /></button>
+                <button type="button" className="icon-btn" aria-label={`Pagamentos de ${d.credor}`} title="Pagamentos"
+                  onClick={(e) => { e.stopPropagation(); abrir(d.id, "pagamentos"); }}><Icon name="wallet" size={14} /></button>
+                <button type="button" className="icon-btn" aria-label={`Editar ${d.credor}`} title="Editar"
+                  onClick={(e) => { e.stopPropagation(); abrir(d.id, "editar"); }}><Icon name="edit" size={14} /></button>
               </header>
               {!d.quitada && !d.congelada && <DataPagamento dia={d.proximo_pagamento} />}
               {d.congelada && <span className="fin-pagamento congelada">Parcelas pausadas · não entra em Gastos</span>}
@@ -776,8 +892,15 @@ export function Dividas({ dividas, recarregar }) {
                 </>
               )}
               {pct === null && Boolean(d.valor_parcela) && <small>Parcela de {brl(d.valor_parcela)}</small>}
+              <small className="fin-divida-ultimo">
+                {ultimo
+                  ? <>Último pagamento: <b>{diaBr(ultimo.pago_em)}</b> · {brl(ultimo.valor)}{pagamentos.length > 1 ? ` · ${pagamentos.length} lançados` : ""}</>
+                  : d.quitada || d.congelada ? "Sem pagamento lançado" : "Sem pagamento lançado · clique pra lançar"}
+              </small>
               {!d.quitada && !d.congelada && Boolean(d.parcelas_total) && (
-                <button type="button" className="btn-secondary fin-divida-acao" onClick={() => agir(() => api.parcelaPaga(d.id)).catch(() => {})}>
+                <button type="button" className="btn-secondary fin-divida-acao"
+                  title="Marca uma parcela sem guardar valor nem data"
+                  onClick={(e) => { e.stopPropagation(); agir(() => api.parcelaPaga(d.id)).catch(() => {}); }}>
                   <Icon name="check" size={14} /> Registrar parcela paga
                 </button>
               )}
@@ -786,13 +909,33 @@ export function Dividas({ dividas, recarregar }) {
         })}
       </div>
       {aberto && (
-        <Modal titulo={editando ? `Editar dívida · ${editando.credor}` : "Nova dívida"} aoFechar={() => setAberto(null)} largura={480}>
-          <EditorDivida
-            divida={editando}
-            aoCancelar={() => setAberto(null)}
-            aoSalvar={(dados) => agir(() => (editando ? api.atualizarDivida(editando.id, dados) : api.criarDivida(dados)))}
-            aoExcluir={() => agir(() => api.excluirDivida(editando.id)).catch(() => {})}
-          />
+        <Modal
+          titulo={editando ? `${modo === "editar" ? "Editar dívida" : "Dívida"} · ${editando.credor}` : "Nova dívida"}
+          subtitulo={editando && modo === "pagamentos" ? "O que já foi pago, com valor e data de cada vez" : undefined}
+          aoFechar={() => setAberto(null)}
+          largura={editando && modo === "pagamentos" ? 560 : 480}
+        >
+          {erro && modo === "pagamentos" && <Aviso tipo="error">{erro}</Aviso>}
+          {editando && modo === "pagamentos" ? (
+            // Lancar e desfazer nao fecham a janela: o historico recarregado e a
+            // resposta do que acabou de ser feito.
+            <PainelDivida
+              divida={editando}
+              contas={contas}
+              aoEditar={() => setModo("editar")}
+              aoLancar={(dados) => agir(() => api.pagarDivida(editando.id, dados), false)}
+              aoDesfazer={(pagamentoId) => agir(() => api.desfazerPagamentoDivida(pagamentoId), false)}
+            />
+          ) : (
+            // O erro do excluir sobe pro editor: divida com pagamento no Caixa e
+            // recusada, e o "Apagar" precisa dizer por que nao fez nada.
+            <EditorDivida
+              divida={editando}
+              aoCancelar={() => setAberto(null)}
+              aoSalvar={(dados) => agir(() => (editando ? api.atualizarDivida(editando.id, dados) : api.criarDivida(dados)))}
+              aoExcluir={() => agir(() => api.excluirDivida(editando.id))}
+            />
+          )}
         </Modal>
       )}
     </div>

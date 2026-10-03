@@ -24,14 +24,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.auth import get_current_user, require_admin  # noqa: E402
 from app.database import get_db  # noqa: E402
 from app.models import (  # noqa: E402
-    CarregamentoFinanceiro, CartaFreteEnviada, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa, MetaMensal, PagamentoAgenda, PagamentoComissao, PagamentoFaturaAbastecimento,
+    CarregamentoFinanceiro, CartaFreteEnviada, ContaAvulsa, ContaBancaria, Despesa, Divida, DividaPagamento, LancamentoCaixa, MetaMensal, PagamentoAgenda, PagamentoComissao, PagamentoFaturaAbastecimento,
 )
 from app.routers import financeiro as rotas  # noqa: E402
 from app.servicos import financeiro as fin  # noqa: E402
 from app.servicos import financeiro_importacao as imp  # noqa: E402
 from tests.apoio_documentos import banco_em_memoria  # noqa: E402
 
-TABELAS = (ContaBancaria, LancamentoCaixa, MetaMensal, CarregamentoFinanceiro, CartaFreteEnviada, Despesa, ContaAvulsa, PagamentoAgenda, PagamentoComissao, PagamentoFaturaAbastecimento, Divida)
+TABELAS = (ContaBancaria, LancamentoCaixa, MetaMensal, CarregamentoFinanceiro, CartaFreteEnviada, Despesa, ContaAvulsa, PagamentoAgenda, PagamentoComissao, PagamentoFaturaAbastecimento, Divida, DividaPagamento)
 DIA = date(2026, 9, 15)
 
 
