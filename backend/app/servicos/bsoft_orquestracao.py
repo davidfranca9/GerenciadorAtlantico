@@ -13,6 +13,7 @@ import pdfplumber
 from docx import Document
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..models import Cidade
 from . import bsoft_api
 from .bsoft_lookup import (
@@ -38,6 +39,11 @@ def _limpar(valor) -> str:
     return texto
 
 
+def _so_digitos(valor) -> str:
+    """RNTRC, CPF e CNPJ sao numericos: o Bsoft quer so os digitos."""
+    return re.sub(r"\D", "", _limpar(valor))
+
+
 def _formatar_data_api(valor: str) -> str | None:
     texto = _limpar(valor)
     if not texto:
@@ -46,6 +52,31 @@ def _formatar_data_api(valor: str) -> str | None:
         return datetime.strptime(texto, "%d/%m/%Y").strftime("%Y-%m-%d")
     except ValueError:
         return None
+
+
+def resolver_rntrc_motorista(motorista: dict, proprietario: dict, motorista_e_proprietario: bool) -> str:
+    """De onde sai o RNTRC que vai no cadastro do motorista no Bsoft.
+
+    O RNTRC e dado de quem transporta, nao da Atlantico: por isso ele nao e
+    valor fixo no codigo. A ordem e a mesma que o veiculo ja usa em
+    montar_veiculo_payload:
+
+      1. o RNTRC do proprio motorista (digitado na tela ou lido do documento
+         de RNTRC pelo OCR) - e o caso do autonomo, que tem o dele;
+      2. o RNTRC do proprietario PJ, quando o motorista e empregado dirigindo
+         caminhao de outra empresa (ele nao tem RNTRC proprio, quem responde
+         pelo transporte e a transportadora);
+      3. o RNTRC da frota propria, de BSOFT_RNTRC_PADRAO - cadastro da
+         empresa, que fica em variavel de ambiente e nunca no codigo.
+
+    Se o motorista esta marcado como proprietario do veiculo, o passo 2 nao
+    existe (nao ha PJ) e a regra 3 tambem nao vale: o dono do caminhao precisa
+    do RNTRC dele mesmo, senao o CT-e sai no nome errado.
+    """
+    proprio = _so_digitos(motorista.get("rntrc"))
+    if proprio or motorista_e_proprietario:
+        return proprio
+    return _so_digitos((proprietario or {}).get("rntrc")) or _so_digitos(settings.bsoft_rntrc_padrao)
 
 
 def _formatar_cep(cep: str) -> str:
@@ -243,13 +274,37 @@ def executar_cadastro_completo(db: Session, payload: dict) -> dict:
         raise CadastroBsoftError("O Nome e o CPF do motorista sao obrigatorios.")
 
     motorista_e_proprietario = bool(payload.get("motorista_e_proprietario"))
+    proprietario = payload.get("proprietario") or {}
+
+    # O Bsoft recusa o cadastro de pessoa fisica sem RNTRC (ela entra como
+    # transportadora, e como proprietariosVeiculos quando e dona do caminhao):
+    # responde 400 "Atributo obrigatorio [RNTRC] nao especificado". Barrar
+    # aqui, antes de chamar a API, pra o usuario ler o que falta preencher em
+    # vez do erro cru do Bsoft.
+    rntrc_motorista = resolver_rntrc_motorista(motorista, proprietario, motorista_e_proprietario)
+    if not rntrc_motorista:
+        if motorista_e_proprietario:
+            mensagem = (
+                "Preencha o RNTRC do Motorista. Ele está marcado como proprietário do "
+                "veículo, e o Bsoft não cadastra dono de caminhão sem RNTRC próprio "
+                "(o campo também é preenchido ao importar o documento do RNTRC)."
+            )
+        else:
+            mensagem = (
+                "Preencha o RNTRC: o Bsoft exige o RNTRC de quem transporta. Use o "
+                "'RNTRC do Motorista' quando ele é autônomo, ou o 'RNTRC do "
+                "Proprietário' quando o veículo é de outra empresa."
+            )
+        registrar("Motorista", False, mensagem)
+        return {"ok": False, "passos": passos, "mensagem": mensagem}
+
     cnh = motorista.get("cnh") or {}
     driver_payload = {
         "nome": nome,
         "cpf": cpf,
         "fone": re.sub(r"\D", "", _limpar(motorista.get("fone"))),
         "is_owner": motorista_e_proprietario,
-        "rntrc": _limpar(motorista.get("rntrc")),
+        "rntrc": rntrc_motorista,
         "dtNascimento": _formatar_data_api(motorista.get("dtNascimento")),
         "cnh": {
             "numero": _limpar(cnh.get("numero")),
@@ -305,7 +360,6 @@ def executar_cadastro_completo(db: Session, payload: dict) -> dict:
     owner_id = driver_id
     rntrc_final = driver_payload["rntrc"]
     if not motorista_e_proprietario:
-        proprietario = payload.get("proprietario") or {}
         owner_document = re.sub(r"\D", "", _limpar(proprietario.get("cnpj")))
         if len(owner_document) != 14:
             mensagem = "O CNPJ do proprietario e obrigatorio e deve conter 14 digitos."
@@ -317,10 +371,22 @@ def executar_cadastro_completo(db: Session, payload: dict) -> dict:
             "cnpj": owner_document,
             "razao_social": _limpar(proprietario.get("razao_social")),
             "tipoTransportadora": tipo_map.get(_limpar(proprietario.get("tipo"))),
-            "rntrc": _limpar(proprietario.get("rntrc")),
+            "rntrc": _so_digitos(proprietario.get("rntrc")),
         }
-        if not all(pj_payload.values()):
-            mensagem = "Todos os campos do proprietario PJ sao obrigatorios."
+        # Dizer QUAL campo falta: o proprietario PJ entra no grupo
+        # proprietariosVeiculos, que o Bsoft nao aceita sem razao social,
+        # tipo de transportadora e RNTRC.
+        rotulos = {
+            "razao_social": "Razão Social / Nome",
+            "tipoTransportadora": "Tipo Transportadora (PJ)",
+            "rntrc": "RNTRC do Proprietário",
+        }
+        faltando = [rotulo for campo, rotulo in rotulos.items() if not pj_payload.get(campo)]
+        if faltando:
+            mensagem = (
+                "Preencha, no Proprietário do Veículo: " + ", ".join(faltando)
+                + ". O Bsoft exige esses dados para cadastrar o dono do caminhão."
+            )
             registrar("Proprietario", False, mensagem)
             return {"ok": False, "passos": passos, "mensagem": mensagem}
 

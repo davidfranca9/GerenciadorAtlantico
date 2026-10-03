@@ -399,7 +399,7 @@ export default function BsoftPage() {
           <div className="field"><label>CPF</label><input value={motorista.cpf} onChange={(e) => setMotorista({ ...motorista, cpf: formatCPF(e.target.value) })} maxLength={14} /></div>
           <div className="field"><label>Celular</label><input value={motorista.fone} onChange={(e) => setMotorista({ ...motorista, fone: formatPhone(e.target.value) })} /></div>
           <DateField label="Data de Nascimento" value={motorista.dtNascimento} onChange={(v) => setMotorista({ ...motorista, dtNascimento: v })} />
-          <div className="field"><label>RNTRC do Motorista</label><input value={motorista.rntrc} onChange={(e) => setMotorista({ ...motorista, rntrc: e.target.value })} /></div>
+          <div className="field"><label>RNTRC do Motorista</label><input value={motorista.rntrc} onChange={(e) => setMotorista({ ...motorista, rntrc: e.target.value })} placeholder="obrigatório no Bsoft" /></div>
           <div className="field"><label>Nº Registro CNH</label><input value={motorista.cnh.numero} onChange={(e) => setMotorista({ ...motorista, cnh: { ...motorista.cnh, numero: e.target.value } })} /></div>
           <div className="field"><label>Seguro CNH</label><input value={motorista.cnh.seguro} onChange={(e) => setMotorista({ ...motorista, cnh: { ...motorista.cnh, seguro: e.target.value } })} /></div>
           <div className="field"><label>Categoria CNH</label><input value={motorista.cnh.categoria} onChange={(e) => setMotorista({ ...motorista, cnh: { ...motorista.cnh, categoria: e.target.value.toUpperCase() } })} /></div>
@@ -506,7 +506,7 @@ export default function BsoftPage() {
             </div>
             <div className="field-grid">
               <div className="field"><label>Razão Social / Nome</label><input value={proprietario.razao_social} onChange={(e) => setProprietario({ ...proprietario, razao_social: e.target.value })} /></div>
-              <div className="field"><label>RNTRC do Proprietário</label><input value={proprietario.rntrc} onChange={(e) => setProprietario({ ...proprietario, rntrc: e.target.value })} /></div>
+              <div className="field"><label>RNTRC do Proprietário</label><input value={proprietario.rntrc} onChange={(e) => setProprietario({ ...proprietario, rntrc: e.target.value })} placeholder="obrigatório no Bsoft" /></div>
               <div className="field">
                 <label>Tipo Transportadora (PJ)</label>
                 <select value={proprietario.tipo} onChange={(e) => setProprietario({ ...proprietario, tipo: e.target.value })}>
@@ -524,7 +524,8 @@ export default function BsoftPage() {
       <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <strong style={{ fontSize: 15 }}>Ação Final</strong>
         <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
-          Campos mínimos: Nome e CPF do motorista. O restante pode ser importado da documentação.
+          Campos mínimos: Nome, CPF e RNTRC do motorista — o Bsoft não cadastra transportador sem RNTRC.
+          Quando o veículo é de outra empresa, vale o RNTRC do proprietário. O restante pode ser importado da documentação.
         </div>
         <button className="btn-primary" style={{ alignSelf: "start" }} disabled={loadingAction === "cadastrar"} onClick={handleCadastrarTudo}>
           {loadingAction === "cadastrar" ? status : "Cadastrar Tudo na Bsoft"}

@@ -6,6 +6,7 @@ tkinter: erros agora levantam BsoftApiError em vez de abrir messagebox.
 from __future__ import annotations
 
 import json
+import re
 
 import requests
 
@@ -27,6 +28,52 @@ def _auth():
 
 def _clean(payload: dict) -> dict:
     return {k: v for k, v in payload.items() if v is not None and v != ""}
+
+
+def _so_digitos(valor) -> str:
+    """RNTRC, CPF e CNPJ sao numericos. O OCR e a digitacao trazem ponto,
+    barra e espaco; o Bsoft quer so os digitos."""
+    return re.sub(r"\D", "", "" if valor is None else str(valor))
+
+
+# Quando o Bsoft reclama de atributo obrigatorio, ele cita o nome do campo da
+# API - que nao e o nome do campo na tela. A dica traduz um pro outro, pra
+# mensagem dizer o que falta preencher em vez de so repetir o erro da API.
+AJUDA_POR_ATRIBUTO = {
+    "RNTRC": (
+        "Preencha o campo 'RNTRC do Motorista' (ou 'RNTRC do Proprietário', quando o "
+        "veículo é de outra empresa) e envie de novo - o Bsoft exige o RNTRC de quem é "
+        "transportador ou dono do veículo."
+    ),
+}
+
+
+def _mensagem_erro(resp) -> str:
+    """Traduz o corpo de erro do Bsoft numa linha que o usuario entende.
+
+    O Bsoft responde erro em JSON com os acentos escapados
+    ('Atributo obrigat\\u00f3rio [RNTRC]...'); jogar resp.text na tela mostrava
+    isso cru. Aqui a gente le o JSON (que ja desescapa), aproveita so o campo
+    'message' e, quando o atributo citado e conhecido, junta a dica de qual
+    campo da tela preencher. Corpo que nao e JSON cai no texto mesmo.
+    """
+    texto = (getattr(resp, "text", "") or "").strip()
+    try:
+        corpo = resp.json()
+    except ValueError:
+        corpo = None
+
+    mensagem = ""
+    if isinstance(corpo, dict):
+        mensagem = str(corpo.get("message") or corpo.get("mensagem") or "").strip()
+    elif isinstance(corpo, list) and corpo and isinstance(corpo[0], dict):
+        mensagem = str(corpo[0].get("message") or "").strip()
+    if not mensagem:
+        mensagem = texto or "(resposta sem corpo)"
+
+    atributo = re.search(r"\[([A-Za-z_]+)\]", mensagem)
+    ajuda = AJUDA_POR_ATRIBUTO.get(atributo.group(1)) if atributo else None
+    return f"{mensagem} {ajuda}" if ajuda else mensagem
 
 
 def cadastrar_veiculo_bsoft(dados_veiculo: dict) -> dict:
@@ -59,7 +106,7 @@ def cadastrar_veiculo_bsoft(dados_veiculo: dict) -> dict:
     resp = requests.post(endpoint_url, json=_clean(temp_payload), auth=_auth(), timeout=30)
     if resp.status_code in (200, 201):
         return resp.json()
-    raise BsoftApiError(f"Falha ao cadastrar veiculo (status {resp.status_code}): {resp.text}")
+    raise BsoftApiError(f"Falha ao cadastrar veiculo (status {resp.status_code}): {_mensagem_erro(resp)}")
 
 
 def cadastrar_endereco_bsoft(cod_pessoa, dados_endereco: dict) -> dict | None:
@@ -71,7 +118,7 @@ def cadastrar_endereco_bsoft(cod_pessoa, dados_endereco: dict) -> dict | None:
     resp = requests.post(endpoint_url, json=_clean(payload), auth=_auth(), timeout=20)
     if resp.status_code in (200, 201):
         return resp.json()
-    raise BsoftApiError(f"Falha ao cadastrar endereco (status {resp.status_code}): {resp.text}")
+    raise BsoftApiError(f"Falha ao cadastrar endereco (status {resp.status_code}): {_mensagem_erro(resp)}")
 
 
 def _payload_pessoa_fisica(dados_motorista: dict, cpf_override=None) -> dict:
@@ -83,7 +130,13 @@ def _payload_pessoa_fisica(dados_motorista: dict, cpf_override=None) -> dict:
         "sobrenome": partes_nome[1] if len(partes_nome) > 1 else "",
         "dtNascimento": dados_motorista.get("dtNascimento"),
         "tipoTransportadora": "T",
-        "RNTRC": dados_motorista.get("rntrc"),
+        # O cadastro sai com tipoTransportadora "T" (autonomo) e, quando o
+        # motorista e dono do caminhao, no grupo proprietariosVeiculos - os
+        # dois exigem RNTRC COM VALOR: a chave presente com string vazia o
+        # Bsoft recusa igual, dizendo "Atributo obrigatorio [RNTRC] nao
+        # especificado". Se a tela nao mandou nenhum, cai no RNTRC da frota
+        # propria (variavel de ambiente).
+        "RNTRC": _so_digitos(dados_motorista.get("rntrc")) or _so_digitos(settings.bsoft_rntrc_padrao),
         "celular": dados_motorista.get("fone"),
         "grupos": ["motoristas", "proprietariosVeiculos"] if dados_motorista.get("is_owner") else ["motoristas"],
         "cnh": {k: v for k, v in dados_motorista.get("cnh", {}).items() if v},
@@ -95,7 +148,7 @@ def cadastrar_pessoa_fisica_bsoft(dados_motorista: dict) -> dict:
     resp = requests.post(endpoint_url, json=_payload_pessoa_fisica(dados_motorista), auth=_auth(), timeout=20)
     if resp.status_code in (200, 201):
         return resp.json()
-    raise BsoftApiError(f"Falha ao cadastrar motorista (status {resp.status_code}): {resp.text}")
+    raise BsoftApiError(f"Falha ao cadastrar motorista (status {resp.status_code}): {_mensagem_erro(resp)}")
 
 
 def atualizar_pessoa_fisica_bsoft(cpf: str, dados_motorista: dict) -> dict:
@@ -103,7 +156,7 @@ def atualizar_pessoa_fisica_bsoft(cpf: str, dados_motorista: dict) -> dict:
     resp = requests.put(endpoint_url, json=_payload_pessoa_fisica(dados_motorista, cpf_override=cpf), auth=_auth(), timeout=20)
     if resp.status_code == 200:
         return resp.json()
-    raise BsoftApiError(f"Falha ao atualizar motorista (status {resp.status_code}): {resp.text}")
+    raise BsoftApiError(f"Falha ao atualizar motorista (status {resp.status_code}): {_mensagem_erro(resp)}")
 
 
 def _payload_pessoa_juridica(cnpj, dados_empresa: dict) -> dict:
@@ -113,7 +166,9 @@ def _payload_pessoa_juridica(cnpj, dados_empresa: dict) -> dict:
             "razaoSocial": dados_empresa.get("razao_social"),
             "nomeFantasia": dados_empresa.get("razao_social"),
             "tipoTransportadora": dados_empresa.get("tipoTransportadora"),
-            "RNTRC": dados_empresa.get("rntrc"),
+            # Mesma exigencia da pessoa fisica: o proprietario PJ entra no
+            # grupo proprietariosVeiculos, que nao existe sem RNTRC.
+            "RNTRC": _so_digitos(dados_empresa.get("rntrc")),
             "inscricaoEstadual": dados_empresa.get("inscricao_estadual"),
             "grupos": ["proprietariosVeiculos"],
         }
@@ -125,7 +180,7 @@ def cadastrar_pessoa_juridica_bsoft(dados_empresa: dict) -> dict:
     resp = requests.post(endpoint_url, json=_payload_pessoa_juridica(dados_empresa.get("cnpj"), dados_empresa), auth=_auth(), timeout=20)
     if resp.status_code in (200, 201):
         return resp.json()
-    raise BsoftApiError(f"Falha ao cadastrar proprietario PJ (status {resp.status_code}): {resp.text}")
+    raise BsoftApiError(f"Falha ao cadastrar proprietario PJ (status {resp.status_code}): {_mensagem_erro(resp)}")
 
 
 def atualizar_pessoa_juridica_bsoft(cnpj: str, dados_empresa: dict) -> dict:
@@ -133,7 +188,7 @@ def atualizar_pessoa_juridica_bsoft(cnpj: str, dados_empresa: dict) -> dict:
     resp = requests.put(endpoint_url, json=_payload_pessoa_juridica(cnpj, dados_empresa), auth=_auth(), timeout=20)
     if resp.status_code == 200:
         return resp.json()
-    raise BsoftApiError(f"Falha ao atualizar proprietario PJ (status {resp.status_code}): {resp.text}")
+    raise BsoftApiError(f"Falha ao atualizar proprietario PJ (status {resp.status_code}): {_mensagem_erro(resp)}")
 
 
 def buscar_pessoa_fisica_por_cpf(cpf: str) -> str | None:

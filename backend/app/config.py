@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     bsoft_api_user: str = ""
     bsoft_api_password: str = ""
     bsoft_timeout_segundos: int = 30
+    # RNTRC da frota propria. O RNTRC e dado de quem transporta: o motorista
+    # autonomo tem o dele (vem da tela/do OCR do documento) e o proprietario
+    # PJ tem o da empresa dele. Este aqui e so a rede de seguranca do caminhao
+    # da casa, quando o motorista e empregado e nao tem RNTRC proprio. Fica em
+    # variavel de ambiente (BSOFT_RNTRC_PADRAO) porque e cadastro da empresa:
+    # nao entra no codigo e nunca e exposto no frontend. Vazio = sem rede, a
+    # tela passa a exigir o RNTRC preenchido.
+    bsoft_rntrc_padrao: str = ""
 
     # Ids do tenant, descobertos pela API e pela tela do Bsoft. Ficam aqui
     # (e nao no codigo) pra poder corrigir por variavel de ambiente, sem
