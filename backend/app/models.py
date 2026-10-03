@@ -26,7 +26,15 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255), default="")
     role: Mapped[str] = mapped_column(String(20), default="user")  # "user" | "admin"
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    paginas_bloqueadas: Mapped[str] = mapped_column(String(1000), default="")  # rotas (ex: "/pedidos,/whatsapp") escondidas pro usuario
+    # Lista de permissao: rotas que o usuario PODE abrir (ex: "/pedidos,/whatsapp").
+    # Aba que nao esta aqui nao aparece no menu nem responde no backend, entao
+    # tela nova nasce fechada. Administrador ignora a lista e ve tudo.
+    # Aceita NULL: NULL e "usuario que ainda nao passou pela migracao da lista
+    # negra" e vazio e "nao ve nenhuma aba" (veja main._migrar_para_lista_de_permissao).
+    paginas_liberadas: Mapped[Optional[str]] = mapped_column(String(2000), default="")
+    # Legado: lista negra antiga (rotas escondidas). Fica so como origem da
+    # migracao pra paginas_liberadas - ninguem le isso pra decidir acesso.
+    paginas_bloqueadas: Mapped[str] = mapped_column(String(1000), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -517,6 +525,13 @@ class CarregamentoFinanceiro(Base):
     # Valor do contrato de frete no Bsoft. So referencia: em setembro/2026 nao
     # bateu com o pago ao motorista em nenhuma carga (a carta frete bateu).
     valor_contrato_frete: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    # "VALOR TOTAL DO SERVICO" e o ICMS ST do DACTE. Em carga CIF o tomador e a
+    # industria e retem o ICMS ST, entao o frete cobrado (frete_empresa_total)
+    # e o "VALOR A RECEBER": servico menos o ST. Estes dois sao so conferencia,
+    # nao entram em nenhuma soma - no CT-e 5250 foram 9.440,00 e 1.132,80 pra
+    # um frete cobrado de 8.307,20. Sem ST, o desconto fica nulo.
+    frete_servico_total: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    desconto_icms_st: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

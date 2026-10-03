@@ -1,7 +1,11 @@
 """Carregamentos a partir do Bsoft: tudo o que foi emitido no mes, sem digitar.
 
 - CT-e (listagem): numero, data, motorista, placa, remetente e destinatario.
-- XML autorizado do CT-e: valor do frete (vTPrest), peso e cidade de destino.
+- XML autorizado do CT-e: valor do frete, peso e cidade de destino. O frete
+  que vale pro financeiro e o VALOR A RECEBER (vRec), nao o total do servico
+  (vTPrest): em carga CIF o tomador retem o ICMS ST e paga a diferenca - foi
+  o que o CT-e 5250 mostrou (servico 9.440,00, ST 1.132,80, a receber
+  8.307,20). Sem ST os dois sao iguais e nada muda.
   O XML de cancelamento, quando existe, marca a carga como cancelada.
 - Contrato de frete ("RECIBO DE FRETE"): os CT-es que ele cobre - e isso que
   junta "5005/5006" numa carga so. O VALOR do contrato nao e o pago ao
@@ -141,7 +145,7 @@ def _numero(texto) -> Optional[float]:
 
 
 def ler_xml_cte(xml: str) -> dict:
-    """Frete, peso (t), destino e partes de um CT-e autorizado."""
+    """Frete (o que se recebe), peso (t), destino e partes de um CT-e autorizado."""
     if not xml:
         return {}
     try:
@@ -163,6 +167,18 @@ def ler_xml_cte(xml: str) -> dict:
         if unidade == "02":
             peso = quantidade
             break
+    prest = _filho(raiz, "vPrest")
+    # vTPrest e o "VALOR TOTAL DO SERVICO" do DACTE; vRec e o "VALOR A
+    # RECEBER". Em carga CIF, com substituicao tributaria, o tomador retem o
+    # ICMS ST e paga so o vRec - e esse o dinheiro que chega na Atlantico.
+    # Sem ST o XML repete o mesmo numero nos dois campos.
+    total_servico = _numero(_texto(prest, "vTPrest"))
+    a_receber = _numero(_texto(prest, "vRec"))
+    if a_receber is None:
+        a_receber = total_servico
+    desconto = None
+    if total_servico is not None and a_receber is not None and total_servico - a_receber > 0.005:
+        desconto = round(total_servico - a_receber, 2)
     return {
         "numero": _texto(ide, "nCT"),
         "emissao": _texto(ide, "dhEmi")[:10],
@@ -172,7 +188,10 @@ def ler_xml_cte(xml: str) -> dict:
         "uf_fim": _texto(ide, "UFFim"),
         "remetente": _texto(_filho(raiz, "rem"), "xNome"),
         "destinatario": _texto(_filho(raiz, "dest"), "xNome"),
-        "valor_frete": _numero(_texto(_filho(raiz, "vPrest"), "vTPrest")),
+        # valor_frete e o que entra na conta: o valor a receber.
+        "valor_frete": a_receber,
+        "valor_total_servico": total_servico,
+        "desconto_icms_st": desconto,
         "peso": round(peso, 3) if peso is not None else None,
     }
 
@@ -256,6 +275,10 @@ def cargas_do_periodo(db: Session, inicio: date, fim: date) -> dict:
         )
         pesos = [x.get("peso") for x in xml if x.get("peso")]
         fretes = [x.get("valor_frete") for x in xml if x.get("valor_frete") is not None]
+        # Total do servico e desconto do ICMS ST somados do mesmo jeito que o
+        # frete: uma carga pode ser 5005/5006 e cada CT-e tem o seu.
+        servicos = [x.get("valor_total_servico") for x in xml if x.get("valor_total_servico") is not None]
+        descontos = [x.get("desconto_icms_st") for x in xml if x.get("desconto_icms_st")]
         peso = round(sum(pesos), 3) if pesos else _numero((valor or {}).get("pesoColeta"))
         datas = [d for d in (_data(doc.get("dtEmissao")) for doc in docs) if d]
         citados = {}
@@ -287,6 +310,8 @@ def cargas_do_periodo(db: Session, inicio: date, fim: date) -> dict:
             "destino": destino,
             "peso": peso or 0,
             "frete_empresa_total": fin.dinheiro(sum(fretes)) if fretes else None,
+            "frete_servico_total": fin.dinheiro(sum(servicos)) if servicos else None,
+            "desconto_icms_st": fin.dinheiro(sum(descontos)) if descontos else None,
             "frete_motorista_total": None,  # vem da carta frete, logo abaixo
             "carta_frete": None,
             "valor_contrato": fin.dinheiro(_numero((valor or {}).get("valorTotalOrigem") or (contrato or {}).get("valorTotalOrigem")))
@@ -360,7 +385,8 @@ def ligar_cartas_frete(db: Session, cargas: list[dict], dias: int = 5) -> None:
 # --------------------------------------------------------------------------
 
 CAMPOS_DO_BSOFT = ("data_emissao", "motorista", "fabrica", "destino", "cliente", "peso",
-                   "frete_empresa_total", "frete_motorista_total", "contrato_frete", "cancelado")
+                   "frete_empresa_total", "frete_servico_total", "desconto_icms_st",
+                   "frete_motorista_total", "contrato_frete", "cancelado")
 
 
 def _numeros_de(texto: str) -> set[str]:
@@ -373,6 +399,9 @@ def _valores_da_carga(carga: dict) -> dict:
         "destino": carga["destino"], "cliente": carga["cliente"], "peso": carga["peso"],
         "frete_empresa_total": carga["frete_empresa_total"], "frete_motorista_total": carga["frete_motorista_total"],
         "contrato_frete": carga["contrato"], "cancelado": carga["cancelado"], "valor_contrato_frete": carga.get("valor_contrato"),
+        # Guardados pra conferir o frete cobrado: total do servico no CT-e e o
+        # ICMS ST que o tomador retem. Nao entram em nenhuma soma.
+        "frete_servico_total": carga.get("frete_servico_total"), "desconto_icms_st": carga.get("desconto_icms_st"),
     }
 
 
@@ -381,6 +410,7 @@ def _resumo(carga: dict) -> dict:
         "ctes": carga["ctes"], "data_emissao": carga["data_emissao"].isoformat() if carga["data_emissao"] else None,
         "motorista": carga["motorista"], "fabrica": carga["fabrica"], "destino": carga["destino"],
         "peso": carga["peso"], "frete_empresa": carga["frete_empresa_total"], "frete_motorista": carga["frete_motorista_total"],
+        "frete_servico": carga.get("frete_servico_total"), "desconto_icms_st": carga.get("desconto_icms_st"),
         "cancelado": carga["cancelado"], "sem_contrato": not carga["contrato"],
         "carta_frete": carga.get("carta_frete"), "valor_contrato": carga.get("valor_contrato"),
         "contratos": carga.get("contratos_detalhe", []),
@@ -389,7 +419,11 @@ def _resumo(carga: dict) -> dict:
 
 def sincronizar(db: Session, competencia: str, *, aplicar: bool = False, lido: Optional[dict] = None) -> dict:
     """Traz as cargas do mes. Nao mexe nos valores das que vieram da planilha
-    ou foram digitadas: so completa campo vazio e aponta a diferenca."""
+    ou foram digitadas: so completa campo vazio e aponta a diferenca.
+
+    O "frete cobrado" que entra e o valor a receber do CT-e. Carga antiga da
+    planilha, lancada pelo total do servico, aparece como divergencia - a
+    diferenca e o ICMS ST."""
     inicio, fim = fin.limites_competencia(competencia)
     lido = lido if lido is not None else cargas_do_periodo(db, inicio, fim)
     existentes = db.query(CarregamentoFinanceiro).all()
@@ -431,6 +465,12 @@ def sincronizar(db: Session, competencia: str, *, aplicar: bool = False, lido: O
                 alvo.data_emissao = valores["data_emissao"]
             if alvo.valor_contrato_frete is None and valores["valor_contrato_frete"] is not None:
                 alvo.valor_contrato_frete = valores["valor_contrato_frete"]
+            # Total do servico e ICMS ST sao referencia: preencher nao troca
+            # nenhum valor da carga e mostra, na linha da planilha, quanto do
+            # frete cobrado e imposto retido pelo tomador.
+            for campo in ("frete_servico_total", "desconto_icms_st"):
+                if getattr(alvo, campo) is None and valores[campo] is not None:
+                    setattr(alvo, campo, valores[campo])
             totais = fin.totais_carregamento(alvo)
             diferencas = {}
             for rotulo, no_sistema, no_bsoft in (
@@ -442,6 +482,9 @@ def sincronizar(db: Session, competencia: str, *, aplicar: bool = False, lido: O
                     diferencas[rotulo] = {"controle": no_sistema, "bsoft": no_bsoft}
             if diferencas:
                 divergencias.append({"ctes": alvo.ctes, "motorista": alvo.motorista, "diferencas": diferencas,
+                                     # Vai junto pra tela explicar a diferenca mais comum: o
+                                     # controle antigo lancou o total do servico, com o ICMS ST dentro.
+                                     "desconto_icms_st": carga.get("desconto_icms_st"),
                                      "contratos": carga.get("contratos_detalhe", [])})
         db.flush()
         if aplicar:

@@ -25,7 +25,12 @@ from tests.apoio_documentos import banco_em_memoria  # noqa: E402
 
 
 def xml_cte(numero, valor, peso_kg, municipio="CARATINGA", ibge="3113404", uf="MG", remetente="FERTIMAXI FERTILIZANTES LTDA",
-            destinatario="MOYSES ALVINO COVRE"):
+            destinatario="MOYSES ALVINO COVRE", a_receber=None, icms_st=None):
+    """CT-e autorizado. Sem `a_receber`, o valor a receber e o total do servico
+    (carga sem substituicao tributaria, que e o caso normal). Com `icms_st`, o
+    XML sai como o do 5250: o tomador retem o ST e paga a diferenca."""
+    imposto = f"""<imp><ICMS><ICMS60><vBCSTRet>{valor}</vBCSTRet><pICMSSTRet>12.00</pICMSSTRet>
+<vICMSSTRet>{icms_st}</vICMSSTRet></ICMS60></ICMS></imp>""" if icms_st else ""
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <cteProc xmlns="http://www.portalfiscal.inf.br/cte" versao="4.00"><CTe><infCte Id="CTe29" versao="4.00">
 <ide><cUF>29</cUF><nCT>{numero}</nCT><dhEmi>2026-09-02T10:15:00-03:00</dhEmi><tpCTe>0</tpCTe>
@@ -34,7 +39,8 @@ def xml_cte(numero, valor, peso_kg, municipio="CARATINGA", ibge="3113404", uf="M
 <emit><xNome>ATLANTICO FERTLOG</xNome></emit>
 <rem><CNPJ>1</CNPJ><xNome>{remetente}</xNome></rem>
 <dest><CPF>2</CPF><xNome>{destinatario}</xNome></dest>
-<vPrest><vTPrest>{valor}</vTPrest><vRec>{valor}</vRec></vPrest>
+<vPrest><vTPrest>{valor}</vTPrest><vRec>{a_receber or valor}</vRec>
+<Comp><xNome>FRETE VALOR</xNome><vComp>{valor}</vComp></Comp></vPrest>{imposto}
 <infCTeNorm><infCarga><vCarga>100000.00</vCarga><proPred>SUPER SIMPLES</proPred>
 <infQ><cUnid>03</cUnid><tpMed>SACOS</tpMed><qCarga>640.0000</qCarga></infQ>
 <infQ><cUnid>01</cUnid><tpMed>PESO BRUTO</tpMed><qCarga>{peso_kg}</qCarga></infQ>
@@ -72,26 +78,54 @@ XMLS = {
 }
 
 
-@pytest.fixture
-def bsoft(monkeypatch):
+# CT-e 5250: Fertimaxi -> Aguas Vermelhas/MG, 32 t, cliente LESSIVAN. Carga
+# CIF - o tomador e a industria e retem o ICMS ST. No DACTE: total do servico
+# 9.440,00, ICMS ST 1.132,80 e VALOR A RECEBER 8.307,20.
+CTES_CIF = [
+    {"id": "20", "nro": "5250", "dtEmissao": "2026-09-22 09:30:00", "chaveAcesso": "K5250", "remetente": "FERTIMAXI",
+     "destinatario": "LESSIVAN", "dados_motorista": {"motorista": "VALDIR SOARES ", "veiculo": "CIF-1F11"}},
+]
+CONTRATOS_CIF = [
+    {"id": "2500", "numeroCF": "2500", "motorista": "VALDIR SOARES", "statusCancelado": "N", "nrosCTe": ["5250"], "valorTotalOrigem": "7000.00"},
+]
+XMLS_CIF = {
+    "K5250": {"autorizacao": xml_cte(5250, "9440.00", "32000.0000", "AGUAS VERMELHAS", "3100708", "MG",
+                                     "FERTIMAXI FERTILIZANTES LTDA", "LESSIVAN MARCOS DE OLIVEIRA PACHECO",
+                                     a_receber="8307.20", icms_st="1132.80"), "cancelamento": ""},
+}
+
+
+def _bsoft_simulado(monkeypatch, ctes, contratos, valores, xmls):
+    """Troca o cliente do Bsoft pelas listas dadas; devolve as chamadas feitas."""
     chamadas = []
 
     def chamar(metodo, caminho, params=None, json_body=None, **kw):
         chamadas.append((metodo, caminho, params, json_body))
         offset, qtd = (int(x) for x in (params or {}).get("limit", "0,100").split(","))
         if caminho == "/transporte/v1/conhecimentos":
-            return 200, CTES[offset:offset + qtd]
+            return 200, ctes[offset:offset + qtd]
         if caminho == "/transporte/v1/contratosFrete":
-            return 200, CONTRATOS[offset:offset + qtd]
+            return 200, contratos[offset:offset + qtd]
         if caminho == "/transporte/v1/contratosFrete/valores":
-            return 200, VALORES[offset:offset + qtd]
+            return 200, valores[offset:offset + qtd]
         if caminho == "/eDoc/v1/XMLDocumentosFiscais/CTesEmitidos":
             assert json_body["obterXmlEventos"] == "S" and len(json_body["chaveAcesso"]) <= 50
-            return 200, [{"chaveAcesso": c, "xml": XMLS[c]} for c in json_body["chaveAcesso"]]
+            return 200, [{"chaveAcesso": c, "xml": xmls[c]} for c in json_body["chaveAcesso"]]
         raise AssertionError(caminho)
 
     monkeypatch.setattr(fb, "chamar", chamar)
     return chamadas
+
+
+@pytest.fixture
+def bsoft(monkeypatch):
+    return _bsoft_simulado(monkeypatch, CTES, CONTRATOS, VALORES, XMLS)
+
+
+@pytest.fixture
+def bsoft_cif(monkeypatch):
+    """So o 5250: uma carga CIF, com ICMS ST retido pelo tomador."""
+    return _bsoft_simulado(monkeypatch, CTES_CIF, CONTRATOS_CIF, [], XMLS_CIF)
 
 
 @pytest.fixture
@@ -100,6 +134,7 @@ def db():
                               ContaAvulsa, PagamentoAgenda, Divida)
     sessao.add_all([
         Cidade(nome="Teófilo Otoni", uf="MG", ibge="3168606"), Cidade(nome="Nova Bassano", uf="RS", ibge="4312906"),
+        Cidade(nome="Águas Vermelhas", uf="MG", ibge="3100708"),
         # A carta frete e o frete do motorista de verdade (bateu com a planilha).
         CartaFreteEnviada(data="01/09/2026", condutor="LINDOMAR DA SILVA SOUZA", placa_cavalo="QWU-2F44", valor_frete="7.040,00", status="enviada"),
         CartaFreteEnviada(data="16/09/2026", condutor="OUTRO MOTORISTA", placa_cavalo="XYZ9A99", valor_frete="8.000,00", status="enviada"),
@@ -114,6 +149,28 @@ def test_le_frete_peso_e_destino_do_xml():
     lido = fb.ler_xml_cte(xml_cte(5121, "12000.00", "40000.0000", "NOVA BASSANO", "4312906", "RS"))
     assert (lido["numero"], lido["valor_frete"], lido["peso"], lido["ibge_fim"], lido["uf_fim"]) == ("5121", 12000.0, 40.0, "4312906", "RS")
     assert lido["remetente"] == "FERTIMAXI FERTILIZANTES LTDA" and lido["destinatario"] == "MOYSES ALVINO COVRE"
+
+
+def test_le_valor_a_receber_quando_o_tomador_retem_icms_st():
+    """CT-e 5250: o DACTE fecha 9.440,00 de servico mas manda receber 8.307,20."""
+    lido = fb.ler_xml_cte(XMLS_CIF["K5250"]["autorizacao"])
+    assert (lido["valor_total_servico"], lido["desconto_icms_st"]) == (9440.0, 1132.80)
+    # valor_frete e o que entra no financeiro: o que a Atlantico recebe.
+    assert lido["valor_frete"] == 8307.20
+    assert (lido["destinatario"], lido["peso"]) == ("LESSIVAN MARCOS DE OLIVEIRA PACHECO", 32.0)
+
+
+def test_cte_sem_icms_st_continua_pelo_total_do_servico():
+    """Sem substituicao tributaria o vRec repete o vTPrest: nada muda."""
+    lido = fb.ler_xml_cte(xml_cte(5121, "12000.00", "40000.0000"))
+    assert (lido["valor_frete"], lido["valor_total_servico"]) == (12000.0, 12000.0)
+    assert lido["desconto_icms_st"] is None
+
+
+def test_cte_sem_vrec_cai_no_total_do_servico():
+    """XML sem o campo valor a receber: o frete continua sendo o total."""
+    lido = fb.ler_xml_cte(xml_cte(5121, "12000.00", "40000.0000").replace("<vRec>12000.00</vRec>", ""))
+    assert (lido["valor_frete"], lido["valor_total_servico"], lido["desconto_icms_st"]) == (12000.0, 12000.0, None)
 
 
 def test_peso_em_tonelada_no_xml():
@@ -176,6 +233,7 @@ def test_carga_da_planilha_nao_tem_valor_trocado(db, bsoft):
     assert planilha.destino == "Teófilo Otoni MG" and planilha.contrato_frete == "2290"  # so completa o vazio
     assert feito["divergencias"] == [{"ctes": "5005/5006", "motorista": "LINDOMAR DA SILVA",
                                       "diferencas": {"frete cobrado": {"controle": 8960.0, "bsoft": 9280.0}},
+                                      "desconto_icms_st": None,  # CT-e sem substituicao tributaria
                                       "contratos": feito["divergencias"][0]["contratos"]}]
     assert [c["numero"] for c in feito["divergencias"][0]["contratos"]] == ["2290"]
 
@@ -237,3 +295,50 @@ def test_carga_sem_frete_do_motorista_fica_fora_do_lucro(db, bsoft):
     assert r["resumo"]["pendentes"] == {"carregamentos": 1, "toneladas": 40.0, "frete_empresa": 12000.0}
     sem_carta = next(l for l in r["carregamentos"] if l["ctes"] == "5121")
     assert (sem_carta["totais"]["liquido"], sem_carta["totais"]["completo"]) == (None, False)
+
+
+def test_carga_cif_entra_no_financeiro_pelo_valor_a_receber(db, bsoft_cif):
+    """O 5250 inteiro: o que vira linha do LUCRO BRUTO e os 8.307,20 recebidos,
+    nao os 9.440,00 do total do servico. O ICMS ST fica guardado ao lado."""
+    feito = fb.sincronizar(db, "2026-09", aplicar=True)
+    assert len(feito["novos"]) == 1
+    resumo = feito["novos"][0]
+    assert (resumo["frete_empresa"], resumo["frete_servico"], resumo["desconto_icms_st"]) == (8307.20, 9440.0, 1132.80)
+    carga = db.query(CarregamentoFinanceiro).filter(CarregamentoFinanceiro.ctes == "5250").one()
+    assert (carga.frete_empresa_total, carga.frete_servico_total, carga.desconto_icms_st) == (8307.20, 9440.0, 1132.80)
+    assert (carga.destino, carga.cliente, carga.peso) == ("Águas Vermelhas MG", "LESSIVAN MARCOS DE OLIVEIRA PACHECO", 32.0)
+
+    carga.frete_motorista_total, carga.agenciamento_total = 6400, 320
+    db.commit()
+    totais = fin.totais_carregamento(carga)
+    assert (totais["frete_empresa"], totais["liquido"]) == (8307.20, 1587.20)
+    r = fin.resultado_mensal(db, "2026-09", hoje=date(2026, 9, 30))
+    assert (r["resumo"]["frete_empresa"], r["resumo"]["lucro_bruto"]) == (8307.20, 1587.20)
+    assert r["cascata"][0] == {"rotulo": "Frete cobrado", "valor": 8307.20, "tipo": "inicio"}
+
+
+def test_carga_sem_icms_st_continua_com_o_mesmo_frete_no_financeiro(db, bsoft):
+    """Nenhum dos CT-es de setembro tem ST: os valores sao os de sempre."""
+    fb.sincronizar(db, "2026-09", aplicar=True)
+    junta = db.query(CarregamentoFinanceiro).filter(CarregamentoFinanceiro.ctes == "5005/5006").one()
+    assert (junta.frete_empresa_total, junta.frete_servico_total, junta.desconto_icms_st) == (9280.0, 9280.0, None)
+    r = fin.resultado_mensal(db, "2026-09", hoje=date(2026, 9, 16))
+    assert r["resumo"]["lucro_bruto"] == (9280 - 7040) + (9600 - 8000)
+
+
+def test_planilha_com_o_total_do_servico_aparece_como_divergencia(db, bsoft_cif):
+    """A planilha lancava o total do servico (ICMS ST dentro). O valor digitado
+    nao e trocado, mas a previa mostra a diferenca e diz que ela e o ST."""
+    planilha = CarregamentoFinanceiro(competencia="2026-09", ctes="5250", motorista="VALDIR SOARES", fabrica="Fertimaxi",
+                                      destino="", peso=32, frete_empresa_total=9440, frete_motorista_total=6400,
+                                      contratante="Queiroz", origem="planilha")
+    db.add(planilha)
+    db.commit()
+    feito = fb.sincronizar(db, "2026-09", aplicar=True)
+    db.refresh(planilha)
+    assert planilha.frete_empresa_total == 9440.0
+    # Referencia preenchida: da pra ver na propria linha quanto e imposto retido.
+    assert (planilha.frete_servico_total, planilha.desconto_icms_st) == (9440.0, 1132.80)
+    diverge = feito["divergencias"][0]
+    assert diverge["diferencas"] == {"frete cobrado": {"controle": 9440.0, "bsoft": 8307.20}}
+    assert diverge["desconto_icms_st"] == 1132.80

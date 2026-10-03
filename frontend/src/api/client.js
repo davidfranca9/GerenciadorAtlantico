@@ -255,6 +255,12 @@ export function adminAtualizarUsuario(id, payload) {
   return request(`/admin/usuarios/${id}`, { method: "PATCH", body: payload });
 }
 
+// As abas do sistema nos grupos da barra lateral. Vem do backend porque e a
+// mesma lista que decide o acesso: aba nova aparece aqui sozinha.
+export function adminTelas() {
+  return request("/admin/usuarios/telas");
+}
+
 async function uploadFile(path, file) {
   const token = getToken();
   const formData = new FormData();

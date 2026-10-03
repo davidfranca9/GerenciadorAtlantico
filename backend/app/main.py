@@ -93,6 +93,10 @@ def on_startup():
                 "UPDATE users SET paginas_bloqueadas = REPLACE(paginas_bloqueadas, '/carta-frete', '/autorizacao-abastecimento') "
                 "WHERE paginas_bloqueadas LIKE '%/carta-frete%'"
             ))
+            # Permissao por tela virou lista de permissao. A coluna nasce NULL
+            # de proposito: NULL e "nunca migrado" e vazio e "nao ve nada", e
+            # sem essa diferenca a migracao zeraria quem ja esta configurado.
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS paginas_liberadas VARCHAR(2000)"))
             # Cidades possiveis quando a leitura do pedido nao decide.
             conn.execute(text("ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS cidades_candidatas VARCHAR(1000) DEFAULT ''"))
             conn.execute(text("ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS retirado_em TIMESTAMP"))
@@ -105,6 +109,10 @@ def on_startup():
             conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS cliente VARCHAR(255) DEFAULT ''"))
             conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS contrato_frete VARCHAR(40) DEFAULT ''"))
             conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS valor_contrato_frete NUMERIC(14, 2)"))
+            # Frete cobrado passou a ser o VALOR A RECEBER do CT-e; estes dois
+            # guardam o total do servico e o ICMS ST retido em carga CIF.
+            conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS frete_servico_total NUMERIC(14, 2)"))
+            conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS desconto_icms_st NUMERIC(14, 2)"))
             # operacoes_fiscais e tabela nova (criada pelo create_all); o indice
             # unico abaixo e a protecao contra emitir dois CT-e pra mesma carga.
             conn.execute(text(
@@ -121,6 +129,20 @@ def on_startup():
         db = SessionLocal()
         try:
             backfill_ibge_codes(db)
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+    # Permissao por tela: quem vinha da lista negra antiga ganha a lista de
+    # permissao equivalente (app/auth.py explica o criterio).
+    try:
+        from .auth import migrar_para_lista_de_permissao
+        from .database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            migrar_para_lista_de_permissao(db)
         finally:
             db.close()
     except Exception:

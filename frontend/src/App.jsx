@@ -57,16 +57,18 @@ function AppRoutes() {
         <Route path="/ordem-coleta" element={<OrdemColetaPage />} />
         <Route path="/autorizacao-abastecimento" element={<CartaFretePage />} />
         <Route path="/carta-frete" element={<Navigate to="/autorizacao-abastecimento" replace />} />
-        <Route path="/financeiro/caixa" element={<AdminRoute><CaixaPage /></AdminRoute>} />
-        <Route path="/financeiro/carregamentos" element={<AdminRoute><CarregamentosPage /></AdminRoute>} />
-        <Route path="/financeiro/lucro-bruto" element={<AdminRoute><LucroBrutoPage /></AdminRoute>} />
-        <Route path="/financeiro/gastos" element={<AdminRoute><GastosPage /></AdminRoute>} />
-        <Route path="/financeiro/precificacao" element={<AdminRoute><PrecificacaoPage /></AdminRoute>} />
-        <Route path="/financeiro/pagamentos" element={<AdminRoute><PagamentosPage /></AdminRoute>} />
-        <Route path="/financeiro/faturas" element={<AdminRoute><FaturasPage /></AdminRoute>} />
-        <Route path="/financeiro/agenciamentos" element={<AdminRoute><AgenciamentosPage /></AdminRoute>} />
+        {/* Financeiro: quem ve cada aba sai da permissao por tela (o menu
+            esconde e o backend recusa com 403); gravar segue so admin. */}
+        <Route path="/financeiro/caixa" element={<CaixaPage />} />
+        <Route path="/financeiro/carregamentos" element={<CarregamentosPage />} />
+        <Route path="/financeiro/lucro-bruto" element={<LucroBrutoPage />} />
+        <Route path="/financeiro/gastos" element={<GastosPage />} />
+        <Route path="/financeiro/precificacao" element={<PrecificacaoPage />} />
+        <Route path="/financeiro/pagamentos" element={<PagamentosPage />} />
+        <Route path="/financeiro/faturas" element={<FaturasPage />} />
+        <Route path="/financeiro/agenciamentos" element={<AgenciamentosPage />} />
         <Route path="/financeiro/comissoes" element={<Navigate to="/financeiro/agenciamentos" replace />} />
-        <Route path="/financeiro/dividas" element={<AdminRoute><DividasPage /></AdminRoute>} />
+        <Route path="/financeiro/dividas" element={<DividasPage />} />
         {/* Enderecos das versoes anteriores. */}
         <Route path="/financeiro/resultado" element={<Navigate to="/financeiro/lucro-bruto" replace />} />
         <Route path="/financeiro/contas" element={<Navigate to="/financeiro/pagamentos" replace />} />

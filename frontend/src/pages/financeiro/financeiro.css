@@ -365,6 +365,8 @@
 .fin-previa-cargas li { grid-template-columns: 52px minmax(0, 1fr) auto; }
 .fin-previa-cargas li span:nth-child(2) { white-space: normal; }
 .fin-previa-cargas li span:last-child { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Segunda linha da coluna do frete: de onde saiu o valor a receber (ICMS ST). */
+.fin-previa-cargas li span:last-child small { font-size: 11px; color: var(--muted-soft); }
 .fin-mes-cargas span:last-child { color: var(--muted); font-weight: 700; text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .fin-carregamentos { padding: 0; overflow: hidden; }
 .fin-carregamentos > ul { margin: 0; padding: 0; list-style: none; }

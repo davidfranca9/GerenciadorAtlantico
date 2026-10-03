@@ -95,6 +95,9 @@ function PuxarDoBsoft({ competencia, aoFechar, aoTrazer }) {
                       {Object.entries(d.diferencas).map(([campo, v]) => (
                         <small key={campo}>{campo}: controle {campo === "peso" ? toneladas(v.controle) : brl(v.controle)} · Bsoft {campo === "peso" ? toneladas(v.bsoft) : brl(v.bsoft)}</small>
                       ))}
+                      {d.desconto_icms_st > 0 && d.diferencas["frete cobrado"] && (
+                        <small>o Bsoft já desconta o ICMS ST de {brl(d.desconto_icms_st)}: é o que a Atlântico recebe</small>
+                      )}
                     </span>
                     <Icon name="alert" size={15} />
                   </li>
@@ -108,7 +111,19 @@ function PuxarDoBsoft({ competencia, aoFechar, aoTrazer }) {
                 <li key={c.ctes}>
                   <span>{c.data_emissao ? diaCurto(c.data_emissao) : "—"}</span>
                   <span><b>{c.motorista || "Sem motorista"}</b> · CT-e {c.ctes} · {c.fabrica} → {c.destino}{c.cancelado ? " · cancelado" : ""}</span>
-                  <span>{toneladas(c.peso)} · frete {brl(c.frete_empresa)} · {c.cancelado ? "cancelado" : c.frete_motorista !== null ? `motorista ${brl(c.frete_motorista)}` : "motorista a completar"}</span>
+                  <span>
+                    {toneladas(c.peso)} · frete {brl(c.frete_empresa)} · {c.cancelado ? "cancelado" : c.frete_motorista !== null ? `motorista ${brl(c.frete_motorista)}` : "motorista a completar"}
+                    {/* Carga CIF: o frete acima e o valor a receber. De onde ele saiu fica na
+                        linha de baixo (<br/> quebra mesmo com a coluna em nowrap). */}
+                    {c.desconto_icms_st > 0 && (
+                      <>
+                        <br />
+                        <small title="O tomador retém o ICMS ST: o frete que entra no controle é o valor a receber do CT-e.">
+                          serviço {brl(c.frete_servico)} − ICMS ST {brl(c.desconto_icms_st)}
+                        </small>
+                      </>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -125,6 +140,13 @@ function PuxarDoBsoft({ competencia, aoFechar, aoTrazer }) {
       </footer>
     </Modal>
   );
+}
+
+// Frete cobrado e o valor a receber do CT-e. Quando o tomador retem ICMS ST,
+// passar o mouse mostra de onde saiu o numero.
+function dicaDaColuna(coluna, carga) {
+  if (coluna.chave !== "frete_empresa" || !carga.desconto_icms_st) return undefined;
+  return `Valor a receber. Serviço no CT-e ${brl(carga.frete_servico_total)} − ICMS ST ${brl(carga.desconto_icms_st)}`;
 }
 
 function LinhaCarregamento({ carga, aberto, aoAbrir, children }) {
@@ -147,7 +169,7 @@ function LinhaCarregamento({ carga, aberto, aoAbrir, children }) {
             <b>{carga.cancelado ? "—" : toneladas(carga.peso)}</b>
           </span>
           {COLUNAS.map((coluna) => (
-            <span key={coluna.chave} className={`fin-col ${coluna.chave}`} data-rotulo={coluna.rotulo}>
+            <span key={coluna.chave} className={`fin-col ${coluna.chave}`} data-rotulo={coluna.rotulo} title={dicaDaColuna(coluna, carga)}>
               {carga.cancelado ? <b>—</b> : (
                 <>
                   <Dinheiro valor={t[coluna.chave]} tamanho="xs" />

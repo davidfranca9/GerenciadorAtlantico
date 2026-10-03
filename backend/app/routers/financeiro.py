@@ -1,24 +1,72 @@
 """Financeiro: caixa dos bancos, resultado do mes e contas a pagar.
 
-So administrador: aqui tem saldo de banco, gastos pessoais e dividas.
+Leitura e escrita andam separadas aqui. Quem tem uma aba do Financeiro
+liberada na tela de Administracao consegue VER o que aquela aba mostra (os
+GET); lancar, pagar, excluir e importar continuam so de administrador - aqui
+tem saldo de banco, gastos pessoais e dividas.
 """
 from __future__ import annotations
 
 from datetime import date
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ..auth import require_admin
+from ..auth import get_current_user, require_admin, tem_tela
 from ..database import get_db
 from ..models import (CarregamentoFinanceiro, CartaFreteEnviada, ContaAvulsa, ContaBancaria, Despesa, Divida, LancamentoCaixa,
                       MetaMensal, PagamentoAgenda, PagamentoFaturaAbastecimento, User)
 from ..servicos import financeiro as fin
 from ..servicos import financeiro_importacao as importacao
 
-router = APIRouter(prefix="/financeiro", tags=["financeiro"], dependencies=[Depends(require_admin)])
+# Cada GET do financeiro pertence a uma (ou mais) aba do menu: quem tem a aba
+# liberada le o que aquela aba precisa, e nada alem disso. A chave e o caminho
+# da rota como o FastAPI registra; o valor, as abas que usam a resposta.
+TELAS_DE_LEITURA: dict[str, tuple[str, ...]] = {
+    # Nome e SALDO das contas bancarias. So abas que mostram saldo ou escolhem
+    # a conta de um pagamento - Carregamentos e Lucro bruto nao precisam.
+    "/financeiro/contas": ("/financeiro/caixa", "/financeiro/gastos", "/financeiro/pagamentos",
+                           "/financeiro/faturas", "/financeiro/agenciamentos", "/financeiro/dividas"),
+    "/financeiro/caixa": ("/financeiro/caixa",),
+    "/financeiro/resultado": ("/financeiro/lucro-bruto", "/financeiro/gastos", "/financeiro/precificacao"),
+    "/financeiro/carregamentos": ("/financeiro/carregamentos",),
+    "/financeiro/faturas": ("/financeiro/faturas",),
+    # /comissoes e o endereco antigo de /agenciamentos: mesma aba.
+    "/financeiro/comissoes": ("/financeiro/agenciamentos",),
+    "/financeiro/agenciamentos": ("/financeiro/agenciamentos",),
+    # A agenda do mes aparece em Pagamentos e no resumo de Gastos.
+    "/financeiro/agenda": ("/financeiro/pagamentos", "/financeiro/gastos"),
+    # Despesas da empresa e gastos PESSOAIS do dono.
+    "/financeiro/despesas": ("/financeiro/gastos", "/financeiro/precificacao"),
+    "/financeiro/dividas": ("/financeiro/dividas", "/financeiro/gastos"),
+}
+
+
+def permissao_financeiro(request: Request, user: User = Depends(get_current_user)) -> User:
+    """Porteiro do financeiro inteiro, uma vez por requisicao:
+
+    - administrador faz tudo;
+    - GET de aba liberada passa: e o "acesso de visualizacao";
+    - qualquer gravacao (POST/PUT/PATCH/DELETE) e so de administrador, mesmo
+      pra quem tem a aba liberada;
+    - GET que ninguem mapeou em TELAS_DE_LEITURA fica so de administrador, de
+      proposito: rota de leitura nova nasce fechada em vez de nascer aberta
+      porque alguem esqueceu de pensar nela.
+    """
+    if getattr(user, "role", "") == "admin":
+        return user
+    if request.method != "GET":
+        raise HTTPException(status_code=403, detail="Somente administrador pode alterar o financeiro")
+    rota = request.scope.get("route")
+    telas = TELAS_DE_LEITURA.get(getattr(rota, "path", ""), ())
+    if not telas or not tem_tela(user, *telas):
+        raise HTTPException(status_code=403, detail="Você não tem acesso a essa tela do financeiro")
+    return user
+
+
+router = APIRouter(prefix="/financeiro", tags=["financeiro"], dependencies=[Depends(permissao_financeiro)])
 
 LIMITE_ARQUIVO = 5 * 1024 * 1024
 

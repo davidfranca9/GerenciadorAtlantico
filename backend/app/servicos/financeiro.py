@@ -426,6 +426,11 @@ def carregamento_para_dict(c: CarregamentoFinanceiro) -> dict:
         "cliente": c.cliente or "",
         "contrato_frete": c.contrato_frete or "",
         "valor_contrato_frete": dinheiro(c.valor_contrato_frete) if c.valor_contrato_frete is not None else None,
+        # Carga CIF: o frete cobrado acima e o VALOR A RECEBER do CT-e. Estes
+        # dois dizem de onde ele saiu - total do servico e ICMS ST retido pelo
+        # tomador - so pra conferir com o DACTE; nao entram em soma nenhuma.
+        "frete_servico_total": dinheiro(c.frete_servico_total) if c.frete_servico_total is not None else None,
+        "desconto_icms_st": dinheiro(c.desconto_icms_st) if c.desconto_icms_st is not None else None,
         **_o_que_falta(c),
         "totais": totais_carregamento(c),
     }

@@ -282,6 +282,13 @@ export function EditorCarregamento({ competencia, carregamento, aoSalvar, aoExcl
           Contrato no Bsoft: {brl(carregamento.valor_contrato_frete)}
         </small>
       )}
+      {/* Carga CIF: o tomador retem o ICMS ST, entao o frete cobrado e o valor a
+          receber do CT-e. O total do servico fica aqui so pra bater com o DACTE. */}
+      {chave === "frete_empresa" && carregamento?.desconto_icms_st > 0 && (
+        <small className="fin-referencia" title="No DACTE: valor total do serviço menos o ICMS ST retido pelo tomador. O frete cobrado é o valor a receber.">
+          Serviço no CT-e: {brl(carregamento.frete_servico_total)} − ICMS ST {brl(carregamento.desconto_icms_st)}
+        </small>
+      )}
     </div>
   );
 

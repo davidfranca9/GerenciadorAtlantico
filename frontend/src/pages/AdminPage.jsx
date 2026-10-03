@@ -1,15 +1,19 @@
 import { Fragment, useEffect, useState } from "react";
 import * as api from "../api/client";
-import { PAGINAS_BLOQUEAVEIS } from "../components/Layout";
 
+// Permissao por tela, usuario por usuario. A lista de abas vem do backend
+// (mesma lista que recusa as rotas com 403), agrupada como a barra lateral:
+// aba nova aparece aqui sozinha, e nasce desmarcada pra todo mundo.
 export default function AdminPage() {
   const [usuarios, setUsuarios] = useState([]);
+  const [grupos, setGrupos] = useState([]);
   const [email, setEmail] = useState("");
   const [nome, setNome] = useState("");
   const [senha, setSenha] = useState("");
   const [papel, setPapel] = useState("user");
   const [error, setError] = useState("");
   const [permissoesAbertoId, setPermissoesAbertoId] = useState(null);
+  const [salvando, setSalvando] = useState(false);
 
   async function carregar() {
     try {
@@ -21,18 +25,22 @@ export default function AdminPage() {
 
   useEffect(() => {
     carregar();
+    api.adminTelas().then((dados) => setGrupos(dados.grupos || [])).catch((err) => setError(err.message));
   }, []);
 
   async function handleCriar(e) {
     e.preventDefault();
     setError("");
     try {
-      await api.adminCriarUsuario({ email, name: nome, password: senha, role: papel });
+      const criado = await api.adminCriarUsuario({ email, name: nome, password: senha, role: papel });
       setEmail("");
       setNome("");
       setSenha("");
       setPapel("user");
-      carregar();
+      await carregar();
+      // Usuario novo nasce sem nenhuma aba: abre as permissoes na hora, senao
+      // ele entra no sistema e nao ve nada sem ninguem entender por que.
+      if (criado?.role !== "admin") setPermissoesAbertoId(criado.id);
     } catch (err) {
       setError(err.message);
     }
@@ -56,15 +64,47 @@ export default function AdminPage() {
     }
   }
 
-  async function toggleAcessoPagina(u, to) {
-    const atuais = (u.paginas_bloqueadas || "").split(",").filter(Boolean);
-    const novas = atuais.includes(to) ? atuais.filter((p) => p !== to) : [...atuais, to];
+  function liberadasDe(u) {
+    return (u.paginas_liberadas || "").split(",").filter(Boolean);
+  }
+
+  // Marcaveis: Administracao e Configuracoes sao so de administrador e a
+  // Seguranca e de todo mundo, entao nao entram na marcacao.
+  function marcaveis(grupo) {
+    return (grupo.telas || []).filter((t) => !t.somente_admin && !t.sempre_liberada);
+  }
+
+  async function salvarTelas(u, rotas) {
+    setError("");
+    setSalvando(true);
     try {
-      await api.adminAtualizarUsuario(u.id, { paginas_bloqueadas: novas.join(",") });
-      carregar();
+      await api.adminAtualizarUsuario(u.id, { paginas_liberadas: rotas.join(",") });
+      await carregar();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setSalvando(false);
     }
+  }
+
+  function toggleTela(u, rota) {
+    const atuais = liberadasDe(u);
+    salvarTelas(u, atuais.includes(rota) ? atuais.filter((r) => r !== rota) : [...atuais, rota]);
+  }
+
+  // Grupo inteiro em um clique: se ja esta todo marcado, desmarca tudo.
+  function toggleGrupo(u, grupo) {
+    const atuais = liberadasDe(u);
+    const rotas = marcaveis(grupo).map((t) => t.rota);
+    const todasMarcadas = rotas.length > 0 && rotas.every((r) => atuais.includes(r));
+    salvarTelas(u, todasMarcadas ? atuais.filter((r) => !rotas.includes(r)) : [...new Set([...atuais, ...rotas])]);
+  }
+
+  function resumoPermissao(u) {
+    if (u.role === "admin") return "Todas as telas";
+    const quantas = liberadasDe(u).length;
+    if (!quantas) return "Nenhuma aba liberada";
+    return `${quantas} aba${quantas === 1 ? "" : "s"}`;
   }
 
   return (
@@ -103,6 +143,7 @@ export default function AdminPage() {
               <th>Nome</th>
               <th>Papel</th>
               <th>Ativo</th>
+              <th>Telas</th>
               <th></th>
             </tr>
           </thead>
@@ -114,6 +155,7 @@ export default function AdminPage() {
                   <td>{u.name}</td>
                   <td>{u.role}</td>
                   <td>{u.is_active ? "Sim" : "Não"}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{resumoPermissao(u)}</td>
                   <td style={{ display: "flex", gap: 6 }}>
                     <button className="btn-secondary" onClick={() => togglePapel(u)}>
                       {u.role === "admin" ? "Tornar usuario" : "Tornar admin"}
@@ -130,17 +172,54 @@ export default function AdminPage() {
                 </tr>
                 {permissoesAbertoId === u.id && (
                   <tr>
-                    <td colSpan={5}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0" }}>
-                        <strong>Abas visíveis para {u.name || u.email}</strong>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
-                          {PAGINAS_BLOQUEAVEIS.map((item) => {
-                            const bloqueada = (u.paginas_bloqueadas || "").split(",").filter(Boolean).includes(item.to);
+                    <td colSpan={6}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "10px 0" }}>
+                        <div>
+                          <strong>Telas que {u.name || u.email} pode ver</strong>
+                          <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                            Marcar uma aba dá acesso de visualização. Lançar, pagar, excluir e importar continuam só para
+                            administrador{salvando ? " · salvando..." : ""}
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))" }}>
+                          {grupos.map((grupo) => {
+                            const atuais = liberadasDe(u);
+                            const rotas = marcaveis(grupo).map((t) => t.rota);
+                            const todas = rotas.length > 0 && rotas.every((r) => atuais.includes(r));
                             return (
-                              <label key={item.to} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-                                <input type="checkbox" checked={!bloqueada} onChange={() => toggleAcessoPagina(u, item.to)} />
-                                {item.label}
-                              </label>
+                              <section key={grupo.titulo} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12 }}>
+                                <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                                  <strong style={{ fontSize: 13 }}>{grupo.titulo}</strong>
+                                  {rotas.length > 0 && (
+                                    <button
+                                      type="button" className="btn-secondary" style={{ fontSize: 11, padding: "3px 8px" }}
+                                      disabled={salvando} onClick={() => toggleGrupo(u, grupo)}
+                                    >
+                                      {todas ? "Desmarcar grupo" : "Marcar grupo"}
+                                    </button>
+                                  )}
+                                </header>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                  {(grupo.telas || []).map((tela) => {
+                                    const fixa = tela.somente_admin || tela.sempre_liberada;
+                                    return (
+                                      <label
+                                        key={tela.rota}
+                                        title={tela.somente_admin ? "Só administrador" : tela.sempre_liberada ? "Todos os usuários veem" : tela.rota}
+                                        style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, opacity: fixa ? 0.55 : 1 }}
+                                      >
+                                        <input
+                                          type="checkbox" disabled={fixa || salvando}
+                                          checked={tela.sempre_liberada || atuais.includes(tela.rota)}
+                                          onChange={() => toggleTela(u, tela.rota)}
+                                        />
+                                        {tela.nome}
+                                        {tela.somente_admin && <span style={{ fontSize: 11, color: "var(--muted)" }}>(só admin)</span>}
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </section>
                             );
                           })}
                         </div>

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
-from ..auth import hash_password, require_admin
+from ..auth import GRUPOS_TELAS, TELAS_LIBERAVEIS, hash_password, require_admin, telas_do_texto
 from ..database import get_db
 from ..models import User
 
@@ -22,7 +22,22 @@ class UsuarioUpdateIn(BaseModel):
     name: str | None = None
     role: str | None = None
     is_active: bool | None = None
-    paginas_bloqueadas: str | None = None
+    # Lista de permissao: as telas que esse usuario PODE ver, separadas por
+    # virgula. A lista negra antiga (paginas_bloqueadas) saiu daqui de proposito
+    # - duas formas de escrever a mesma permissao dao briga silenciosa.
+    paginas_liberadas: str | None = None
+
+
+def _telas_para_gravar(texto: str | None) -> str:
+    """Aceita so rota que existe e que pode ser marcada (auth.GRUPOS_TELAS).
+
+    Tela digitada errada, ou tela que e so de administrador, viram erro na cara
+    do dono em vez de uma permissao que nao faz nada - ou que faz demais."""
+    pedidas = [pedaco.strip() for pedaco in (texto or "").split(",") if pedaco.strip()]
+    desconhecidas = [rota for rota in pedidas if rota not in TELAS_LIBERAVEIS]
+    if desconhecidas:
+        raise HTTPException(status_code=400, detail=f"Tela desconhecida: {', '.join(desconhecidas)}")
+    return ",".join(telas_do_texto(texto))
 
 
 def _to_dict(u: User) -> dict:
@@ -32,9 +47,17 @@ def _to_dict(u: User) -> dict:
         "name": u.name,
         "role": u.role,
         "is_active": u.is_active,
-        "paginas_bloqueadas": u.paginas_bloqueadas,
+        "paginas_liberadas": u.paginas_liberadas or "",
         "created_at": u.created_at,
     }
+
+
+@router.get("/telas")
+def listar_telas():
+    """As abas do sistema, nos grupos da barra lateral, pra tela de
+    Administracao montar as caixinhas. Vem do backend porque e a MESMA lista
+    que decide o acesso: aba nova aparece aqui sozinha."""
+    return {"grupos": [{"titulo": g["titulo"], "telas": list(g["telas"])} for g in GRUPOS_TELAS]}
 
 
 @router.get("")
@@ -70,6 +93,8 @@ def atualizar_usuario(user_id: int, payload: UsuarioUpdateIn, db: Session = Depe
     updates = payload.model_dump(exclude_unset=True)
     if "role" in updates and updates["role"] not in ("user", "admin"):
         raise HTTPException(status_code=400, detail="Papel invalido, use 'user' ou 'admin'")
+    if "paginas_liberadas" in updates:
+        updates["paginas_liberadas"] = _telas_para_gravar(updates["paginas_liberadas"])
     for field, value in updates.items():
         setattr(user, field, value)
     db.commit()

@@ -5,6 +5,11 @@ import { useTheme } from "../context/ThemeContext";
 import Icon from "./Icon";
 import * as api from "../api/client";
 
+// Quem decide quais telas existem e quem pode ver cada uma e o backend
+// (backend/app/auth.py, GRUPOS_TELAS): e a mesma lista que recusa as rotas com
+// 403. Aqui ficam os grupos na ordem do menu com icone e descricao de cada aba,
+// e o teste backend/tests/test_permissao_telas.py confere que as duas listas
+// batem - aba nova tem que entrar nos dois lugares, senao a suite reclama.
 export const NAV_SECTIONS = [
   { title: "Operação", items: [
     { to: "/dashboard", label: "Dashboard", icon: "chart", description: "Visão geral dos carregamentos da semana" },
@@ -17,16 +22,17 @@ export const NAV_SECTIONS = [
     { to: "/documentos-fiscais", label: "Documentos fiscais", icon: "file", description: "CT-e e CIOT emitidos, vindos do Bsoft" },
   ]},
   { title: "Financeiro", items: [
-    // Caixa, resultado e contas: so administrador (saldo de banco, gastos pessoais e dividas).
-    { to: "/financeiro/caixa", label: "Caixa", icon: "wallet", description: "Saldo dos bancos e movimentações do dia", adminOnly: true },
-    { to: "/financeiro/carregamentos", label: "Carregamentos", icon: "truck", description: "Como foi cada carga: frete, motorista, agenciamento, comissão e sobra", adminOnly: true },
-    { to: "/financeiro/lucro-bruto", label: "Lucro bruto", icon: "trend", description: "Resumo do mês: meta, para onde foi o frete e sobra", adminOnly: true },
-    { to: "/financeiro/gastos", label: "Gastos", icon: "clipboard", description: "Despesas da empresa e gastos pessoais do mês", adminOnly: true },
-    { to: "/financeiro/precificacao", label: "Precificação CT-e", icon: "chart", description: "Custo fixo por tonelada e frete mínimo", adminOnly: true },
-    { to: "/financeiro/pagamentos", label: "Pagamentos", icon: "calendar", description: "Vencimentos do mês, semana a semana", adminOnly: true },
-    { to: "/financeiro/faturas", label: "Faturas de abastecimento", icon: "file", description: "Previsão e pagamento das faturas de abastecimento", adminOnly: true },
-    { to: "/financeiro/agenciamentos", label: "Agenciamentos", icon: "users", description: "Agenciamentos automáticos dos carregamentos e pagamentos", adminOnly: true },
-    { to: "/financeiro/dividas", label: "Dívidas ativas", icon: "coins", description: "Quanto falta e quando se paga cada dívida", adminOnly: true },
+    // Aba liberada aqui da acesso de VISUALIZACAO: o backend responde os GET
+    // dessas telas, mas lancar, pagar e excluir seguem so com administrador.
+    { to: "/financeiro/caixa", label: "Caixa", icon: "wallet", description: "Saldo dos bancos e movimentações do dia" },
+    { to: "/financeiro/carregamentos", label: "Carregamentos", icon: "truck", description: "Como foi cada carga: frete, motorista, agenciamento, comissão e sobra" },
+    { to: "/financeiro/lucro-bruto", label: "Lucro bruto", icon: "trend", description: "Resumo do mês: meta, para onde foi o frete e sobra" },
+    { to: "/financeiro/gastos", label: "Gastos", icon: "clipboard", description: "Despesas da empresa e gastos pessoais do mês" },
+    { to: "/financeiro/precificacao", label: "Precificação CT-e", icon: "chart", description: "Custo fixo por tonelada e frete mínimo" },
+    { to: "/financeiro/pagamentos", label: "Pagamentos", icon: "calendar", description: "Vencimentos do mês, semana a semana" },
+    { to: "/financeiro/faturas", label: "Faturas de abastecimento", icon: "file", description: "Previsão e pagamento das faturas de abastecimento" },
+    { to: "/financeiro/agenciamentos", label: "Agenciamentos", icon: "users", description: "Agenciamentos automáticos dos carregamentos e pagamentos" },
+    { to: "/financeiro/dividas", label: "Dívidas ativas", icon: "coins", description: "Quanto falta e quando se paga cada dívida" },
   ] },
   { title: "Comunicação", items: [
     { to: "/emails", label: "E-mails", icon: "mail", description: "Recebidos e enviados do Gmail" },
@@ -36,14 +42,17 @@ export const NAV_SECTIONS = [
     { to: "/bsoft", label: "Bsoft TMS", icon: "truck", description: "Cadastro de motoristas e veículos" },
   ]},
   { title: "Cadastros", items: [{ to: "/clientes", label: "Clientes", icon: "users", description: "Base de clientes e contatos" }] },
+  { title: "Sistema", items: [
+    // adminOnly: mexe no sistema inteiro (usuarios, senhas, listas de e-mail) e
+    // o backend dessas areas exige administrador - nao da pra liberar por usuario.
+    { to: "/admin", label: "Administração", icon: "users", description: "Usuários e permissões do sistema", adminOnly: true },
+    { to: "/configuracoes", label: "Configurações", icon: "settings", description: "Listas de e-mail e outros ajustes do sistema", adminOnly: true },
+    // A propria senha e de todo mundo, e ja tem o atalho no pe da barra: nao
+    // precisa virar item de menu.
+    { to: "/trocar-senha", label: "Segurança", icon: "key", description: "Atualize sua senha de acesso", sempreLiberada: true, foraDoMenu: true },
+  ] },
 ];
-// Pagina so de administrador nao entra na lista de bloqueio por usuario.
-export const PAGINAS_BLOQUEAVEIS = NAV_SECTIONS.flatMap((section) => section.items).filter((item) => !item.adminOnly);
-const ALL_ITEMS = NAV_SECTIONS.flatMap((section) => section.items).concat([
-  { to: "/admin", label: "Administração", icon: "users", description: "Usuários e permissões do sistema" },
-  { to: "/configuracoes", label: "Configurações", icon: "settings", description: "Listas de e-mail e outros ajustes do sistema" },
-  { to: "/trocar-senha", label: "Segurança", icon: "key", description: "Atualize sua senha de acesso" },
-]);
+const ALL_ITEMS = NAV_SECTIONS.flatMap((section) => section.items);
 
 function initials(user) {
   const source = user?.name || user?.email || "?";
@@ -131,18 +140,25 @@ export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const emailsNovos = useEmailsNovos();
   const notas = useNotasSemCte();
-  const bloqueadas = user?.role === "admin" ? [] : (user?.paginas_bloqueadas || "").split(",").filter(Boolean);
-  const sections = NAV_SECTIONS.map((section) => ({
+  // Lista de permissao: aba que nao esta liberada pro usuario nao aparece.
+  // Administrador ve tudo, e e por isso que nem precisa de lista.
+  const admin = user?.role === "admin";
+  const liberadas = (user?.paginas_liberadas || "").split(",").filter(Boolean);
+  const podeVer = (item) => admin || (!item.adminOnly && (item.sempreLiberada || liberadas.includes(item.to)));
+  const sectionsExibidas = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => !bloqueadas.includes(item.to) && (!item.adminOnly || user?.role === "admin")),
+    items: section.items.filter((item) => !item.foraDoMenu && podeVer(item)),
   })).filter((section) => section.items.length > 0);
-  const sectionsExibidas = user?.role === "admin" ? [...sections, { title: "Sistema", items: ALL_ITEMS.filter((item) => item.to === "/admin" || item.to === "/configuracoes") }] : sections;
   const current = ALL_ITEMS.find((item) => item.to === location.pathname) || ALL_ITEMS[1];
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
-  if (bloqueadas.includes(location.pathname)) {
-    const primeiroPermitido = sections.flatMap((s) => s.items)[0]?.to || "/trocar-senha";
+  // O backend recusa de verdade (403), mas a tela tambem nao deve abrir: quem
+  // digita o endereco de uma aba que nao tem (ou perdeu o acesso) volta pra
+  // primeira que ele ve. Endereco que nao e aba do menu passa direto.
+  const telaAtual = ALL_ITEMS.find((item) => item.to === location.pathname);
+  if (telaAtual && !podeVer(telaAtual)) {
+    const primeiroPermitido = sectionsExibidas.flatMap((s) => s.items)[0]?.to || "/trocar-senha";
     return <Navigate to={primeiroPermitido} replace />;
   }
 
