@@ -379,6 +379,9 @@ class CartaFreteEnviada(Base):
     # Message-ID do e-mail que saiu: a correcao do valor responde ele, pra
     # cair na mesma conversa de quem recebeu a autorizacao errada.
     email_message_id: Mapped[str] = mapped_column(String(255), default="")
+    # Envio de teste: fica na lista pra conferir que saiu, mas nao e dinheiro -
+    # nao entra na previsao de faturas de abastecimento.
+    teste: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     correcoes: Mapped[list["CartaFreteCorrecao"]] = relationship(

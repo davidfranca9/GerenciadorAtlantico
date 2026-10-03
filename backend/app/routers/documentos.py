@@ -499,6 +499,7 @@ def _carta_para_dict(r: CartaFreteEnviada) -> dict:
         "agendada_para": r.agendada_para,
         "enviada_em": r.enviada_em,
         "erro": r.erro,
+        "teste": bool(r.teste),
         "correcoes": [
             {
                 "id": c.id, "valor_anterior": c.valor_anterior, "valor_novo": c.valor_novo,

@@ -169,6 +169,15 @@ export default function CartaFretePage() {
     await carregarEnviadas();
   }
 
+  function handleExcluir(carta) {
+    const oque = carta.teste ? "o envio de teste" : `a autorização de ${carta.condutor}`;
+    if (!window.confirm(`Apagar ${oque} da lista? O e-mail que já saiu não volta atrás.`)) return;
+    executar("excluir", async () => {
+      await api.excluirCartaFrete(carta.id);
+      carregarEnviadas();
+    }, "Registro apagado.");
+  }
+
   function handleCancelar(carta) {
     if (!window.confirm(`Cancelar o envio agendado da autorização de ${carta.condutor}?`)) return;
     executar("cancelar", async () => {
@@ -263,7 +272,10 @@ export default function CartaFretePage() {
                   return (
                     <Fragment key={c.id}>
                     <tr>
-                      <td>{c.data}</td>
+                      <td>
+                        {c.data}
+                        {c.teste && <span className="carta-teste" title="Envio de teste: foi só pro endereço de teste e não entra nas faturas">teste</span>}
+                      </td>
                       <td>{c.condutor}</td>
                       <td>{c.placa_cavalo}</td>
                       <td>
@@ -288,6 +300,9 @@ export default function CartaFretePage() {
                             {corrigindo === c.id ? "Fechar" : "Corrigir valor"}
                           </button>
                         )}
+                        <button className="btn-ghost" disabled={ocupado} title="Apagar este registro da lista" onClick={() => handleExcluir(c)}>
+                          Excluir
+                        </button>
                       </td>
                     </tr>
                     {(corrigindo === c.id || correcoes.length > 0) && (

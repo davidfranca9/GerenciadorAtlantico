@@ -696,7 +696,11 @@ def previsao_faturas_abastecimento(db: Session, competencia: str, hoje: Optional
     """
     hoje = hoje or date.today()
     inicio, fim = limites_competencia(competencia)
-    cartas = db.query(CartaFreteEnviada).filter(CartaFreteEnviada.status != "cancelada").all()
+    cartas = db.query(CartaFreteEnviada).filter(
+        CartaFreteEnviada.status != "cancelada",
+        # Envio de teste nao e dinheiro: ficaria aqui como fatura a pagar.
+        CartaFreteEnviada.teste.is_(False),
+    ).all()
     cargas = db.query(CarregamentoFinanceiro).filter(CarregamentoFinanceiro.cancelado.is_(False)).all()
     usadas: set[int] = set()
     itens = []

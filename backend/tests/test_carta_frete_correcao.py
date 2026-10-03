@@ -74,7 +74,8 @@ def test_correcao_sai_na_mesma_conversa_da_autorizacao(db, etapas):
     assert correcao["responder_a"] == registro.email_message_id
     assert correcao["assunto"] == original["assunto"]
     assert "1.200,00" in correcao["corpo"] and "1.500,00" in correcao["corpo"]
-    assert "frete acertado com o posto" in correcao["corpo"]
+    # O motivo e anotacao interna: o posto nao recebe a nossa justificativa.
+    assert "frete acertado com o posto" not in correcao["corpo"]
     assert correcao["para"] == original["para"]
 
 
@@ -102,7 +103,6 @@ def test_motivo_e_opcional(db, etapas):
     atualizado = carta_frete.corrigir_valor(db, registro.id, "900,00", enviar=correio, **etapas)
 
     assert atualizado.correcoes[0].motivo == ""
-    assert "Motivo" not in correio.enviados[1]["corpo"]
 
 
 def test_o_documento_anexado_na_correcao_leva_o_valor_novo(db, etapas):
@@ -193,3 +193,25 @@ def test_envio_de_teste_vai_so_pro_endereco_de_teste(db, etapas):
     assert correcao["para"] == [settings.email_teste_fabrica]
     assert correcao["assunto"] == correio.enviados[0]["assunto"]
     assert correcao["responder_a"] == registro.email_message_id
+
+
+def test_envio_de_teste_nao_vira_fatura_a_pagar(db, etapas):
+    """O teste fica na lista pra conferir que saiu, mas nao e dinheiro: se
+    entrasse na previsao, a fatura do posto viria com valor inventado."""
+    from datetime import date
+
+    from app.models import CarregamentoFinanceiro, ContaBancaria, PagamentoFaturaAbastecimento
+    from app.servicos import financeiro as fin
+
+    sessao = banco_em_memoria(
+        CartaFreteEnviada, CartaFreteCorrecao, ListaEmail,
+        CarregamentoFinanceiro, ContaBancaria, PagamentoFaturaAbastecimento,
+    )
+    correio = Correio()
+    carta_frete.enviar_agora(sessao, dict(DADOS), teste=True, enviar=correio, **etapas)
+    carta_frete.enviar_agora(sessao, {**DADOS, "CONDUTOR": "DE VERDADE"}, enviar=correio, **etapas)
+
+    previsao = fin.previsao_faturas_abastecimento(sessao, "2026-10", hoje=date(2026, 10, 22))
+
+    assert [i["motorista"] for i in previsao["itens"]] == ["DE VERDADE"]
+    sessao.close()

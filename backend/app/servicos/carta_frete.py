@@ -132,7 +132,8 @@ def _destinatarios(db: Session, teste: bool = False) -> list[str]:
     return listas_email.destinatarios(db, "abastecimento")
 
 
-def _novo_registro(dados: dict, status: str, destinatarios: list[str] | None = None) -> CartaFreteEnviada:
+def _novo_registro(dados: dict, status: str, destinatarios: list[str] | None = None,
+                   teste: bool = False) -> CartaFreteEnviada:
     return CartaFreteEnviada(
         data=dados["DATA"],
         condutor=dados["CONDUTOR"],
@@ -142,6 +143,7 @@ def _novo_registro(dados: dict, status: str, destinatarios: list[str] | None = N
         autorizacao_num=dados["AUTORIZACAO_NUM"],
         destinatarios=", ".join(destinatarios or DESTINATARIOS),
         status=status,
+        teste=teste,
         dados=json.dumps(dados, ensure_ascii=False),
     )
 
@@ -151,7 +153,7 @@ def enviar_agora(db: Session, payload: dict, teste: bool = False, **etapas) -> C
     dados = dados_de(payload)
     _validar_envio(dados)
     para = _destinatarios(db, teste)
-    registro = _novo_registro(dados, "enviando", para)
+    registro = _novo_registro(dados, "enviando", para, teste=teste)
     db.add(registro)
     db.commit()
     try:
@@ -241,15 +243,19 @@ def enviar_agendadas(db: Session, agora: datetime | None = None, **etapas) -> in
 
 
 def _foi_teste(registro: CartaFreteEnviada) -> bool:
-    """Autorizacao que saiu como teste tem a correcao tambem como teste."""
-    return settings.email_teste_fabrica in (registro.destinatarios or "")
+    """Autorizacao que saiu como teste tem a correcao tambem como teste. O
+    endereco entra na conta pelos envios feitos antes da coluna existir."""
+    return bool(getattr(registro, "teste", False)) or settings.email_teste_fabrica in (registro.destinatarios or "")
 
 
+# O motivo NAO entra aqui: e anotacao interna, pra quem olha a tela depois
+# saber por que o valor mudou. O posto precisa do valor novo, nao da nossa
+# justificativa.
 CORPO_CORRECAO = """
     <p>Prezados,</p>
     <p><b>Correção da autorização de abastecimento acima.</b></p>
     <p>O valor do frete passa de <b>{anterior}</b> para <b>{novo}</b>. Vale o documento em anexo,
-    que substitui o anterior.{motivo}</p>
+    que substitui o anterior.</p>
     <p>Por favor, confirme o recebimento. Em caso de dúvidas, estamos à disposição.</p>
 """
 
@@ -292,10 +298,7 @@ def corrigir_valor(db: Session, carta_id: int, valor: str, motivo: str = "", usu
         motivo=motivo, criado_por=usuario or "",
     )
     db.add(correcao)
-    corpo = CORPO_CORRECAO.format(
-        anterior=anterior or "—", novo=novo,
-        motivo=f" Motivo: {motivo}." if motivo else "",
-    )
+    corpo = CORPO_CORRECAO.format(anterior=anterior or "—", novo=novo)
     para = [d.strip() for d in (registro.destinatarios or "").split(",") if d.strip()] or _destinatarios(db)
     try:
         # Sem o Message-ID do original (autorizacao antiga, de antes deste
