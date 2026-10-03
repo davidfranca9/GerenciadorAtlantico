@@ -6,11 +6,14 @@ import tempfile
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
-from ..auth import get_current_user
+from ..auth import exigir_tela
 from ..servicos import email_inbox
 from ..servicos.comunicacao import send_email_message
 
-router = APIRouter(prefix="/email", tags=["email"], dependencies=[Depends(get_current_user)])
+# A caixa de entrada e so da aba de E-mails (EmailsPage). O contador do menu
+# (GET /email/novos) tambem passa por aqui: a barra lateral so pergunta a
+# contagem pra quem tem a aba, justamente pra nao bater numa porta fechada.
+router = APIRouter(prefix="/email", tags=["email"], dependencies=[Depends(exigir_tela("/emails"))])
 
 
 @router.get("/mensagens")

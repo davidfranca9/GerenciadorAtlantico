@@ -27,7 +27,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user
+from ..auth import exigir_tela, get_current_user
 from ..config import settings
 from ..database import get_db
 from ..models import Agendamento, EstadoSefaz, NotaFiscalRecebida, OperacaoFiscal, User
@@ -36,7 +36,10 @@ from ..servicos.bsoft_client import BsoftEmissaoBloqueada, BsoftError, sanitizar
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/fiscal", tags=["fiscal"], dependencies=[Depends(get_current_user)])
+# Nota recebida, espelho e emissao de CT-e sao a aba "Documentos fiscais"
+# (DocumentosFiscaisPage). O contador de notas sem CT-e do menu tambem cai
+# aqui, e a barra lateral so pergunta pra quem tem a aba.
+router = APIRouter(prefix="/fiscal", tags=["fiscal"], dependencies=[Depends(exigir_tela("/documentos-fiscais"))])
 
 
 def _to_dict(op: OperacaoFiscal) -> dict:

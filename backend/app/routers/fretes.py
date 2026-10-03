@@ -7,11 +7,16 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user
+from ..auth import exigir_tela
 from ..database import get_db
 from ..models import CotacaoFrete
 
-router = APIRouter(prefix="/cotacoes-frete", tags=["analise-fretes"], dependencies=[Depends(get_current_user)])
+# So a aba "Analise de fretes" usa as cotacoes (AnaliseFretesPage).
+router = APIRouter(
+    prefix="/cotacoes-frete",
+    tags=["analise-fretes"],
+    dependencies=[Depends(exigir_tela("/analise-fretes"))],
+)
 
 
 class CotacaoIn(BaseModel):

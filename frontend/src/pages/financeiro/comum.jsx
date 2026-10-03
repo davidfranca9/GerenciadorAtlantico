@@ -1,7 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
+import { useAuth } from "../../context/AuthContext";
 import { brl, diaBr, mudarCompetencia, nomeCompetencia, partesBrl, toneladas } from "./formato";
+
+// Acesso de VISUALIZACAO: a aba do financeiro liberada na Administracao mostra
+// os numeros, mas lancar, pagar, editar, excluir e importar seguem so de
+// administrador - e a mesma regra do backend (app/routers/financeiro.py recusa
+// qualquer gravacao com 403). Sem isto a tela desenhava os botoes pra quem nao
+// podia usar, e o 403 estourava na cara de quem clicava.
+export function usePodeGravar() {
+  const { user } = useAuth();
+  return user?.role === "admin";
+}
 
 // Valor com os centavos menores: "R$ 69.358,24".
 export function Dinheiro({ valor, tamanho = "m", sinal = false, className = "" }) {
@@ -103,6 +114,7 @@ export function ImportarPlanilha({ aoFechar, aoImportar }) {
   const [erro, setErro] = useState("");
   const [feito, setFeito] = useState(null);
   const entrada = useRef(null);
+  const podeGravar = usePodeGravar();
 
   async function escolher(novo) {
     if (!novo) return;
@@ -135,6 +147,19 @@ export function ImportarPlanilha({ aoFechar, aoImportar }) {
   }
 
   const resumo = feito || previa;
+  // Quem so visualiza nem chega aqui (o botao de importar nao aparece), mas se
+  // chegar o aviso explica em vez de deixar a pessoa escolher um arquivo que o
+  // backend vai recusar - ja a leitura da previa e um POST.
+  if (!podeGravar) {
+    return (
+      <Modal titulo="Importar planilha" aoFechar={aoFechar} largura={520}>
+        <Aviso tipo="warning">Importar planilha é só para administrador. Você tem acesso de visualização.</Aviso>
+        <footer className="fin-modal-rodape">
+          <button type="button" className="btn-secondary" onClick={aoFechar}>Fechar</button>
+        </footer>
+      </Modal>
+    );
+  }
   return (
     <Modal titulo="Importar planilha" subtitulo="Fluxo de Caixa ou Controle de Carregamentos (.xlsx)" aoFechar={aoFechar} largura={640}>
       <label

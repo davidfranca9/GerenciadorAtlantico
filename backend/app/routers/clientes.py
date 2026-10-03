@@ -6,11 +6,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user
+from ..auth import exigir_tela
 from ..database import get_db
 from ..models import Cliente
 
-router = APIRouter(prefix="/clientes", tags=["clientes"], dependencies=[Depends(get_current_user)])
+# A base de clientes alimenta duas telas: o cadastro (ClientesPage) e a
+# Analise de fretes, que escolhe o cliente do destino na hora de cotar.
+router = APIRouter(
+    prefix="/clientes",
+    tags=["clientes"],
+    dependencies=[Depends(exigir_tela("/clientes", "/analise-fretes"))],
+)
 
 
 class ClienteIn(BaseModel):

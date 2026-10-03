@@ -764,3 +764,10 @@
 .fin-fatura-fora { display: flex; align-items: center; gap: 10px; margin: 14px 0; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent); border-radius: 12px; color: var(--warning); font-size: 12.5px; }
 .fin-fatura-fora > span { flex: 1; min-width: 0; color: var(--text); }
 .fin-fatura-fora .btn-secondary { min-height: 0; padding: 6px 12px; font-size: 12px; white-space: nowrap; }
+
+/* Acesso de VISUALIZACAO (aba liberada, sem ser administrador): as acoes saem
+   da tela, e o que fica nao pode parecer clicavel nem deixar coluna vazia. */
+.fin-lancamento-linha.so-leitura:hover, .fin-linha-carga-botao.so-leitura:hover,
+.fin-despesa-linha.so-leitura:hover { background: transparent; }
+.fin-caixa-grade.so-leitura { grid-template-columns: minmax(0, 1fr); }
+.fin-preco-lista li.so-leitura { grid-template-columns: minmax(0, 1fr) auto; }

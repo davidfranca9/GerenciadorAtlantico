@@ -11,12 +11,24 @@ from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user
+from ..auth import exigir_tela, get_current_user
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem, BaixaPedido, Cidade, Pedido
 from ..servicos import ocr, saldo_pedidos
 
-router = APIRouter(prefix="/pedidos", tags=["pedidos"], dependencies=[Depends(get_current_user)])
+# Quem usa estas rotas (levantado no frontend, em frontend/src/api/client.js):
+# - Pedidos (PedidosPage): a tela toda - lista, baixa, retirar, devolver, PDF;
+# - Agendamentos (AgendamentosPage e o painel de e-mail do motorista): le a
+#   lista de pedidos pra montar os itens da carga;
+# - Ordem de coleta e Contratos: a mesma conversa de pedido -> carga, entao
+#   entram aqui pra nao travar quem trabalha so nessas abas.
+# Esconder a aba no menu nao protegia nada: sem isto, bastava chamar
+# /pedidos direto pra ser atendido.
+router = APIRouter(
+    prefix="/pedidos",
+    tags=["pedidos"],
+    dependencies=[Depends(exigir_tela("/pedidos", "/agendamentos", "/ordem-coleta", "/contrato"))],
+)
 
 # Um pedido e "novo" enquanto ninguem tirou carga dele e ele chegou ha pouco.
 # Tres dias cobrem um fim de semana: o que chega na sexta a noite ainda

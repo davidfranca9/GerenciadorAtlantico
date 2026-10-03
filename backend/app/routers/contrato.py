@@ -7,13 +7,19 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user
+from ..auth import exigir_tela
 from ..database import get_db
 from ..models import Cidade
 from ..servicos import ocr, ocr_gemini
 from ..servicos.bsoft_lookup import BSOFT_SIMPLE_BRANDS_LIST, BSOFT_TIPOS_CARROCERIA_NOMES
 
-router = APIRouter(prefix="/contrato", tags=["contrato"], dependencies=[Depends(get_current_user)])
+# Leitura de documento (OCR): o PDF do pedido entra em Contratos e a CNH e o
+# CRLV do motorista entram na Ordem de coleta. As duas telas precisam.
+router = APIRouter(
+    prefix="/contrato",
+    tags=["contrato"],
+    dependencies=[Depends(exigir_tela("/contrato", "/ordem-coleta"))],
+)
 
 
 async def _save_upload(file: UploadFile) -> str:

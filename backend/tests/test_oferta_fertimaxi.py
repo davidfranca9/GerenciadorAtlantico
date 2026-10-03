@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.servicos import ocr  # noqa: E402
-from tests.apoio_documentos import banco_em_memoria  # noqa: E402
+from tests.apoio_documentos import banco_em_memoria, usuario_de_teste  # noqa: E402
 
 CIDADES = [
     ("Monjolos", "MG"), ("Montes Claros", "MG"), ("Águas Vermelhas", "MG"),
@@ -207,7 +207,7 @@ def test_importacao_pela_tela_cria_o_pedido_da_fertimaxi(tmp_path, db):
     app = FastAPI()
     app.include_router(pedidos.router)
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_current_user] = lambda: None
+    app.dependency_overrides[get_current_user] = lambda: usuario_de_teste("/pedidos")
     cliente = TestClient(app)
 
     with open(_pdf(tmp_path, OFERTA_493582), "rb") as arquivo:

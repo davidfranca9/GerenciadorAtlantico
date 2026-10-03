@@ -13,7 +13,7 @@ from app.auth import get_current_user
 from app.database import get_db
 from app.models import Cliente
 from app.routers import clientes
-from tests.apoio_documentos import banco_em_memoria
+from tests.apoio_documentos import banco_em_memoria, usuario_de_teste
 
 
 def test_cliente_guarda_localizacao_contatos_formatados_e_observacao_multilinha():
@@ -21,7 +21,7 @@ def test_cliente_guarda_localizacao_contatos_formatados_e_observacao_multilinha(
     app = FastAPI()
     app.include_router(clientes.router)
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1)
+    app.dependency_overrides[get_current_user] = lambda: usuario_de_teste("/clientes")
     http = TestClient(app)
 
     criado = http.post("/clientes", json={

@@ -11,11 +11,11 @@ Toda mensagem recebida (texto, documento, imagem) e toda mensagem enviada
 (automatica ou manual pela tela) fica guardada em WhatsAppMensagem, pra dar
 pra tela de "WhatsApp" no sistema mostrar o historico de conversas.
 
-As rotas /webhook NAO exigem login (get_current_user) porque quem chama e a
-propria Meta, nao um usuario logado no sistema. A seguranca ali e feita
+As rotas /webhook NAO exigem login nem permissao de tela porque quem chama e
+a propria Meta, nao um usuario logado no sistema. A seguranca ali e feita
 validando a assinatura HMAC do corpo da requisicao (X-Hub-Signature-256)
-contra o WHATSAPP_APP_SECRET. As rotas de conversas/envio manual exigem
-login normalmente.
+contra o WHATSAPP_APP_SECRET. As rotas de conversas/envio manual exigem a aba
+"/whatsapp" liberada (exigir_tela), nao so estar logado.
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user
+from ..auth import exigir_tela
 from ..config import settings
 from ..database import SessionLocal, get_db
 from ..models import Cidade, Pedido, WhatsAppContato, WhatsAppMensagem
@@ -42,6 +42,12 @@ from ..servicos import ocr, whatsapp
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/whatsapp", tags=["whatsapp"])
+
+# Aqui a permissao vai rota por rota, nao no router: o /webhook e chamado pela
+# Meta, que nao e usuario do sistema e nao tem aba nenhuma (a seguranca dele e
+# a assinatura HMAC, acima). As rotas da tela de conversas pedem a aba
+# "/whatsapp" - antes bastava estar logado, mesmo sem a aba no menu.
+PERMISSAO_WHATSAPP = exigir_tela("/whatsapp")
 
 _EXT_POR_MIME = {
     "application/pdf": ".pdf",
@@ -265,7 +271,7 @@ class EnviarMensagemIn(BaseModel):
     texto: str
 
 
-@router.get("/conversas", dependencies=[Depends(get_current_user)])
+@router.get("/conversas", dependencies=[Depends(PERMISSAO_WHATSAPP)])
 def listar_conversas(db: Session = Depends(get_db)):
     subquery = (
         db.query(WhatsAppMensagem.numero, func.max(WhatsAppMensagem.created_at).label("ultima_em"))
@@ -296,12 +302,12 @@ class ContatoIn(BaseModel):
     nome: str
 
 
-@router.get("/contatos", dependencies=[Depends(get_current_user)])
+@router.get("/contatos", dependencies=[Depends(PERMISSAO_WHATSAPP)])
 def listar_contatos(db: Session = Depends(get_db)):
     return [{"numero": c.numero, "nome": c.nome} for c in db.query(WhatsAppContato).all()]
 
 
-@router.post("/contatos", dependencies=[Depends(get_current_user)])
+@router.post("/contatos", dependencies=[Depends(PERMISSAO_WHATSAPP)])
 def salvar_contato(payload: ContatoIn, db: Session = Depends(get_db)):
     numero = payload.numero.strip()
     if not numero:
@@ -316,7 +322,7 @@ def salvar_contato(payload: ContatoIn, db: Session = Depends(get_db)):
     return {"numero": numero, "nome": contato.nome}
 
 
-@router.get("/conversas/{numero}/mensagens", dependencies=[Depends(get_current_user)])
+@router.get("/conversas/{numero}/mensagens", dependencies=[Depends(PERMISSAO_WHATSAPP)])
 def listar_mensagens_da_conversa(numero: str, db: Session = Depends(get_db)):
     mensagens = (
         db.query(WhatsAppMensagem)
@@ -340,7 +346,7 @@ def listar_mensagens_da_conversa(numero: str, db: Session = Depends(get_db)):
     ]
 
 
-@router.get("/mensagens/{mensagem_id}/midia", dependencies=[Depends(get_current_user)])
+@router.get("/mensagens/{mensagem_id}/midia", dependencies=[Depends(PERMISSAO_WHATSAPP)])
 def obter_midia_mensagem(mensagem_id: int, db: Session = Depends(get_db)):
     mensagem = db.get(WhatsAppMensagem, mensagem_id)
     if mensagem is None or not mensagem.midia:
@@ -348,7 +354,7 @@ def obter_midia_mensagem(mensagem_id: int, db: Session = Depends(get_db)):
     return Response(content=mensagem.midia, media_type=mensagem.mime_type or "application/octet-stream")
 
 
-@router.post("/enviar", dependencies=[Depends(get_current_user)])
+@router.post("/enviar", dependencies=[Depends(PERMISSAO_WHATSAPP)])
 def enviar_mensagem_manual(payload: EnviarMensagemIn, db: Session = Depends(get_db)):
     numero = payload.numero.strip()
     if not numero or not payload.texto.strip():
@@ -360,7 +366,7 @@ def enviar_mensagem_manual(payload: EnviarMensagemIn, db: Session = Depends(get_
     return {"ok": True}
 
 
-@router.post("/enviar-arquivo", dependencies=[Depends(get_current_user)])
+@router.post("/enviar-arquivo", dependencies=[Depends(PERMISSAO_WHATSAPP)])
 async def enviar_arquivo_manual(
     numero: str = Form(...),
     legenda: str = Form(""),

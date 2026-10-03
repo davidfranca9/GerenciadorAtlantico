@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user
+from ..auth import exigir_tela
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem, CartaFreteEnviada, Pedido
 from ..servicos import carta_frete, emails_agendamento, listas_email, respostas_fabrica, saldo_pedidos
@@ -23,7 +23,14 @@ from ..servicos.documentos import gerar_autorizacao_xlsx
 from ..servicos.oc_html import gerar_oc_pdf_html
 from ..servicos.pdf_convert import docx_to_pdf
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+# Router sem prefixo: aqui moram /ordens-coleta/* e /cartas-frete/*, e cada
+# um serve mais de uma aba. A ordem de coleta e a autorizacao de coleta saem
+# da Ordem de coleta, de Contratos e tambem de Agendamentos (o botao da
+# carga); a autorizacao de abastecimento tem a aba dela. Fechar so pra uma
+# delas tiraria o botao de gerar documento das outras.
+router = APIRouter(dependencies=[Depends(exigir_tela(
+    "/ordem-coleta", "/contrato", "/agendamentos", "/autorizacao-abastecimento",
+))])
 
 # Destinatarios e modelo da carta frete moram no servico, que o envio
 # agendado tambem usa.

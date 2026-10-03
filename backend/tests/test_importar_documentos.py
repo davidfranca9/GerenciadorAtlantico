@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.auth import get_current_user  # noqa: E402
 from app.routers import bsoft as rotas_bsoft  # noqa: E402
 from app.servicos import ocr_gemini  # noqa: E402
+from tests.apoio_documentos import usuario_de_teste  # noqa: E402
 
 CNH = {"nome": "TALISSON JUNIOR GUIMARAES RIBEIRO", "cpf": "121.597.816-22", "numero": "123", "categoria": "E"}
 CRLV_CAVALO = {"placa": "PFJ2I64", "categoria_veiculo": "CAVALO"}
@@ -45,7 +46,7 @@ def leitura_simulada(espera=0.0, falhar=()):
 def cliente():
     app = FastAPI()
     app.include_router(rotas_bsoft.router)
-    app.dependency_overrides[get_current_user] = lambda: None
+    app.dependency_overrides[get_current_user] = lambda: usuario_de_teste("/bsoft")
     return TestClient(app)
 
 

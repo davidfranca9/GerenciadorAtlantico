@@ -5,11 +5,12 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user
+from ..auth import exigir_tela
 from ..database import get_db
 from ..models import Agendamento, Pedido
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(get_current_user)])
+# O resumo da semana existe so pro Dashboard (DashboardPage).
+router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(exigir_tela("/dashboard"))])
 
 DIAS_LABEL = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"]
 

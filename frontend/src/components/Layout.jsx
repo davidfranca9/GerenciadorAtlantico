@@ -62,10 +62,13 @@ function initials(user) {
 // Conta os e-mails chegados desde a ultima vez que a aba foi aberta. A
 // marca da visita fica no navegador, entao o contador zera sozinho quando
 // alguem entra em E-mails.
-function useEmailsNovos() {
+function useEmailsNovos(temAAba) {
   const [novos, setNovos] = useState(0);
 
   useEffect(() => {
+    // Sem a aba de E-mails o backend recusa a contagem (403, permissao por
+    // tela) e o selo nem apareceria: nao se pergunta.
+    if (!temAAba) return undefined;
     let vivo = true;
 
     async function conferir() {
@@ -101,7 +104,7 @@ function useEmailsNovos() {
       clearInterval(timer);
       window.removeEventListener("emailVisitado", aoVisitar);
     };
-  }, []);
+  }, [temAAba]);
 
   return novos;
 }
@@ -109,10 +112,12 @@ function useEmailsNovos() {
 // Notas fiscais que chegaram e ainda nao viraram CT-e. Diferente do
 // contador de e-mails, nao e "desde a ultima visita": e uma fila de
 // trabalho, e fica visivel enquanto houver algo nela.
-function useNotasSemCte() {
+function useNotasSemCte(temAAba) {
   const [contagem, setContagem] = useState({ sem_cte: 0, casadas: 0 });
 
   useEffect(() => {
+    // Idem: a fila de notas e da aba de Documentos fiscais.
+    if (!temAAba) return undefined;
     let vivo = true;
     async function conferir() {
       try {
@@ -128,7 +133,7 @@ function useNotasSemCte() {
       vivo = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [temAAba]);
 
   return contagem;
 }
@@ -138,13 +143,14 @@ export default function Layout() {
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
-  const emailsNovos = useEmailsNovos();
-  const notas = useNotasSemCte();
   // Lista de permissao: aba que nao esta liberada pro usuario nao aparece.
   // Administrador ve tudo, e e por isso que nem precisa de lista.
   const admin = user?.role === "admin";
   const liberadas = (user?.paginas_liberadas || "").split(",").filter(Boolean);
   const podeVer = (item) => admin || (!item.adminOnly && (item.sempreLiberada || liberadas.includes(item.to)));
+  const temAAba = (rota) => admin || liberadas.includes(rota);
+  const emailsNovos = useEmailsNovos(temAAba("/emails"));
+  const notas = useNotasSemCte(temAAba("/documentos-fiscais"));
   const sectionsExibidas = NAV_SECTIONS.map((section) => ({
     ...section,
     items: section.items.filter((item) => !item.foraDoMenu && podeVer(item)),

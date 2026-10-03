@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user
+from ..auth import exigir_tela, get_current_user
 from ..config import settings
 from ..database import get_db
 from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoEmail, AgendamentoItem, Cidade, Pedido
@@ -19,7 +19,14 @@ from .documentos import Produto, OrdemColetaRequest, _gerar_oc_arquivos
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/agendamentos", tags=["agendamentos"], dependencies=[Depends(get_current_user)])
+# Agendamento nao e so da aba de Agendamentos: o Dashboard monta a semana com
+# esta lista e os Documentos fiscais casam a nota com o agendamento da carga.
+# Fechar so pra /agendamentos deixaria essas duas telas sem dado na tela.
+router = APIRouter(
+    prefix="/agendamentos",
+    tags=["agendamentos"],
+    dependencies=[Depends(exigir_tela("/agendamentos", "/dashboard", "/documentos-fiscais"))],
+)
 
 # Padrao: quem manda de fato e a lista salva em Configuracoes (listas_email).
 RECIPIENTES_AUTORIZACAO_FERTIMAXI = listas_email.LISTAS["fertimaxi_novo_agendamento"]["padrao"]

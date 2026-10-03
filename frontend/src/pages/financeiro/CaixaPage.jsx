@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
-import { Aviso, CampoValor, Dinheiro, ImportarPlanilha, Modal } from "./comum";
+import { Aviso, CampoValor, Dinheiro, ImportarPlanilha, Modal, usePodeGravar } from "./comum";
 import {
   FORMAS, brl, dataDe, diaBr, diaCurto, diaPorExtenso, formaInfo, hojeIso, isoDe, numeroBr, periodoDe, rotuloPeriodo, somarDias, valorParaCampo,
 } from "./formato";
@@ -103,9 +103,12 @@ function CartaoBanco({ conta, ativo, aoClicar, aoEditar }) {
       </span>
       {Math.abs(variacao) >= 0.01 && <span className={`fin-banco-variacao ${variacao > 0 ? "sobe" : "desce"}`}>{variacao > 0 ? "▲" : "▼"}</span>}
     </button>
-    <button type="button" className="icon-btn fin-banco-editar" title={`Editar ${conta.nome}`} aria-label={`Editar ${conta.nome}`} onClick={aoEditar}>
-      <Icon name="edit" size={13} />
-    </button>
+    {/* Sem aoEditar (quem so visualiza), nem desenha o lapis: editar banco e so de administrador. */}
+    {aoEditar && (
+      <button type="button" className="icon-btn fin-banco-editar" title={`Editar ${conta.nome}`} aria-label={`Editar ${conta.nome}`} onClick={aoEditar}>
+        <Icon name="edit" size={13} />
+      </button>
+    )}
     </div>
   );
 }
@@ -220,9 +223,16 @@ function LinhaLancamento({ item, aberto, aoAbrir, children }) {
   const subtitulo = transferencia
     ? `${item.tipo === "saida" ? item.conta : item.contraparte || "?"} → ${item.tipo === "saida" ? item.contraparte || "?" : item.conta}`
     : `${forma.rotulo} · ${item.conta}`;
+  // Sem aoAbrir (quem so visualiza) a linha e so leitura: nao vira botao que
+  // abriria um editor sem poder salvar. O que importa ver - descricao, forma,
+  // banco e valor - ja esta todo aqui.
+  const Linha = aoAbrir ? "button" : "div";
+  const atributosDaLinha = aoAbrir
+    ? { type: "button", onClick: aoAbrir, "aria-expanded": aberto }
+    : {};
   return (
     <li className={`fin-lancamento ${tipo} ${aberto ? "aberto" : ""}`}>
-      <button type="button" className="fin-lancamento-linha" onClick={aoAbrir} aria-expanded={aberto}>
+      <Linha className={`fin-lancamento-linha ${aoAbrir ? "" : "so-leitura"}`} {...atributosDaLinha}>
         <span className="fin-lancamento-icone"><Icon name={transferencia ? "transfer" : forma.icone} size={16} /></span>
         <span className="fin-lancamento-texto">
           <strong>{transferencia ? "Transferência entre contas" : item.descricao || forma.rotulo}</strong>
@@ -239,7 +249,7 @@ function LinhaLancamento({ item, aberto, aoAbrir, children }) {
           tamanho="s"
           className="fin-lancamento-valor"
         />
-      </button>
+      </Linha>
       {aberto && children}
     </li>
   );
@@ -432,7 +442,7 @@ function ImportarExtrato({ contas, aoFechar, aoImportar }) {
   );
 }
 
-function PrimeiraConta({ aoCriar, aoImportar }) {
+function PrimeiraConta({ aoCriar, aoImportar, podeGravar }) {
   const [nome, setNome] = useState("");
   const [saldo, setSaldo] = useState("");
   const [data, setData] = useState(hojeIso());
@@ -449,6 +459,16 @@ function PrimeiraConta({ aoCriar, aoImportar }) {
     }
   }
 
+  // Sem nenhum banco cadastrado, quem so visualiza nao tem o que fazer aqui:
+  // melhor dizer isso do que oferecer um formulario que o backend recusa.
+  if (!podeGravar) {
+    return (
+      <section className="card fin-sem-itens">
+        <Icon name="wallet" size={22} />
+        <p>Nenhum banco cadastrado ainda. Assim que o financeiro for lançado, o saldo aparece aqui.</p>
+      </section>
+    );
+  }
   return (
     <section className="card fin-vazio">
       <div>
@@ -470,6 +490,7 @@ function PrimeiraConta({ aoCriar, aoImportar }) {
 }
 
 export default function CaixaPage() {
+  const podeGravar = usePodeGravar();
   const [periodo, setPeriodo] = useState("dia");
   const [dia, setDia] = useState(hojeIso());
   const [contaFiltro, setContaFiltro] = useState(null);
@@ -585,14 +606,18 @@ export default function CaixaPage() {
         </div>
         {dia !== hojeIso() && <button type="button" className="btn-ghost" onClick={() => setDia(hojeIso())}>Hoje</button>}
         <span className="fin-espaco" />
-        <button type="button" className="btn-secondary" onClick={() => setModal("extrato")} disabled={!contas.length}><Icon name="file" size={15} /> Importar extrato</button>
-        <button type="button" className="btn-secondary" onClick={() => setModal("planilha")}><Icon name="upload" size={15} /> Importar planilha</button>
+        {podeGravar && (
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setModal("extrato")} disabled={!contas.length}><Icon name="file" size={15} /> Importar extrato</button>
+            <button type="button" className="btn-secondary" onClick={() => setModal("planilha")}><Icon name="upload" size={15} /> Importar planilha</button>
+          </>
+        )}
       </div>
 
       {erro && <Aviso tipo="error">{erro}</Aviso>}
 
       {dados && contas.length === 0 ? (
-        <PrimeiraConta aoImportar={() => setModal("planilha")} aoCriar={async (c) => { await api.criarConta(c); await carregar(); }} />
+        <PrimeiraConta podeGravar={podeGravar} aoImportar={() => setModal("planilha")} aoCriar={async (c) => { await api.criarConta(c); await carregar(); }} />
       ) : dados && (
         <>
           <section className="card fin-hero">
@@ -620,12 +645,14 @@ export default function CaixaPage() {
                 conta={c}
                 ativo={contaFiltro === c.id}
                 aoClicar={() => setContaFiltro(contaFiltro === c.id ? null : c.id)}
-                aoEditar={() => setContaEditando(c)}
+                aoEditar={podeGravar ? () => setContaEditando(c) : null}
               />
             ))}
           </section>
 
-          <div className="fin-caixa-grade">
+          {/* Sem o formulario de lancamento (quem so visualiza), o extrato ocupa
+              a largura inteira - nao fica uma coluna vazia do lado. */}
+          <div className={`fin-caixa-grade ${podeGravar ? "" : "so-leitura"}`}>
             <section className="card fin-extrato">
               <header className="fin-extrato-topo">
                 <div>
@@ -654,7 +681,12 @@ export default function CaixaPage() {
                   <h4><span>{diaPorExtenso(grupo.data)}</span><Dinheiro valor={grupo.liquido} sinal tamanho="xs" /></h4>
                   <ul>
                     {grupo.itens.map((item) => (
-                      <LinhaLancamento key={item.id} item={item} aberto={abertoId === item.id} aoAbrir={() => setAbertoId(abertoId === item.id ? null : item.id)}>
+                      <LinhaLancamento
+                        key={item.id}
+                        item={item}
+                        aberto={abertoId === item.id}
+                        aoAbrir={podeGravar ? () => setAbertoId(abertoId === item.id ? null : item.id) : null}
+                      >
                         <EditorLancamento
                           lancamento={item}
                           contas={contas}
@@ -668,7 +700,7 @@ export default function CaixaPage() {
                 </div>
               ))}
             </section>
-            <NovoLancamento contas={contas} diaPadrao={periodo === "dia" ? dia : hojeIso()} aoLancar={lancar} />
+            {podeGravar && <NovoLancamento contas={contas} diaPadrao={periodo === "dia" ? dia : hojeIso()} aoLancar={lancar} />}
           </div>
         </>
       )}

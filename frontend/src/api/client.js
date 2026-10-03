@@ -610,8 +610,11 @@ export function excluirCartaFrete(id) {
 }
 
 // --------------------------------------------------------------------------
-// Financeiro (so administrador)
+// Financeiro (leitura pela aba liberada; gravacao so administrador)
 // --------------------------------------------------------------------------
+// Quem tem a aba do financeiro marcada na Administracao le o que ela mostra;
+// criar, pagar, editar, excluir e importar voltam 403 pra quem nao e
+// administrador - por isso as telas escondem essas acoes (usePodeGravar).
 
 function consulta(params) {
   const busca = new URLSearchParams();

@@ -19,7 +19,7 @@ from app.database import get_db  # noqa: E402
 from app.models import Agendamento, AgendamentoEmail, AgendamentoItem, BaixaPedido, Pedido  # noqa: E402
 from app.routers import pedidos  # noqa: E402
 from app.servicos import saldo_pedidos  # noqa: E402
-from tests.apoio_documentos import banco_em_memoria  # noqa: E402
+from tests.apoio_documentos import banco_em_memoria, usuario_de_teste  # noqa: E402
 
 UREIA = "UREIA PRILL MICROGRANULADA 46% N"
 
@@ -41,7 +41,7 @@ def cliente(db):
     app = FastAPI()
     app.include_router(pedidos.router)
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_current_user] = lambda: type("U", (), {"email": "dono@atlantico.com"})()
+    app.dependency_overrides[get_current_user] = lambda: usuario_de_teste("/pedidos", email="dono@atlantico.com")
     return TestClient(app)
 
 

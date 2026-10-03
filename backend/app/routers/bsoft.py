@@ -14,7 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user
+from ..auth import exigir_tela
 from ..database import get_db
 from ..models import Agendamento, Cidade
 from ..servicos import bsoft_api, bsoft_orquestracao, ocr, ocr_gemini
@@ -33,7 +33,17 @@ from ..servicos.bsoft_lookup import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/bsoft", tags=["bsoft"], dependencies=[Depends(get_current_user)])
+# O Bsoft e mais que a aba "Bsoft TMS": a lista de cidades dele (GET
+# /bsoft/cidades) e o autocomplete de cidade de Pedidos, Clientes e Analise
+# de fretes, e os documentos fiscais emitidos alimentam a aba de Documentos
+# fiscais. Todas essas abas entram, senao o campo de cidade para de sugerir.
+router = APIRouter(
+    prefix="/bsoft",
+    tags=["bsoft"],
+    dependencies=[Depends(exigir_tela(
+        "/bsoft", "/pedidos", "/clientes", "/analise-fretes", "/documentos-fiscais",
+    ))],
+)
 
 
 @router.get("/lookups")

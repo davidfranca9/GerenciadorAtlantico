@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
-import { Aviso, CampoValor, Dinheiro } from "./comum";
+import { Aviso, CampoValor, Dinheiro, usePodeGravar } from "./comum";
 import { brl, brlCurto, competenciaDe, diaCurto, hojeIso, isoDe, numeroBr, toneladas, valorParaCampo } from "./formato";
 
 const PARTES = [
@@ -35,6 +35,9 @@ function CartaoMeta({ competencia, resumo, meta, aoSalvarMeta }) {
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState("");
   const noMesAtual = competencia === competenciaDe(hojeIso());
+  // Definir a meta do mes e gravacao: quem so visualiza ve o medidor e o
+  // quanto falta, sem o lapis nem o botao de definir.
+  const podeGravar = usePodeGravar();
 
   async function salvar(e) {
     e.preventDefault();
@@ -48,7 +51,7 @@ function CartaoMeta({ competencia, resumo, meta, aoSalvarMeta }) {
     <section className="card fin-kpi fin-meta">
       <header>
         <span className="eyebrow">META DO MÊS</span>
-        {!editando && (
+        {podeGravar && !editando && (
           <button type="button" className="icon-btn" aria-label="Mudar a meta" title="Mudar a meta" onClick={() => { setValor(valorParaCampo(meta.toneladas)); setEditando(true); }}>
             <Icon name="edit" size={14} />
           </button>
@@ -79,7 +82,7 @@ function CartaoMeta({ competencia, resumo, meta, aoSalvarMeta }) {
       ) : (
         <div className="fin-meta-vazia">
           <p>Sem meta para este mês.</p>
-          <button type="button" className="btn-secondary" onClick={() => { setValor(""); setEditando(true); }}>Definir meta</button>
+          {podeGravar && <button type="button" className="btn-secondary" onClick={() => { setValor(""); setEditando(true); }}>Definir meta</button>}
         </div>
       )}
     </section>
@@ -450,6 +453,7 @@ function CalendarioLucro({ competencia, carregamentos }) {
 
 // Pagina "Lucro bruto": o resumo do mes. Cada carga fica em "Carregamentos".
 export function AbaLucroBruto({ competencia, dados, recarregar }) {
+  const podeGravar = usePodeGravar();
   const vazio = dados.carregamentos.length === 0;
   return (
     <>
@@ -464,7 +468,12 @@ export function AbaLucroBruto({ competencia, dados, recarregar }) {
       {vazio ? (
         <section className="card fin-sem-itens">
           <Icon name="truck" size={22} />
-          <p>Nenhum carregamento em {competencia.split("-").reverse().join("/")}. Importe a planilha do Controle de Carregamentos ou lance as cargas em <Link className="fin-link" to="/financeiro/carregamentos">Carregamentos</Link>.</p>
+          <p>
+            Nenhum carregamento em {competencia.split("-").reverse().join("/")}.{" "}
+            {podeGravar
+              ? <>Importe a planilha do Controle de Carregamentos ou lance as cargas em <Link className="fin-link" to="/financeiro/carregamentos">Carregamentos</Link>.</>
+              : <>Veja as cargas dos outros meses em <Link className="fin-link" to="/financeiro/carregamentos">Carregamentos</Link>.</>}
+          </p>
         </section>
       ) : (
         <>

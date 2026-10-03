@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
-import { Aviso, Dinheiro, Modal } from "./comum";
+import { Aviso, Dinheiro, Modal, usePodeGravar } from "./comum";
 import { brl, diaCurto, nomeCompetencia, toneladas } from "./formato";
 import { Moldura, useCompetencia, useDados } from "./PaginasFinanceiro";
 import { Composicao, EditorCarregamento, saudeMargem } from "./ResultadoPage";
@@ -152,9 +152,13 @@ function dicaDaColuna(coluna, carga) {
 function LinhaCarregamento({ carga, aberto, aoAbrir, children }) {
   const t = carga.totais;
   const rota = [carga.fabrica, carga.destino].filter(Boolean).join(" → ");
+  // Sem aoAbrir (quem so visualiza) a linha nao e botao: ela ja mostra peso,
+  // frete, custos e sobra, e o editor que abriria nao poderia salvar.
+  const Linha = aoAbrir ? "button" : "div";
+  const atributosDaLinha = aoAbrir ? { type: "button", onClick: aoAbrir, "aria-expanded": aberto } : {};
   return (
     <li className={`fin-linha-carga ${carga.cancelado ? "cancelado" : ""} ${aberto ? "aberto" : ""}`}>
-      <button type="button" className="fin-linha-carga-botao" onClick={aoAbrir} aria-expanded={aberto}>
+      <Linha className={`fin-linha-carga-botao ${aoAbrir ? "" : "so-leitura"}`} {...atributosDaLinha}>
         <span className="fin-carga-data">{carga.data_emissao ? diaCurto(carga.data_emissao) : "—"}</span>
         <span className="fin-linha-carga-quem">
           <strong>
@@ -189,13 +193,14 @@ function LinhaCarregamento({ carga, aberto, aoAbrir, children }) {
             </>
           )}
         </span>
-      </button>
+      </Linha>
       {children}
     </li>
   );
 }
 
 function ListaCarregamentos() {
+  const podeGravar = usePodeGravar();
   const [competencia, setCompetencia] = useCompetencia();
   const [todosOsMeses, setTodosOsMeses] = useState(false);
   const chave = todosOsMeses ? "todos" : competencia;
@@ -300,13 +305,17 @@ function ListaCarregamentos() {
             </select>
             {filtrando && <button type="button" className="fin-link" onClick={() => { setTermo(""); setFabrica(""); setContratante(""); }}>Limpar filtros</button>}
             <span className="fin-espaco" />
-            <button
-              type="button" className="btn-secondary" disabled={todosOsMeses} onClick={() => setPuxando(true)}
-              title={todosOsMeses ? "Escolha um mês para puxar do Bsoft" : "Traz os CT-es e contratos de frete do mês"}
-            >
-              <Icon name="refresh" size={15} /> Puxar do Bsoft
-            </button>
-            <button type="button" className="btn-primary" onClick={() => setAbertoId(abertoId === "novo" ? null : "novo")}><Icon name="plus" size={15} /> Carregamento</button>
+            {podeGravar && (
+              <>
+                <button
+                  type="button" className="btn-secondary" disabled={todosOsMeses} onClick={() => setPuxando(true)}
+                  title={todosOsMeses ? "Escolha um mês para puxar do Bsoft" : "Traz os CT-es e contratos de frete do mês"}
+                >
+                  <Icon name="refresh" size={15} /> Puxar do Bsoft
+                </button>
+                <button type="button" className="btn-primary" onClick={() => setAbertoId(abertoId === "novo" ? null : "novo")}><Icon name="plus" size={15} /> Carregamento</button>
+              </>
+            )}
           </div>
 
           <section className="card fin-tabela-cargas">
@@ -327,7 +336,9 @@ function ListaCarregamentos() {
             {filtradas.length === 0 ? (
               <div className="fin-sem-itens">
                 <Icon name="truck" size={22} />
-                <p>{cargas.length ? "Nenhum carregamento com esses filtros." : `Nenhum carregamento ${todosOsMeses ? "cadastrado" : `em ${nomeCompetencia(competencia).toLowerCase()}`}. Use "Puxar do Bsoft" para trazer os CT-es do mês, importe a planilha ou lance a carga.`}</p>
+                <p>{cargas.length
+                  ? "Nenhum carregamento com esses filtros."
+                  : `Nenhum carregamento ${todosOsMeses ? "cadastrado" : `em ${nomeCompetencia(competencia).toLowerCase()}`}.${podeGravar ? ' Use "Puxar do Bsoft" para trazer os CT-es do mês, importe a planilha ou lance a carga.' : ""}`}</p>
               </div>
             ) : grupos.map((grupo) => {
               const doMes = grupo.cargas.filter((c) => !c.cancelado);
@@ -342,7 +353,12 @@ function ListaCarregamentos() {
                   )}
                   <ul>
                     {grupo.cargas.map((carga) => (
-                      <LinhaCarregamento key={carga.id} carga={carga} aberto={abertoId === carga.id} aoAbrir={() => setAbertoId(abertoId === carga.id ? null : carga.id)}>
+                      <LinhaCarregamento
+                        key={carga.id}
+                        carga={carga}
+                        aberto={abertoId === carga.id}
+                        aoAbrir={podeGravar ? () => setAbertoId(abertoId === carga.id ? null : carga.id) : null}
+                      >
                         {abertoId === carga.id && (
                           <EditorCarregamento
                             competencia={carga.competencia}

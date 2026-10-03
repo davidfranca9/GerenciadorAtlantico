@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
-import { Aviso, CampoValor, Dinheiro, ImportarPlanilha, NavegadorMes } from "./comum";
+import { Aviso, CampoValor, Dinheiro, ImportarPlanilha, NavegadorMes, usePodeGravar } from "./comum";
 import { AbaPagamentos, Despesas, Dividas } from "./ContasPagarPage";
 import { brl, competenciaDe, FORMAS, hojeIso, nomeCompetencia, numeroBr, toneladas, valorParaCampo } from "./formato";
 import { AbaLucroBruto } from "./ResultadoPage";
@@ -33,6 +33,7 @@ function AbaPrecificacao({ competencia, resultado, despesas, recarregar }) {
   const [verFora, setVerFora] = useState(false);
   const [salvando, setSalvando] = useState(null);
   const [erro, setErro] = useState("");
+  const podeGravar = usePodeGravar();
 
   const padrao = () => ({
     toneladas: valorParaCampo(arredondar(resultado.meta.toneladas || r.toneladas || 0, 1)),
@@ -63,16 +64,20 @@ function AbaPrecificacao({ competencia, resultado, despesas, recarregar }) {
     }
   }
 
+  // Tirar/incluir despesa do custo fixo e gravacao: pra quem so visualiza a
+  // lista fica com duas colunas (descricao e valor), sem a coluna do botao.
   const linha = (d, incluida) => (
-    <li key={d.id} className={incluida ? "" : "fora"}>
+    <li key={d.id} className={`${incluida ? "" : "fora"} ${podeGravar ? "" : "so-leitura"}`}>
       <span className="fin-preco-texto">
         <strong>{d.descricao}</strong>
         <small>{d.grupo}{!d.conta_no_resultado && " · só na precificação"}</small>
       </span>
       <Dinheiro valor={d.valor} tamanho="xs" />
-      <button type="button" className={incluida ? "btn-ghost" : "btn-secondary"} disabled={salvando === d.id} onClick={() => alternar(d)}>
-        {salvando === d.id ? "..." : incluida ? "Tirar" : "Incluir"}
-      </button>
+      {podeGravar && (
+        <button type="button" className={incluida ? "btn-ghost" : "btn-secondary"} disabled={salvando === d.id} onClick={() => alternar(d)}>
+          {salvando === d.id ? "..." : incluida ? "Tirar" : "Incluir"}
+        </button>
+      )}
     </li>
   );
 
@@ -102,7 +107,9 @@ function AbaPrecificacao({ competencia, resultado, despesas, recarregar }) {
             <div><h3>Custos que entram no preço</h3><p>Soma dividida pelas toneladas do mês</p></div>
             <Dinheiro valor={custoFixo} tamanho="s" />
           </header>
-          {entram.length === 0 ? <p className="fin-sem-itens">Nenhuma despesa marcada. Inclua abaixo as que pesam no preço do frete.</p> : <ul>{entram.map((d) => linha(d, true))}</ul>}
+          {entram.length === 0
+            ? <p className="fin-sem-itens">Nenhuma despesa marcada{podeGravar ? ". Inclua abaixo as que pesam no preço do frete." : " no custo fixo."}</p>
+            : <ul>{entram.map((d) => linha(d, true))}</ul>}
           {fora.length > 0 && (
             <details className="fin-secao" open={verFora} onToggle={(e) => setVerFora(e.currentTarget.open)}>
               <summary className="fin-subtitulo">Outras despesas da empresa <b>{fora.length} · {brl(fora.reduce((s, d) => s + d.valor, 0))}</b></summary>
@@ -181,13 +188,18 @@ export function useDados(buscar, chave) {
 
 export function Moldura({ competencia, aoMudarMes, erro, carregando, aoImportar, extras, children }) {
   const [importando, setImportando] = useState(false);
+  const podeGravar = usePodeGravar();
   return (
     <div className="ops-page fin-pagina">
       <div className="fin-barra">
         {competencia && <NavegadorMes competencia={competencia} aoMudar={aoMudarMes} />}
         {extras}
         <span className="fin-espaco" />
-        <button type="button" className="btn-secondary" onClick={() => setImportando(true)}><Icon name="upload" size={15} /> Importar planilha</button>
+        {/* Importar grava: a barra de todas as abas do financeiro perde o botao
+            pra quem tem acesso so de visualizacao. */}
+        {podeGravar && (
+          <button type="button" className="btn-secondary" onClick={() => setImportando(true)}><Icon name="upload" size={15} /> Importar planilha</button>
+        )}
       </div>
       {erro && <Aviso tipo="error">{erro}</Aviso>}
       {carregando && !erro && <Aviso>Carregando...</Aviso>}
@@ -328,6 +340,7 @@ function FormPagamentoFatura({ fatura, contas, competencia, aoSalvar, aoCancelar
 }
 
 export function FaturasPage() {
+  const podeGravar = usePodeGravar();
   const [competencia, setCompetencia] = useCompetencia();
   const { dados, erro, carregar } = useDados(async () => {
     const [faturas, contas] = await Promise.all([api.faturas(competencia), api.contas()]);
@@ -456,9 +469,9 @@ export function FaturasPage() {
                 <Icon name={faturaAberta === fatura.chave ? "chevron-left" : "chevron"} size={16} />
               </button>
               {faturaAberta === fatura.chave && <div className="fin-fatura-conteudo">
-                {fatura.pagamento ? <div className="fin-fatura-baixa"><span><Icon name="check" size={15} /> Pago em {new Date(`${fatura.pagamento.pago_em}T12:00:00`).toLocaleDateString("pt-BR")} pela conta {fatura.pagamento.conta} · {brl(fatura.pagamento.valor)}</span><button type="button" className="btn-ghost perigo" onClick={() => desfazer(fatura)}>Desfazer pagamento</button></div> : fatura.vencimento && <button type="button" className="btn-primary fin-fatura-pagar" onClick={() => setPagando(pagando === fatura.chave ? null : fatura.chave)}><Icon name="check" size={14} /> Registrar pagamento</button>}
+                {fatura.pagamento ? <div className="fin-fatura-baixa"><span><Icon name="check" size={15} /> Pago em {new Date(`${fatura.pagamento.pago_em}T12:00:00`).toLocaleDateString("pt-BR")} pela conta {fatura.pagamento.conta} · {brl(fatura.pagamento.valor)}</span>{podeGravar && <button type="button" className="btn-ghost perigo" onClick={() => desfazer(fatura)}>Desfazer pagamento</button>}</div> : podeGravar && fatura.vencimento && <button type="button" className="btn-primary fin-fatura-pagar" onClick={() => setPagando(pagando === fatura.chave ? null : fatura.chave)}><Icon name="check" size={14} /> Registrar pagamento</button>}
                 {pagando === fatura.chave && !fatura.pagamento && <FormPagamentoFatura fatura={fatura} contas={dados.contas} competencia={competencia} aoSalvar={pagar} aoCancelar={() => setPagando(null)} />}
-                <div className="fin-faturas-tabela"><table><thead><tr><th>Autorização</th><th>Motorista</th><th>Emissão autorização</th><th>CT-e</th><th>Emissão CT-e</th><th>Abasteceu em</th><th>Valor</th><th></th></tr></thead><tbody>{fatura.itens.map((item) => <tr key={item.id} className={!item.incluida ? "removida" : ""}><td>{item.autorizacao || `#${item.id}`}</td><td><strong>{item.motorista}</strong></td><td>{new Date(`${item.data_autorizacao}T12:00:00`).toLocaleDateString("pt-BR")}</td><td>{item.cte || "—"}</td><td>{item.data_cte ? new Date(`${item.data_cte}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td><input className="fin-data-abastecimento" type="date" value={item.data_abastecimento || item.data_autorizacao} disabled={alterando === item.id || Boolean(fatura.pagamento)} onChange={(e) => alterarDataAbastecimento(item, e.target.value)} title={item.data_abastecimento ? "Data de abastecimento confirmada" : "Data sugerida pela autorização; altere se o motorista abasteceu em outro dia"} /></td><td><Dinheiro valor={item.valor} tamanho="xs" /></td><td><button type="button" className={item.incluida ? "btn-ghost" : "btn-secondary"} disabled={alterando === item.id || Boolean(fatura.pagamento)} onClick={() => alterar(item)}>{alterando === item.id ? "..." : item.incluida ? "Remover" : "Incluir"}</button></td></tr>)}</tbody></table></div>
+                <div className="fin-faturas-tabela"><table><thead><tr><th>Autorização</th><th>Motorista</th><th>Emissão autorização</th><th>CT-e</th><th>Emissão CT-e</th><th>Abasteceu em</th><th>Valor</th>{podeGravar && <th></th>}</tr></thead><tbody>{fatura.itens.map((item) => <tr key={item.id} className={!item.incluida ? "removida" : ""}><td>{item.autorizacao || `#${item.id}`}</td><td><strong>{item.motorista}</strong></td><td>{new Date(`${item.data_autorizacao}T12:00:00`).toLocaleDateString("pt-BR")}</td><td>{item.cte || "—"}</td><td>{item.data_cte ? new Date(`${item.data_cte}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td>{podeGravar ? <input className="fin-data-abastecimento" type="date" value={item.data_abastecimento || item.data_autorizacao} disabled={alterando === item.id || Boolean(fatura.pagamento)} onChange={(e) => alterarDataAbastecimento(item, e.target.value)} title={item.data_abastecimento ? "Data de abastecimento confirmada" : "Data sugerida pela autorização; altere se o motorista abasteceu em outro dia"} /> : new Date(`${item.data_abastecimento || item.data_autorizacao}T12:00:00`).toLocaleDateString("pt-BR")}</td><td><Dinheiro valor={item.valor} tamanho="xs" /></td>{podeGravar && <td><button type="button" className={item.incluida ? "btn-ghost" : "btn-secondary"} disabled={alterando === item.id || Boolean(fatura.pagamento)} onClick={() => alterar(item)}>{alterando === item.id ? "..." : item.incluida ? "Remover" : "Incluir"}</button></td>}</tr>)}</tbody></table></div>
               </div>}
             </article>)}
           </div>}
@@ -495,6 +508,7 @@ function FormPagamentoAgenciamento({ grupo, contas, aoSalvar, aoCancelar }) {
 }
 
 export function AgenciamentosPage() {
+  const podeGravar = usePodeGravar();
   const [competencia, setCompetencia] = useCompetencia();
   const { dados, erro, carregar } = useDados(async () => {
     const [agenciamentos, contas] = await Promise.all([api.agenciamentos(competencia), api.contas()]);
@@ -526,7 +540,7 @@ export function AgenciamentosPage() {
       {grupos.length > 0 && <section className="card fin-agenciamento-ranking"><header className="fin-extrato-topo"><div><h3>Visão geral por beneficiário</h3><p>Participação de cada pessoa no agenciamento do mês</p></div></header><div>{grupos.map((grupo) => <div className="fin-ranking-linha" key={grupo.beneficiario}><span><strong>{grupo.beneficiario}</strong><small>{grupo.cargas} cargas</small></span><i><b style={{ width: `${dados.resumo.gerado ? (grupo.gerado / dados.resumo.gerado) * 100 : 0}%` }} /></i><Dinheiro valor={grupo.gerado} tamanho="xs" /></div>)}</div></section>}
       <div className="fin-comissao-grupos">
         {grupos.map((grupo) => <section className="card fin-comissao-grupo" key={grupo.beneficiario}>
-          <header><div><span className="eyebrow">BENEFICIÁRIO</span><h3>{grupo.beneficiario}</h3><small>{grupo.cargas} cargas · {toneladas(grupo.toneladas)} · média {brl(grupo.media_ton)}/t</small></div><div className="fin-comissao-saldos"><span>Gerado <b>{brl(grupo.gerado)}</b></span><span>Pago <b>{brl(grupo.pago)}</b></span><span className={grupo.pendente > 0 ? "pendente" : "pago"}>Pendente <b>{brl(grupo.pendente)}</b></span></div>{grupo.pendente > 0 && <button type="button" className="btn-primary" onClick={() => setPagando(pagando === grupo.beneficiario ? null : grupo.beneficiario)}><Icon name="wallet" size={14} /> Registrar pagamento</button>}</header>
+          <header><div><span className="eyebrow">BENEFICIÁRIO</span><h3>{grupo.beneficiario}</h3><small>{grupo.cargas} cargas · {toneladas(grupo.toneladas)} · média {brl(grupo.media_ton)}/t</small></div><div className="fin-comissao-saldos"><span>Gerado <b>{brl(grupo.gerado)}</b></span><span>Pago <b>{brl(grupo.pago)}</b></span><span className={grupo.pendente > 0 ? "pendente" : "pago"}>Pendente <b>{brl(grupo.pendente)}</b></span></div>{podeGravar && grupo.pendente > 0 && <button type="button" className="btn-primary" onClick={() => setPagando(pagando === grupo.beneficiario ? null : grupo.beneficiario)}><Icon name="wallet" size={14} /> Registrar pagamento</button>}</header>
           {pagando === grupo.beneficiario && <FormPagamentoAgenciamento grupo={grupo} contas={dados.contas} aoCancelar={() => setPagando(null)} aoSalvar={async (payload) => { await api.pagarAgenciamento({ ...payload, competencia }); setPagando(null); await carregar(); }} />}
           <span className="fin-progresso"><i style={{ width: `${grupo.gerado ? Math.min(100, (grupo.pago / grupo.gerado) * 100) : 0}%` }} /></span>
         </section>)}
@@ -534,7 +548,7 @@ export function AgenciamentosPage() {
       <section className="card fin-faturas fin-comissao-detalhes"><header className="fin-extrato-topo"><div><h3>Agenciamentos por carregamento</h3><p>Dados puxados do próprio controle financeiro</p></div></header>
         {dados.linhas.filter((l) => doAgenciador(l.beneficiario)).length === 0 ? <div className="fin-sem-itens"><Icon name="users" size={22} /><p>Nenhum agenciamento apurado neste mês{escolhido ? ` para ${escolhido.beneficiario}` : ""}.</p></div> : <div className="fin-faturas-tabela"><table><thead><tr><th>Data</th><th>CT-e / Motorista</th><th>Destino</th><th>Peso</th><th>Frete motorista</th><th>Agenciamento/t</th><th>Agenciamento total</th><th>Beneficiário</th></tr></thead><tbody>{dados.linhas.filter((l) => doAgenciador(l.beneficiario)).map((linha) => <tr key={linha.id}><td>{linha.data ? new Date(`${linha.data}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td><td><strong>{linha.cte || "Sem CT-e"}</strong><br /><small>{linha.motorista}</small></td><td>{linha.destino || "—"}</td><td>{toneladas(linha.peso)}</td><td>{brl(linha.frete_motorista)}</td><td>{linha.agenciamento_ton === null ? "—" : brl(linha.agenciamento_ton)}</td><td><Dinheiro valor={linha.agenciamento} tamanho="xs" /></td><td>{linha.beneficiario}</td></tr>)}</tbody></table></div>}
       </section>
-      {dados.pagamentos.filter((p) => doAgenciador(p.beneficiario)).length > 0 && <section className="card fin-comissao-historico"><header className="fin-extrato-topo"><div><h3>Pagamentos realizados</h3><p>Baixas de agenciamento registradas no mês</p></div></header><ul>{dados.pagamentos.filter((p) => doAgenciador(p.beneficiario)).map((pagamento) => <li key={pagamento.id}><div><strong>{pagamento.beneficiario}</strong><small>{new Date(`${pagamento.pago_em}T12:00:00`).toLocaleDateString("pt-BR")}{pagamento.conta ? ` · ${pagamento.conta}` : ""}{pagamento.observacao ? ` · ${pagamento.observacao}` : ""}</small></div><Dinheiro valor={pagamento.valor} tamanho="xs" /><button type="button" className="btn-ghost perigo" onClick={async () => { await api.desfazerAgenciamento(pagamento.id); await carregar(); }}>Desfazer</button></li>)}</ul></section>}
+      {dados.pagamentos.filter((p) => doAgenciador(p.beneficiario)).length > 0 && <section className="card fin-comissao-historico"><header className="fin-extrato-topo"><div><h3>Pagamentos realizados</h3><p>Baixas de agenciamento registradas no mês</p></div></header><ul>{dados.pagamentos.filter((p) => doAgenciador(p.beneficiario)).map((pagamento) => <li key={pagamento.id}><div><strong>{pagamento.beneficiario}</strong><small>{new Date(`${pagamento.pago_em}T12:00:00`).toLocaleDateString("pt-BR")}{pagamento.conta ? ` · ${pagamento.conta}` : ""}{pagamento.observacao ? ` · ${pagamento.observacao}` : ""}</small></div><Dinheiro valor={pagamento.valor} tamanho="xs" />{podeGravar && <button type="button" className="btn-ghost perigo" onClick={async () => { await api.desfazerAgenciamento(pagamento.id); await carregar(); }}>Desfazer</button>}</li>)}</ul></section>}
     </>}
   </Moldura>;
 }

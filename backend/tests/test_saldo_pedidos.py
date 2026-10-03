@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tests.apoio_documentos import banco_em_memoria, roteador_documentos  # noqa: E402
+from tests.apoio_documentos import banco_em_memoria, roteador_documentos, usuario_de_teste  # noqa: E402
 
 roteador_documentos()  # substitui o gerador de O.C. em HTML quando o WeasyPrint nao carrega
 
@@ -197,7 +197,7 @@ def cliente(db, monkeypatch):
     for rota in (rotas_agendamentos.router, rotas_documentos.router, rotas_pedidos.router):
         app.include_router(rota)
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_current_user] = lambda: None
+    app.dependency_overrides[get_current_user] = lambda: usuario_de_teste("/agendamentos")
     return TestClient(app)
 
 

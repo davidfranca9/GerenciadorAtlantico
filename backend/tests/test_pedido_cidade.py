@@ -18,7 +18,7 @@ from app.auth import get_current_user  # noqa: E402
 from app.database import get_db  # noqa: E402
 from app.models import Agendamento, AgendamentoItem, Cidade, Pedido, RespostaFabrica, BaixaPedido  # noqa: E402
 from app.routers import pedidos  # noqa: E402
-from tests.apoio_documentos import banco_em_memoria  # noqa: E402
+from tests.apoio_documentos import banco_em_memoria, usuario_de_teste  # noqa: E402
 
 
 @pytest.fixture
@@ -43,7 +43,7 @@ def cliente(db):
     app = FastAPI()
     app.include_router(pedidos.router)
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_current_user] = lambda: None
+    app.dependency_overrides[get_current_user] = lambda: usuario_de_teste("/pedidos")
     return TestClient(app)
 
 

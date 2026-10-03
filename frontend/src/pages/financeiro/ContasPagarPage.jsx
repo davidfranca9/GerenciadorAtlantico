@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { financeiro as api } from "../../api/client";
 import Icon from "../../components/Icon";
-import { Aviso, CampoValor, Dinheiro, Modal } from "./comum";
+import { Aviso, CampoValor, Dinheiro, Modal, usePodeGravar } from "./comum";
 import { brl, brlCurto, competenciaDe, diaBr, diaPorExtenso, diasAte, hojeIso, isoDe, numeroBr, valorParaCampo } from "./formato";
 
 const SITUACAO = {
@@ -145,6 +145,7 @@ function FormPagar({ item, contas, competencia, aoPagar, aoCancelar }) {
 function ItemAgenda({ item, contas, competencia, grupos, despesaDe, aoPagar, aoDesfazer, aoEditar, aoExcluir }) {
   const [pagando, setPagando] = useState(false);
   const [editando, setEditando] = useState(false);
+  const podeGravar = usePodeGravar();
   const situacao = SITUACAO[item.situacao];
   const fixa = item.origem === "despesa";
   const despesa = fixa ? despesaDe(item) : null;
@@ -164,7 +165,9 @@ function ItemAgenda({ item, contas, competencia, grupos, despesaDe, aoPagar, aoD
           {item.valor === null && !item.pagamento ? <em>valor a definir</em> : <Dinheiro valor={item.pagamento ? item.pagamento.valor : item.valor} tamanho="s" />}
           <b className={`fin-situacao ${situacao.classe}`}>{situacao.rotulo}</b>
         </span>
-        <span className="fin-conta-acoes">
+        {/* Pagar, desfazer, editar e excluir sao gravacao: quem so visualiza ve
+            a conta, o valor e a situacao (pago, atrasado, a vencer) sem acao. */}
+        {podeGravar && <span className="fin-conta-acoes">
           {item.pagamento ? (
             <button type="button" className="btn-ghost" onClick={() => aoDesfazer(item)} title="Desfazer pagamento">Desfazer</button>
           ) : (
@@ -179,7 +182,7 @@ function ItemAgenda({ item, contas, competencia, grupos, despesaDe, aoPagar, aoD
           >
             <Icon name={editando ? "close" : "edit"} size={14} />
           </button>
-        </span>
+        </span>}
       </div>
       {pagando && (
         <FormPagar item={item} contas={contas} competencia={competencia} aoCancelar={() => setPagando(false)} aoPagar={async (p) => { await aoPagar(p); setPagando(false); }} />
@@ -313,6 +316,7 @@ function NovaAvulsa({ dia, aoCriar, aoCancelar }) {
 const FILTROS_ABERTOS = { tipo: "todas", escopo: "todos", situacao: "todas" };
 
 function Agenda({ competencia, dados, contas, recarregar }) {
+  const podeGravar = usePodeGravar();
   const hoje = dados.hoje;
   const [dia, setDia] = useState(null);
   const [novaAvulsa, setNovaAvulsa] = useState(false);
@@ -322,8 +326,11 @@ function Agenda({ competencia, dados, contas, recarregar }) {
   const [despesas, setDespesas] = useState([]);
 
   useEffect(() => {
+    // As despesas inteiras servem so pro editor. Quem nao pode editar nao
+    // precisa delas - e a aba de Pagamentos nem le despesa (GET de outra aba).
+    if (!podeGravar) return;
     api.despesas(competencia).then(setDespesas).catch(() => setDespesas([]));
-  }, [competencia]);
+  }, [competencia, podeGravar]);
 
   useEffect(() => {
     // Abre no dia de hoje se ele e do mes; senao, no primeiro dia com conta.
@@ -418,7 +425,7 @@ function Agenda({ competencia, dados, contas, recarregar }) {
             <h3>{dia ? diaPorExtenso(dia, hoje) : "Escolha um dia"}</h3>
             <p>{doDia.length ? `${doDia.length} ${doDia.length === 1 ? "conta" : "contas"} · ${brl(doDia.reduce((s, i) => s + (i.pagamento?.valor ?? i.valor ?? 0), 0))}` : "Nada vence neste dia"}</p>
           </div>
-          <button type="button" className="btn-secondary" onClick={() => setNovaAvulsa(!novaAvulsa)}><Icon name="plus" size={14} /> Conta avulsa</button>
+          {podeGravar && <button type="button" className="btn-secondary" onClick={() => setNovaAvulsa(!novaAvulsa)}><Icon name="plus" size={14} /> Conta avulsa</button>}
         </header>
         {erro && <Aviso tipo="error">{erro}</Aviso>}
         {novaAvulsa && (
@@ -526,6 +533,10 @@ function EditorDespesa({ escopo, competencia, despesa, grupos, aoSalvar, aoExclu
 }
 
 export function Despesas({ escopo, competencia, despesas, recarregar, fechamento = [], tarifas = [], dividas = [], pagamentos = [] }) {
+  const podeGravar = usePodeGravar();
+  // Sem poder gravar, a linha da despesa nao e botao: ela nao abre o editor,
+  // mas mostra o mesmo - descricao, parcelas, situacao do mes e valor.
+  const LinhaDespesa = podeGravar ? "button" : "div";
   const [aberto, setAberto] = useState(null);
   const minhas = despesas.filter((d) => d.escopo === escopo);
   const grupos = [...new Set([...minhas.map((d) => d.grupo), ...(tarifas.length ? ["Taxas"] : []), ...(dividas.length ? ["Dívidas ativas"] : [])])];
@@ -558,14 +569,14 @@ export function Despesas({ escopo, competencia, despesas, recarregar, fechamento
             ))}
           </dl>
         )}
-        <button type="button" className="btn-primary" onClick={() => setAberto(aberto === "nova" ? null : "nova")}><Icon name="plus" size={14} /> Despesa</button>
+        {podeGravar && <button type="button" className="btn-primary" onClick={() => setAberto(aberto === "nova" ? null : "nova")}><Icon name="plus" size={14} /> Despesa</button>}
         <Link className="btn-secondary" to="/financeiro/pagamentos"><Icon name="calendar" size={14} /> Ver pagamentos</Link>
       </div>
       {aberto === "nova" && (
         <div className="card"><EditorDespesa escopo={escopo} competencia={competencia} grupos={grupos} aoCancelar={() => setAberto(null)} aoSalvar={(d) => salvar(null, d)} /></div>
       )}
       {minhas.length === 0 && aberto !== "nova" && (
-        <div className="card fin-sem-itens"><Icon name="calendar" size={22} /><p>Nenhuma despesa {escopo === "empresa" ? "da empresa" : "pessoal"} cadastrada. Importe a planilha do Controle de Carregamentos ou adicione a primeira.</p></div>
+        <div className="card fin-sem-itens"><Icon name="calendar" size={22} /><p>Nenhuma despesa {escopo === "empresa" ? "da empresa" : "pessoal"} cadastrada{podeGravar ? ". Importe a planilha do Controle de Carregamentos ou adicione a primeira." : "."}</p></div>
       )}
       <div className="fin-grupos">
         {grupos.map((grupo) => {
@@ -579,7 +590,10 @@ export function Despesas({ escopo, competencia, despesas, recarregar, fechamento
               <ul>
                 {itens.map((d) => (
                   <li key={d.id} className={`${!d.vale_no_mes || !d.ativa ? "fora" : ""} ${aberto === d.id ? "aberto" : ""}`}>
-                    <button type="button" className="fin-despesa-linha" onClick={() => setAberto(aberto === d.id ? null : d.id)} aria-expanded={aberto === d.id}>
+                    <LinhaDespesa
+                      className={`fin-despesa-linha ${podeGravar ? "" : "so-leitura"}`}
+                      {...(podeGravar ? { type: "button", onClick: () => setAberto(aberto === d.id ? null : d.id), "aria-expanded": aberto === d.id } : {})}
+                    >
                       <span className="fin-despesa-dia">{d.dia_vencimento ? <>dia<b>{d.dia_vencimento}</b></> : <b>—</b>}</span>
                       <span className="fin-despesa-texto">
                         <strong>{d.descricao}</strong>
@@ -599,7 +613,7 @@ export function Despesas({ escopo, competencia, despesas, recarregar, fechamento
                         </small>
                       </span>
                       <Dinheiro valor={d.valor} tamanho="xs" />
-                    </button>
+                    </LinhaDespesa>
                     {aberto === d.id && (
                       <EditorDespesa
                         escopo={escopo} competencia={competencia} despesa={d} grupos={grupos}
@@ -757,16 +771,19 @@ function FormPagamentoDivida({ divida, contas, aoSalvar }) {
 function PainelDivida({ divida, contas, aoLancar, aoDesfazer, aoEditar }) {
   const pagamentos = divida.pagamentos || [];
   const [desfazendo, setDesfazendo] = useState(null);
+  // Quem so visualiza continua vendo quanto ja pagou, quanto falta e o
+  // historico - o que sai e lancar, desfazer e editar a divida.
+  const podeGravar = usePodeGravar();
   return (
     <div className="fin-divida-painel">
       <div className="fin-divida-painel-topo">
         <div><span className="eyebrow">JÁ PAGUEI</span><Dinheiro valor={divida.pago} tamanho="m" /></div>
         <div><span className="eyebrow">AINDA FALTA</span><Dinheiro valor={divida.restante} tamanho="m" /></div>
-        <button type="button" className="btn-secondary" onClick={aoEditar}><Icon name="edit" size={14} /> Editar dívida</button>
+        {podeGravar && <button type="button" className="btn-secondary" onClick={aoEditar}><Icon name="edit" size={14} /> Editar dívida</button>}
       </div>
-      {divida.quitada ? <Aviso>Dívida quitada. Desfaça um pagamento pra reabrir.</Aviso>
-        : divida.congelada ? <Aviso tipo="warning">Dívida congelada. Reative no editor pra lançar pagamento.</Aviso>
-          : <FormPagamentoDivida divida={divida} contas={contas} aoSalvar={aoLancar} />}
+      {divida.quitada ? <Aviso>Dívida quitada.{podeGravar ? " Desfaça um pagamento pra reabrir." : ""}</Aviso>
+        : divida.congelada ? <Aviso tipo="warning">Dívida congelada.{podeGravar ? " Reative no editor pra lançar pagamento." : " As parcelas estão pausadas."}</Aviso>
+          : podeGravar && <FormPagamentoDivida divida={divida} contas={contas} aoSalvar={aoLancar} />}
       <section className="fin-divida-historico">
         <h3>Pagamentos lançados</h3>
         {pagamentos.length === 0 ? (
@@ -780,14 +797,14 @@ function PainelDivida({ divida, contas, aoLancar, aoDesfazer, aoEditar }) {
                   <small>{[pagamento.no_caixa ? `saiu de ${pagamento.conta}` : "fora do Caixa", pagamento.observacao].filter(Boolean).join(" · ")}</small>
                 </div>
                 <Dinheiro valor={pagamento.valor} tamanho="xs" />
-                <button type="button" className="btn-ghost perigo" disabled={desfazendo === pagamento.id}
+                {podeGravar && <button type="button" className="btn-ghost perigo" disabled={desfazendo === pagamento.id}
                   onClick={async () => {
                     setDesfazendo(pagamento.id);
                     try { await aoDesfazer(pagamento.id); } catch { /* o erro aparece no aviso da tela */ }
                     setDesfazendo(null);
                   }}>
                   {desfazendo === pagamento.id ? "..." : "Desfazer"}
-                </button>
+                </button>}
               </li>
             ))}
           </ul>
@@ -811,6 +828,7 @@ function DataPagamento({ dia }) {
 }
 
 export function Dividas({ dividas, recarregar }) {
+  const podeGravar = usePodeGravar();
   const [aberto, setAberto] = useState(null);
   const [modo, setModo] = useState("pagamentos");
   const [contas, setContas] = useState([]);
@@ -857,7 +875,7 @@ export function Dividas({ dividas, recarregar }) {
             {proxima && ` · próximo pagamento: ${proxima.credor}, ${diaBr(proxima.proximo_pagamento)}`}
           </small>
         </div>
-        <button type="button" className="btn-primary" onClick={() => abrir("nova", "editar")}><Icon name="plus" size={14} /> Dívida</button>
+        {podeGravar && <button type="button" className="btn-primary" onClick={() => abrir("nova", "editar")}><Icon name="plus" size={14} /> Dívida</button>}
       </div>
       {erro && !aberto && <Aviso tipo="error">{erro}</Aviso>}
       <div className="fin-dividas">
@@ -876,8 +894,8 @@ export function Dividas({ dividas, recarregar }) {
                 {d.quitada ? <b className="fin-situacao pago">Quitada</b> : d.congelada ? <b className="fin-situacao congelada">Congelada</b> : organizar && <b className="fin-situacao hoje">A organizar</b>}
                 <button type="button" className="icon-btn" aria-label={`Pagamentos de ${d.credor}`} title="Pagamentos"
                   onClick={(e) => { e.stopPropagation(); abrir(d.id, "pagamentos"); }}><Icon name="wallet" size={14} /></button>
-                <button type="button" className="icon-btn" aria-label={`Editar ${d.credor}`} title="Editar"
-                  onClick={(e) => { e.stopPropagation(); abrir(d.id, "editar"); }}><Icon name="edit" size={14} /></button>
+                {podeGravar && <button type="button" className="icon-btn" aria-label={`Editar ${d.credor}`} title="Editar"
+                  onClick={(e) => { e.stopPropagation(); abrir(d.id, "editar"); }}><Icon name="edit" size={14} /></button>}
               </header>
               {!d.quitada && !d.congelada && <DataPagamento dia={d.proximo_pagamento} />}
               {d.congelada && <span className="fin-pagamento congelada">Parcelas pausadas · não entra em Gastos</span>}
@@ -895,9 +913,9 @@ export function Dividas({ dividas, recarregar }) {
               <small className="fin-divida-ultimo">
                 {ultimo
                   ? <>Último pagamento: <b>{diaBr(ultimo.pago_em)}</b> · {brl(ultimo.valor)}{pagamentos.length > 1 ? ` · ${pagamentos.length} lançados` : ""}</>
-                  : d.quitada || d.congelada ? "Sem pagamento lançado" : "Sem pagamento lançado · clique pra lançar"}
+                  : d.quitada || d.congelada || !podeGravar ? "Sem pagamento lançado" : "Sem pagamento lançado · clique pra lançar"}
               </small>
-              {!d.quitada && !d.congelada && Boolean(d.parcelas_total) && (
+              {podeGravar && !d.quitada && !d.congelada && Boolean(d.parcelas_total) && (
                 <button type="button" className="btn-secondary fin-divida-acao"
                   title="Marca uma parcela sem guardar valor nem data"
                   onClick={(e) => { e.stopPropagation(); agir(() => api.parcelaPaga(d.id)).catch(() => {}); }}>
@@ -944,11 +962,13 @@ export function Dividas({ dividas, recarregar }) {
 
 // Aba "Pagamentos": o calendario do mes, montado pelos vencimentos.
 export function AbaPagamentos({ competencia, agenda, contas, recarregar }) {
+  const podeGravar = usePodeGravar();
   const [marcando, setMarcando] = useState(false);
   const [erro, setErro] = useState("");
   // Primeira vez no mes (nada pago ainda e varias vencidas): oferece marcar
   // o que ja passou como pago, pra agenda nao abrir cheia de "atrasado".
-  const comecando = agenda.totais.pago === 0 && agenda.totais.atrasados >= 3;
+  // Marcar as vencidas como pagas e gravacao: so aparece pra administrador.
+  const comecando = podeGravar && agenda.totais.pago === 0 && agenda.totais.atrasados >= 3;
 
   async function marcarVencidas() {
     setMarcando(true);

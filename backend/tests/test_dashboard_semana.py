@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tests.apoio_documentos import banco_em_memoria  # noqa: E402
+from tests.apoio_documentos import banco_em_memoria, usuario_de_teste  # noqa: E402
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -46,7 +46,7 @@ def cliente(db):
     app = FastAPI()
     app.include_router(rotas_dashboard.router)
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_current_user] = lambda: None
+    app.dependency_overrides[get_current_user] = lambda: usuario_de_teste("/dashboard")
     return TestClient(app)
 
 

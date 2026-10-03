@@ -8,12 +8,23 @@ from __future__ import annotations
 
 import sys
 import types
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+
+
+def usuario_de_teste(*telas: str, email: str = "operador@atlantico.com", papel: str = "user"):
+    """Usuario de mentira com as abas que a tela do teste usa.
+
+    Os routers agora exigem a tela (app/auth.py, exigir_tela): chamar a rota
+    sem a aba liberada da 403, igual ao usuario de verdade. Por isso cada teste
+    diz de qual tela ele esta falando - e, se o mapa de telas de um router
+    estiver errado, e aqui que a suite reclama."""
+    return SimpleNamespace(email=email, role=papel, paginas_liberadas=",".join(telas))
 
 
 def roteador_documentos():
@@ -43,5 +54,6 @@ def cliente_http(db):
     app = FastAPI()
     app.include_router(documentos.router)
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_current_user] = lambda: None
+    # O router de documentos serve as abas que geram O.C. e autorizacao.
+    app.dependency_overrides[get_current_user] = lambda: usuario_de_teste("/ordem-coleta", "/contrato")
     return TestClient(app), documentos
