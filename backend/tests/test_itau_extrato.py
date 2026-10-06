@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import sys
+import uuid
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -558,3 +559,113 @@ def test_caminho_de_arquivo_vence_o_conteudo_colado(monkeypatch):
     monkeypatch.setattr(settings, "itau_cert_pem", "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----", raising=False)
 
     assert itau._certificado() == ("/etc/itau/prod.crt", "/etc/itau/prod.key")
+
+
+# --------------------------------------------------------------------------
+# O que a especificacao oficial da API (OpenAPI 1.27.0) resolveu
+# --------------------------------------------------------------------------
+
+
+def test_cada_chamada_leva_o_correlationid_que_a_api_exige(credenciais, monkeypatch):
+    """x-itau-correlationid e obrigatorio na especificacao: sem ele a chamada
+    volta 400, e o banco precisa dele pra rastrear quando abrimos chamado."""
+    vistos = []
+    falso = ligar(monkeypatch, [[evento("a")]])
+    get_original = falso.get
+
+    def get(url, params=None, headers=None, cert=None, timeout=None):
+        vistos.append((headers or {}).get("x-itau-correlationid"))
+        return get_original(url, params=params, headers=headers, cert=cert, timeout=timeout)
+
+    monkeypatch.setattr(falso, "get", get)
+    itau.buscar_extrato(INICIO, FIM)
+
+    assert len(vistos) == 1 and vistos[0]
+    # Um id novo por chamada, nao um fixo repetido.
+    uuid.UUID(vistos[0])
+
+
+def test_saldo_do_dia_vem_do_bloco_de_saldos_e_liga_a_conferencia(credenciais, monkeypatch):
+    """O saldo nao vem junto dos lancamentos: vem em data.balances."""
+    falso = ligar(monkeypatch, [[evento("a")]])
+
+    def get(url, params=None, headers=None, cert=None, timeout=None):
+        return Resposta(200, {"data": [{
+            "events": [evento("a")],
+            "balances": [
+                {"type": "saldo_bloqueado", "literal": {"complete": "SALDO BLOQUEADO"},
+                 "amount": {"value": 0, "currency": "BRL"}},
+                {"type": "saldo_disponivel", "literal": {"complete": "SALDO TOTAL DISPONÍVEL DIA"},
+                 "amount": {"value": 163.97, "currency": "BRL"}},
+            ],
+            "pagination": {"page": 1, "total_pages": 1, "total_elements": 1, "page_size": 100},
+        }]})
+
+    monkeypatch.setattr(falso, "get", get)
+
+    lido = itau.buscar_extrato(INICIO, FIM)
+
+    assert lido["saldo"] == 163.97
+    # O saldo nao pode virar lancamento.
+    assert [t["descricao"] for t in lido["transacoes"]] == ["PIX RECEBIDO ATLANTI"]
+
+
+def test_paginacao_segue_o_total_de_paginas_que_a_api_informa(credenciais, monkeypatch):
+    """Com total_pages na resposta nao e preciso adivinhar pelo tamanho."""
+    falso = ligar(monkeypatch, [])
+    pedidas = []
+
+    def get(url, params=None, headers=None, cert=None, timeout=None):
+        pagina = int(params["page"])
+        pedidas.append(pagina)
+        return Resposta(200, {"data": [{
+            "events": [evento(f"p{pagina}")],
+            "pagination": {"page": pagina, "total_pages": 3, "total_elements": 3, "page_size": 1},
+        }]})
+
+    monkeypatch.setattr(falso, "get", get)
+
+    lido = itau.buscar_extrato(INICIO, FIM)
+
+    assert pedidas == [1, 2, 3]
+    assert len(lido["transacoes"]) == 3
+
+
+def test_conta_da_url_segue_o_formato_da_especificacao(credenciais, monkeypatch):
+    """Ag. 1500 + CC. 0123456 + DV 7 = 150001234567. Os dois zeros que o
+    material do banco mostra sao o preenchimento da conta, nao pedaco fixo."""
+    monkeypatch.setattr(settings, "itau_agencia", "1500")
+    monkeypatch.setattr(settings, "itau_conta", "0123456")
+    monkeypatch.setattr(settings, "itau_conta_dac", "7")
+    assert itau.conta_formatada() == "150001234567"
+
+    # Conta de 5 digitos (o caso do material): ganha os zeros na frente.
+    monkeypatch.setattr(settings, "itau_agencia", "8161")
+    monkeypatch.setattr(settings, "itau_conta", "99478")
+    monkeypatch.setattr(settings, "itau_conta_dac", "8")
+    assert itau.conta_formatada() == "816100994788"
+
+    # Colada com o digito, do jeito que se copia do extrato.
+    monkeypatch.setattr(settings, "itau_conta", "0123456-7")
+    monkeypatch.setattr(settings, "itau_conta_dac", "")
+    monkeypatch.setattr(settings, "itau_agencia", "1500")
+    assert itau.conta_formatada() == "150001234567"
+
+
+def test_valor_do_exemplo_oficial_e_lido_sem_ajuste(credenciais, monkeypatch):
+    """O evento exatamente como a especificacao mostra."""
+    oficial = {
+        "id": "104e2ce6-4b1d-3fba-adf0-694fde806773", "type": "lancamento", "operation": "C",
+        "reversal": False,
+        "date": {"event": "2024-04-25T02:59:00Z", "accounting": "2024-04-24"},
+        "literal": {"code": "9507", "shortened": "SISPAG PIX PIX", "complete": "SISPAG PIX PIX"},
+        "amount": {"value": 500, "currency": "BRL"},
+    }
+    ligar(monkeypatch, [[oficial]])
+
+    lido = itau.buscar_extrato(INICIO, FIM)
+
+    assert lido["transacoes"] == [{
+        "fitid": "104e2ce6-4b1d-3fba-adf0-694fde806773", "data": date(2024, 4, 24),
+        "valor": 500.0, "tipo": "entrada", "descricao": "SISPAG PIX PIX",
+    }]

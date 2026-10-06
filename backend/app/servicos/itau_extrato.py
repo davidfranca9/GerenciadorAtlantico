@@ -47,6 +47,7 @@ import re
 import tempfile
 import threading
 import time
+import uuid
 from collections import Counter
 from contextlib import suppress
 from datetime import date, datetime, timedelta
@@ -157,11 +158,14 @@ def _exigir_credenciais() -> None:
 
 
 def conta_formatada() -> str:
-    """agencia(4) + "00" + conta(5) + DAC(1), como a URL do extrato espera.
+    """agencia(4) + conta(7, com zeros a esquerda) + DAC(1), como a
+    especificacao do Itau manda: "Ag. 1500 - CC. 0123456 - VD. 7" vira
+    150001234567.
 
-    O exemplo da documentacao e 816100994788 (agencia 8161, conta 99478,
-    DAC 8). Montar isso na mao erra facil, por isso cada pedaco vem em sua
-    variavel e a conferencia de tamanho e feita aqui.
+    E por isso que conta de 5 digitos aparece com dois zeros na frente no
+    material do banco (8161 + 00 + 99478 + 8): sao os zeros do preenchimento,
+    nao um pedaco fixo. Montar isso na mao erra facil, entao cada pedaco vem
+    em sua variavel e a conferencia de tamanho e feita aqui.
     """
     _exigir_credenciais()
     agencia = re.sub(r"\D", "", settings.itau_agencia or "")
@@ -171,13 +175,15 @@ def conta_formatada() -> str:
     # sem ITAU_CONTA_DAC preenchido, o ultimo digito e o DAC.
     if not dac and len(conta) == 6:
         conta, dac = conta[:5], conta[5]
-    agencia, conta = agencia.zfill(4), conta.zfill(5)
-    if len(agencia) != 4 or len(conta) != 5 or len(dac) != 1:
+    if not dac and len(conta) == 8:
+        conta, dac = conta[:7], conta[7]
+    agencia, conta = agencia.zfill(4), conta.zfill(7)
+    if len(agencia) != 4 or len(conta) != 7 or len(dac) != 1:
         raise CredencialItauAusente(
-            "Conta do Itaú configurada errado: ITAU_AGENCIA tem 4 dígitos, ITAU_CONTA 5 e "
+            "Conta do Itaú configurada errado: ITAU_AGENCIA tem 4 dígitos, ITAU_CONTA até 7 e "
             f"ITAU_CONTA_DAC 1 (hoje está agência={agencia or '?'}, conta={conta or '?'}, dac={dac or '?'})."
         )
-    return f"{agencia}00{conta}{dac}"
+    return f"{agencia}{conta}{dac}"
 
 
 # --------------------------------------------------------------------------
@@ -265,7 +271,13 @@ def _buscar_pagina(conta: str, inicio: date, fim: date, pagina: int) -> dict:
         "page": pagina,
     }
     for tentativa in (1, 2):
-        cabecalhos = {"Authorization": f"Bearer {token()}", "Accept": "application/json"}
+        cabecalhos = {
+            "Authorization": f"Bearer {token()}",
+            "Accept": "application/json",
+            # Obrigatorio na especificacao: um id novo por chamada, pro banco
+            # conseguir rastrear a requisicao quando a gente abrir chamado.
+            "x-itau-correlationid": str(uuid.uuid4()),
+        }
         try:
             resposta = requests.get(
                 url, params=params, headers=cabecalhos, cert=_certificado(),
@@ -400,6 +412,51 @@ def _tipo_do_evento(evento: dict, valor: float) -> str:
     return "saida" if valor < 0 else "entrada"
 
 
+# O saldo do dia vem num bloco proprio (data.balances), fora dos lancamentos.
+# "saldo_disponivel" e o que o extrato mostra como saldo do dia; "saldo_total"
+# entra como segunda opcao porque conta sem aplicacao automatica traz os dois
+# iguais.
+SALDOS_PREFERIDOS = ("saldo_disponivel", "saldo_total")
+
+
+def _saldo_do_payload(payload) -> Optional[float]:
+    """O saldo que o banco informa pra pagina, pra conferencia "banco x sistema"."""
+    dados = payload.get("data") if isinstance(payload, dict) else payload
+    if isinstance(dados, dict):
+        dados = [dados]
+    por_tipo: dict[str, float] = {}
+    for bloco in dados or []:
+        if not isinstance(bloco, dict):
+            continue
+        for saldo in bloco.get("balances") or []:
+            if not isinstance(saldo, dict):
+                continue
+            valor = _numero(((saldo.get("amount") or {}) if isinstance(saldo.get("amount"), dict) else {}).get("value"))
+            if valor is None:
+                valor = _numero(saldo.get("amount"))
+            if valor is not None:
+                por_tipo.setdefault(str(saldo.get("type") or "").strip().lower(), valor)
+    for tipo in SALDOS_PREFERIDOS:
+        if tipo in por_tipo:
+            return por_tipo[tipo]
+    return next(iter(por_tipo.values()), None)
+
+
+def _total_de_paginas(payload) -> Optional[int]:
+    """Quantas paginas a API diz ter - evita adivinhar pelo tamanho da pagina."""
+    dados = payload.get("data") if isinstance(payload, dict) else payload
+    if isinstance(dados, dict):
+        dados = [dados]
+    for bloco in dados or []:
+        if isinstance(bloco, dict):
+            paginacao = bloco.get("pagination")
+            if isinstance(paginacao, dict):
+                total = _numero(paginacao.get("total_pages"))
+                if total:
+                    return int(total)
+    return None
+
+
 def _erro_de_valor(evento: dict) -> PayloadItauDesconhecido:
     return PayloadItauDesconhecido(
         "Não achei o valor do lançamento na resposta do Itaú. A documentação que o banco mandou está "
@@ -426,9 +483,16 @@ def buscar_extrato(inicio: date, fim: date) -> dict:
     tamanho = max(int(settings.itau_page_size or 100), 1)
     paginas = 0
 
+    saldo = None
+    total_de_paginas = None
+
     for pagina in range(1, MAX_PAGINAS + 1):
-        eventos = _eventos(_buscar_pagina(conta, inicio, fim, pagina))
+        payload = _buscar_pagina(conta, inicio, fim, pagina)
+        eventos = _eventos(payload)
         paginas = pagina
+        if saldo is None:
+            saldo = _saldo_do_payload(payload)
+        total_de_paginas = _total_de_paginas(payload) or total_de_paginas
         if not eventos:
             break
         novos = 0
@@ -478,15 +542,20 @@ def buscar_extrato(inicio: date, fim: date) -> dict:
                 "fitid": fitid, "data": dia, "valor": abs(fin.dinheiro(bruto)), "tipo": tipo,
                 "descricao": descricao,
             })
-        if len(eventos) < tamanho or not novos:
+        if total_de_paginas is not None:
+            if pagina >= total_de_paginas:
+                break
+        elif len(eventos) < tamanho or not novos:
+            break
+        if not novos:
             break
 
     logger.info("Itaú: extrato de %s a %s - %s eventos em %s página(s)", inicio, fim, eventos_lidos, paginas)
     return {
         "transacoes": transacoes,
-        # Sem o nome do campo de saldo na documentacao nao tem o que conferir:
-        # a previa aparece sem a linha "banco x sistema".
-        "saldo": None,
+        # Saldo informado pelo banco: e o que liga a conferencia "banco x
+        # sistema" na previa, igual ao OFX.
+        "saldo": fin.dinheiro(saldo) if saldo is not None else None,
         "linhas_de_saldo": linhas_de_saldo,
         "saldo_anterior": saldo_anterior,
         # Diagnostico pra primeira chamada de verdade (quais "type" o banco
