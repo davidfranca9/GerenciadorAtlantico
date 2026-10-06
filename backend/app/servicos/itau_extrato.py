@@ -44,10 +44,13 @@ from __future__ import annotations
 import json
 import logging
 import re
+import tempfile
 import threading
 import time
 from collections import Counter
+from contextlib import suppress
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
 import requests
@@ -92,7 +95,10 @@ class PayloadItauDesconhecido(ErroItau):
 
 # --------------------------------------------------------------------------
 # Credenciais (tudo por variavel de ambiente)
-# --------------------------------------------------------------------------
+# Pasta do processo pros certificados colados em variavel de ambiente: some
+# junto com o container, e nao fica nada no repositorio.
+_PASTA_CERT = Path(tempfile.gettempdir()) / "itau-extrato"
+_PASTA_CERT.mkdir(parents=True, exist_ok=True)
 
 
 def _faltando() -> list[str]:
@@ -101,10 +107,10 @@ def _faltando() -> list[str]:
         pendencias.append("ITAU_CLIENT_ID")
     if not (settings.itau_client_secret or "").strip():
         pendencias.append("ITAU_CLIENT_SECRET")
-    if not (settings.itau_cert_path or "").strip():
-        pendencias.append("ITAU_CERT_PATH")
-    if not (settings.itau_cert_key_path or "").strip():
-        pendencias.append("ITAU_CERT_KEY_PATH")
+    if not ((settings.itau_cert_path or "").strip() or (settings.itau_cert_pem or "").strip()):
+        pendencias.append("ITAU_CERT_PATH (ou ITAU_CERT_PEM)")
+    if not ((settings.itau_cert_key_path or "").strip() or (settings.itau_cert_key_pem or "").strip()):
+        pendencias.append("ITAU_CERT_KEY_PATH (ou ITAU_CERT_KEY_PEM)")
     if not (settings.itau_agencia or "").strip():
         pendencias.append("ITAU_AGENCIA")
     if not (settings.itau_conta or "").strip():
@@ -112,9 +118,33 @@ def _faltando() -> list[str]:
     return pendencias
 
 
+def _arquivo_do_pem(conteudo: str, nome: str) -> str:
+    """Grava num arquivo so do processo o PEM que veio colado na variavel.
+
+    O requests so aceita caminho de arquivo no mTLS. No servidor nao ha onde
+    largar arquivo com seguranca, entao o certificado vem colado na variavel
+    de ambiente e e escrito aqui, uma vez, numa pasta temporaria so do
+    processo e sem permissao pra mais ninguem."""
+    destino = _PASTA_CERT / nome
+    if not destino.exists() or destino.read_text(encoding="utf-8") != conteudo:
+        destino.write_text(conteudo, encoding="utf-8")
+        with suppress(OSError):  # Windows nao tem o mesmo modelo de permissao
+            destino.chmod(0o600)
+    return str(destino)
+
+
 def _certificado() -> tuple[str, str]:
-    """Par (.crt, .key) do certificado dinamico, pro mTLS."""
-    return (settings.itau_cert_path, settings.itau_cert_key_path)
+    """Par (.crt, .key) do certificado dinamico, pro mTLS.
+
+    O caminho do arquivo vence o conteudo colado: quem tem o arquivo no
+    servidor nao precisa mexer em mais nada."""
+    crt = (settings.itau_cert_path or "").strip()
+    key = (settings.itau_cert_key_path or "").strip()
+    if not crt:
+        crt = _arquivo_do_pem((settings.itau_cert_pem or "").strip() + "\n", "itau.crt")
+    if not key:
+        key = _arquivo_do_pem((settings.itau_cert_key_pem or "").strip() + "\n", "itau.key")
+    return (crt, key)
 
 
 def _exigir_credenciais() -> None:

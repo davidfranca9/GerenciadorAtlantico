@@ -528,3 +528,33 @@ def test_rota_de_extrato_e_so_de_administrador(credenciais, monkeypatch, db):
     resposta = TestClient(app).post(f"/financeiro/contas/{bb.id}/extrato-itau",
                                     params={"inicio": "2026-09-01", "fim": "2026-09-30"})
     assert resposta.status_code == 403
+
+
+def test_certificado_pode_vir_colado_na_variavel(monkeypatch, tmp_path):
+    """No servidor nao ha onde largar arquivo: o .crt e a .key vem colados na
+    variavel de ambiente e o sistema escreve os dois em disco."""
+    from app.config import settings
+    from app.servicos import itau_extrato as itau
+
+    monkeypatch.setattr(settings, "itau_cert_path", "", raising=False)
+    monkeypatch.setattr(settings, "itau_cert_key_path", "", raising=False)
+    monkeypatch.setattr(settings, "itau_cert_pem", "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----", raising=False)
+    monkeypatch.setattr(settings, "itau_cert_key_pem", "-----BEGIN PRIVATE KEY-----\ndef\n-----END PRIVATE KEY-----", raising=False)
+
+    crt, key = itau._certificado()
+
+    assert Path(crt).read_text(encoding="utf-8").startswith("-----BEGIN CERTIFICATE-----")
+    assert Path(key).read_text(encoding="utf-8").startswith("-----BEGIN PRIVATE KEY-----")
+    # Nada disso encosta no repositorio.
+    assert "GerenciadorAtlantico" not in crt and "GerenciadorAtlantico" not in key
+
+
+def test_caminho_de_arquivo_vence_o_conteudo_colado(monkeypatch):
+    from app.config import settings
+    from app.servicos import itau_extrato as itau
+
+    monkeypatch.setattr(settings, "itau_cert_path", "/etc/itau/prod.crt", raising=False)
+    monkeypatch.setattr(settings, "itau_cert_key_path", "/etc/itau/prod.key", raising=False)
+    monkeypatch.setattr(settings, "itau_cert_pem", "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----", raising=False)
+
+    assert itau._certificado() == ("/etc/itau/prod.crt", "/etc/itau/prod.key")

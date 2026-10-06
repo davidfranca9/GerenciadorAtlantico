@@ -93,6 +93,11 @@ class Settings(BaseSettings):
     # e a .key gerada com ele. Os arquivos ficam FORA do repositorio.
     itau_cert_path: str = ""
     itau_cert_key_path: str = ""
+    # No servidor nao ha onde largar arquivo: da pra colar o conteudo do .crt
+    # e do .key aqui (o texto inteiro, com as linhas BEGIN/END). O sistema
+    # escreve os dois em disco, so pra ele mesmo, na primeira chamada.
+    itau_cert_pem: str = ""
+    itau_cert_key_pem: str = ""
     # A conta na URL do extrato e agencia(4) + "00" + conta(5) + DAC(1) - o
     # exemplo da documentacao e 816100994788. Guardamos em pedacos pra nao
     # errar a montagem na mao.
