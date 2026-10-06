@@ -79,6 +79,11 @@ MAX_PAGINAS = 50
 # DENTRO de um objeto cujo proprio nome esta nesta lista ("amount": {"value":
 # ...}): assim um eventual "balance": {"amount": ...} de saldo nunca e
 # confundido com o valor do lancamento.
+# Quantas vezes insistir numa pagina (token vencido no meio, 500/503 do banco)
+# e quanto esperar entre as tentativas - a documentacao pede espera crescente.
+TENTATIVAS = 3
+ESPERA_RETENTATIVA = 1.0
+
 NOMES_DE_VALOR = ("amount", "transaction_amount", "value", "event_amount", "valor", "transaction_value")
 
 
@@ -261,16 +266,28 @@ def token() -> str:
 # --------------------------------------------------------------------------
 
 
-def _buscar_pagina(conta: str, inicio: date, fim: date, pagina: int) -> dict:
-    url = f"{(settings.itau_extrato_base_url or '').rstrip('/')}/statements/{conta}"
-    params = {
-        "type": "current_account",
-        "start_date": inicio.isoformat(),
-        "end_date": fim.isoformat(),
-        "page_size": settings.itau_page_size,
-        "page": pagina,
-    }
-    for tentativa in (1, 2):
+def _buscar_pagina(conta: str, inicio: date, fim: date, pagina: int, link: str = "") -> tuple[dict, bool]:
+    """Uma pagina do extrato. Devolve (payload, veio_parcial).
+
+    `link` e o `pagination.links.next` da pagina anterior: o tutorial do banco
+    manda seguir esse link em vez de ir somando page, porque ele ja vem com
+    todos os parametros do jeito que a API espera.
+    """
+    base = (settings.itau_extrato_base_url or "").rstrip("/")
+    if link:
+        # O link vem relativo ("/statements/150000999999?page=2&..."), colado
+        # na mesma base. Parametros ja vao dentro dele.
+        url, params = f"{base}{link}" if link.startswith("/") else link, None
+    else:
+        url = f"{base}/statements/{conta}"
+        params = {
+            "type": "current_account",
+            "start_date": inicio.isoformat(),
+            "end_date": fim.isoformat(),
+            "page_size": settings.itau_page_size,
+            "page": pagina,
+        }
+    for tentativa in range(1, TENTATIVAS + 1):
         cabecalhos = {
             "Authorization": f"Bearer {token()}",
             "Accept": "application/json",
@@ -290,13 +307,22 @@ def _buscar_pagina(conta: str, inicio: date, fim: date, pagina: int) -> dict:
             # tenta uma unica vez (GET e seguro de repetir).
             limpar_token()
             continue
-        if resposta.status_code != 200:
+        # 500 e 503 sao do lado do banco: a documentacao manda repetir com
+        # espera crescente antes de desistir.
+        if resposta.status_code in (500, 503) and tentativa < TENTATIVAS:
+            time.sleep(ESPERA_RETENTATIVA * tentativa)
+            continue
+        # 206 e sucesso parcial. No extrato ele quer dizer que os lancamentos
+        # PENDENTES nao vieram - e esses a gente nem pede (show_pending_events
+        # fica em false). Lancamentos e saldo vem normais, entao recusar aqui
+        # deixaria a pessoa sem extrato por causa de um pedaco que nao usamos.
+        if resposta.status_code not in (200, 206):
             raise ErroItau(f"O Itaú não devolveu o extrato (HTTP {resposta.status_code}): {_resumo_http(resposta)}")
         try:
-            return resposta.json() or {}
+            return (resposta.json() or {}), resposta.status_code == 206
         except ValueError as exc:
             raise ErroItau("O Itaú respondeu algo que não é JSON no extrato") from exc
-    raise ErroItau("O Itaú recusou o token duas vezes seguidas ao buscar o extrato")
+    raise ErroItau("O Itaú não respondeu o extrato depois de tentar de novo")
 
 
 def _eventos(payload) -> list[dict]:
@@ -442,6 +468,24 @@ def _saldo_do_payload(payload) -> Optional[float]:
     return next(iter(por_tipo.values()), None)
 
 
+def _proxima_pagina(payload) -> str:
+    """O link da proxima pagina, como o tutorial do banco manda usar."""
+    dados = payload.get("data") if isinstance(payload, dict) else payload
+    if isinstance(dados, dict):
+        dados = [dados]
+    for bloco in dados or []:
+        if not isinstance(bloco, dict):
+            continue
+        paginacao = bloco.get("pagination")
+        if isinstance(paginacao, dict):
+            links = paginacao.get("links")
+            if isinstance(links, dict):
+                proxima = str(links.get("next") or "").strip()
+                if proxima:
+                    return proxima
+    return ""
+
+
 def _total_de_paginas(payload) -> Optional[int]:
     """Quantas paginas a API diz ter - evita adivinhar pelo tamanho da pagina."""
     dados = payload.get("data") if isinstance(payload, dict) else payload
@@ -485,14 +529,18 @@ def buscar_extrato(inicio: date, fim: date) -> dict:
 
     saldo = None
     total_de_paginas = None
+    proxima = ""
+    parcial = False
 
     for pagina in range(1, MAX_PAGINAS + 1):
-        payload = _buscar_pagina(conta, inicio, fim, pagina)
+        payload, veio_parcial = _buscar_pagina(conta, inicio, fim, pagina, proxima)
+        parcial = parcial or veio_parcial
         eventos = _eventos(payload)
         paginas = pagina
         if saldo is None:
             saldo = _saldo_do_payload(payload)
         total_de_paginas = _total_de_paginas(payload) or total_de_paginas
+        proxima = _proxima_pagina(payload)
         if not eventos:
             break
         novos = 0
@@ -542,7 +590,10 @@ def buscar_extrato(inicio: date, fim: date) -> dict:
                 "fitid": fitid, "data": dia, "valor": abs(fin.dinheiro(bruto)), "tipo": tipo,
                 "descricao": descricao,
             })
-        if total_de_paginas is not None:
+        if proxima:
+            if not novos:
+                break
+        elif total_de_paginas is not None:
             if pagina >= total_de_paginas:
                 break
         elif len(eventos) < tamanho or not novos:
@@ -563,6 +614,9 @@ def buscar_extrato(inicio: date, fim: date) -> dict:
         "eventos_lidos": eventos_lidos,
         "paginas": paginas,
         "tipos_de_evento": dict(tipos),
+        # O banco respondeu 206: o extrato veio, mas incompleto. Quem confere
+        # precisa saber antes de aplicar.
+        "parcial": parcial,
     }
 
 

@@ -669,3 +669,47 @@ def test_valor_do_exemplo_oficial_e_lido_sem_ajuste(credenciais, monkeypatch):
         "fitid": "104e2ce6-4b1d-3fba-adf0-694fde806773", "data": date(2024, 4, 24),
         "valor": 500.0, "tipo": "entrada", "descricao": "SISPAG PIX PIX",
     }]
+
+
+def test_resposta_parcial_206_nao_perde_o_extrato(credenciais, monkeypatch):
+    """206 no extrato quer dizer que os lançamentos PENDENTES não vieram - e
+    esses nem pedimos. Recusar deixaria a pessoa sem extrato à toa."""
+    falso = ligar(monkeypatch, [])
+    monkeypatch.setattr(falso, "get", lambda *a, **k: Resposta(206, {"data": [{
+        "events": [evento("a")],
+        "balances": [{"type": "saldo_disponivel", "amount": {"value": 10.0, "currency": "BRL"}}],
+        "pending_events": [{"error": "Service Unavailable"}],
+    }]}))
+
+    lido = itau.buscar_extrato(INICIO, FIM)
+
+    assert len(lido["transacoes"]) == 1 and lido["saldo"] == 10.0
+    assert lido["parcial"] is True
+
+
+def test_erro_do_banco_e_tentado_de_novo_antes_de_desistir(credenciais, monkeypatch):
+    """500 e 503 são do lado do banco: a documentação manda repetir."""
+    monkeypatch.setattr(itau, "ESPERA_RETENTATIVA", 0)
+    falso = ligar(monkeypatch, [])
+    respostas = [Resposta(503, None, "indisponivel"), Resposta(200, {"data": [{"events": [evento("a")]}]})]
+    monkeypatch.setattr(falso, "get", lambda *a, **k: respostas.pop(0))
+
+    lido = itau.buscar_extrato(INICIO, FIM)
+
+    assert len(lido["transacoes"]) == 1 and respostas == []
+
+
+def test_erro_que_insiste_vira_mensagem_e_nao_fica_em_laco(credenciais, monkeypatch):
+    monkeypatch.setattr(itau, "ESPERA_RETENTATIVA", 0)
+    falso = ligar(monkeypatch, [])
+    chamadas = []
+
+    def get(*a, **k):
+        chamadas.append(1)
+        return Resposta(503, None, "indisponivel")
+
+    monkeypatch.setattr(falso, "get", get)
+
+    with pytest.raises(itau.ErroItau):
+        itau.buscar_extrato(INICIO, FIM)
+    assert len(chamadas) == itau.TENTATIVAS

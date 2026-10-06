@@ -113,7 +113,9 @@ class Settings(BaseSettings):
     # A documentacao mostra page_size 8000 e 100. 100 e o tamanho seguro: com
     # pagina grande um mes inteiro vem numa resposta so, mas o banco nao
     # garante isso em lugar nenhum - o servico pagina de qualquer jeito.
-    itau_page_size: int = 100
+    # 8000 e o maximo que a API aceita, e e o que a propria documentacao
+    # recomenda: 9.109 lancamentos cabem em 2 chamadas em vez de 92.
+    itau_page_size: int = 8000
 
     whatsapp_verify_token: str = ""
     whatsapp_access_token: str = ""
