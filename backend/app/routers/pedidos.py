@@ -11,10 +11,10 @@ from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from ..auth import exigir_tela, get_current_user, require_admin
+from ..auth import exigir_tela, get_current_user
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem, BaixaPedido, Cidade, Pedido
-from ..servicos import ocr, recuperar_pedidos, saldo_pedidos
+from ..servicos import ocr, saldo_pedidos
 
 # Quem usa estas rotas (levantado no frontend, em frontend/src/api/client.js):
 # - Pedidos (PedidosPage): a tela toda - lista, baixa, retirar, devolver, PDF;
@@ -352,17 +352,6 @@ def desfazer_baixa(baixa_id: int, db: Session = Depends(get_db)):
         return {"ok": True}
     db.refresh(pedido)
     return _lista(db, [pedido])[0]
-
-
-@router.post("/recuperar-do-whatsapp")
-def recuperar_do_whatsapp(aplicar: bool = Query(False), db: Session = Depends(get_db),
-                          usuario=Depends(require_admin)):
-    """Recria pedidos apagados sem querer, relendo os PDFs do WhatsApp.
-
-    Sem `aplicar`, so mostra o que entraria - e o mesmo cuidado do extrato:
-    conferir antes de gravar. Pedido que ainda existe nao e recriado.
-    """
-    return recuperar_pedidos.recuperar(db, aplicar=aplicar)
 
 
 @router.get("/conciliacao")
