@@ -78,6 +78,14 @@ function PuxarDoBsoft({ competencia, aoFechar, aoTrazer }) {
             {r.atualizados.length > 0 && `, ${r.atualizados.length} atualizada(s)`}
             {r.ja_existiam > 0 && ` · ${r.ja_existiam} já estavam no controle`}.
           </p>
+          {/* Linha de 0 t que o complemento criava antes: agora o valor dele
+              esta dentro da carga do CT-e original, entao a linha sai. */}
+          {r.removidos?.length > 0 && (
+            <Aviso>
+              {r.removidos.length === 1 ? "1 linha de complemento vai sair" : `${r.removidos.length} linhas de complemento vão sair`} do controle: o valor
+              {" "}{r.removidos.map((x) => `${x.ctes} (${brl(x.frete_empresa)}) entra no CT-e ${x.juntado_em}`).join("; ")}.
+            </Aviso>
+          )}
           {!feito && r.novos.length > 0 && (
             <Aviso tipo={r.motorista_a_completar ? "warning" : "info"}>
               Frete do motorista: {r.com_carta_frete} {r.com_carta_frete === 1 ? "carga veio" : "cargas vieram"} da autorização de abastecimento emitida pelo sistema
@@ -112,7 +120,18 @@ function PuxarDoBsoft({ competencia, aoFechar, aoTrazer }) {
                   <span>{c.data_emissao ? diaCurto(c.data_emissao) : "—"}</span>
                   <span><b>{c.motorista || "Sem motorista"}</b> · CT-e {c.ctes} · {c.fabrica} → {c.destino}{c.cancelado ? " · cancelado" : ""}</span>
                   <span>
-                    {toneladas(c.peso)} · frete {brl(c.frete_empresa)} · {c.cancelado ? "cancelado" : c.frete_motorista !== null ? `motorista ${brl(c.frete_motorista)}` : "motorista a completar"}
+                    {toneladas(c.peso)} · frete {brl(c.frete_empresa)} ·{" "}
+                    {/* Complemento nao tem viagem: nao faz sentido pedir motorista nele. */}
+                    {c.complemento_de ? `complemento do CT-e ${c.complemento_de}`
+                      : c.cancelado ? "cancelado" : c.frete_motorista !== null ? `motorista ${brl(c.frete_motorista)}` : "motorista a completar"}
+                    {c.complementos && !c.complemento_de && (
+                      <>
+                        <br />
+                        <small title="CT-e complementar só acrescenta valor ao CT-e original: soma no frete cobrado e não traz tonelada.">
+                          inclui complemento {c.complementos} de {brl(c.complemento_total)}
+                        </small>
+                      </>
+                    )}
                     {/* Carga CIF: o frete acima e o valor a receber. De onde ele saiu fica na
                         linha de baixo (<br/> quebra mesmo com a coluna em nowrap). */}
                     {c.desconto_icms_st > 0 && (
@@ -142,11 +161,23 @@ function PuxarDoBsoft({ competencia, aoFechar, aoTrazer }) {
   );
 }
 
-// Frete cobrado e o valor a receber do CT-e. Quando o tomador retem ICMS ST,
-// passar o mouse mostra de onde saiu o numero.
+// Frete cobrado e o valor a receber do CT-e. Quando o tomador retem ICMS ST -
+// ou quando entrou CT-e complementar - passar o mouse mostra de onde saiu o numero.
 function dicaDaColuna(coluna, carga) {
-  if (coluna.chave !== "frete_empresa" || !carga.desconto_icms_st) return undefined;
-  return `Valor a receber. Serviço no CT-e ${brl(carga.frete_servico_total)} − ICMS ST ${brl(carga.desconto_icms_st)}`;
+  if (coluna.chave !== "frete_empresa") return undefined;
+  const partes = [];
+  if (carga.complemento_total) partes.push(`Inclui ${brl(carga.complemento_total)} do CT-e complementar ${carga.complementos}`);
+  if (carga.desconto_icms_st) partes.push(`Valor a receber. Serviço no CT-e ${brl(carga.frete_servico_total)} − ICMS ST ${brl(carga.desconto_icms_st)}`);
+  return partes.join(". ") || undefined;
+}
+
+// Linha de complemento: o CT-e complementar so acrescenta valor a uma carga
+// que ja existe, entao a linha diz de onde veio o dinheiro em vez de parecer
+// uma carga de 0 t.
+function textoDoComplemento(carga) {
+  if (carga.complemento_de) return `complemento do CT-e ${carga.complemento_de}`;
+  if (!carga.complementos) return "";
+  return `inclui complemento ${carga.complementos}${carga.complemento_total ? ` de ${brl(carga.complemento_total)}` : ""}`;
 }
 
 function LinhaCarregamento({ carga, aberto, aoAbrir, children }) {
@@ -165,7 +196,7 @@ function LinhaCarregamento({ carga, aberto, aoAbrir, children }) {
             {carga.cancelado ? "Cancelado" : carga.motorista || "Sem motorista"}
             {carga.a_completar && <em className="fin-tag-completar" title={`Veio do Bsoft. Falta: ${carga.faltando.join(", ")}`}>falta {carga.faltando[0]}{carga.faltando.length > 1 ? ` +${carga.faltando.length - 1}` : ""}</em>}
           </strong>
-          <small>{[carga.ctes && `CT-e ${carga.ctes}`, rota, carga.cliente && `cliente ${carga.cliente}`, carga.contratante].filter(Boolean).join(" · ")}</small>
+          <small>{[carga.ctes && `CT-e ${carga.ctes}`, textoDoComplemento(carga), rota, carga.cliente && `cliente ${carga.cliente}`, carga.contratante].filter(Boolean).join(" · ")}</small>
           {!carga.cancelado && <Composicao totais={t} />}
         </span>
         <span className="fin-linha-carga-custos">
@@ -189,7 +220,8 @@ function LinhaCarregamento({ carga, aberto, aoAbrir, children }) {
           ) : (
             <>
               <Dinheiro valor={t.liquido} tamanho="s" />
-              <b className={`fin-margem ${saudeMargem(t.por_tonelada)}`}>{brl(t.por_tonelada)}/t</b>
+              {/* Sem tonelada nao ha sobra por tonelada (linha de complemento, por exemplo). */}
+              {t.por_tonelada !== null && <b className={`fin-margem ${saudeMargem(t.por_tonelada)}`}>{brl(t.por_tonelada)}/t</b>}
             </>
           )}
         </span>

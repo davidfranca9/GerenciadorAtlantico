@@ -565,6 +565,17 @@ class CarregamentoFinanceiro(Base):
     # um frete cobrado de 8.307,20. Sem ST, o desconto fica nulo.
     frete_servico_total: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
     desconto_icms_st: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    # CT-e complementar (tpCTe = 1) nao e viagem: so acrescenta valor a um CT-e
+    # que ja existe, por isso vem sem peso. `complementos` sao os numeros desses
+    # CT-e cujo valor JA ESTA dentro do frete_empresa_total e `complemento_total`
+    # e quanto do frete cobrado veio deles - serve pra tela dizer de onde saiu o
+    # dinheiro (no 5263/5264 entraram o 5265 de 400,00 e o 5266 de 200,00).
+    complementos: Mapped[str] = mapped_column(String(120), default="")
+    complemento_total: Mapped[Optional[float]] = mapped_column(_dinheiro(), nullable=True)
+    # So preenchido quando a LINHA e um complemento solto: o CT-e complementado
+    # ficou fora do mes sincronizado, entao o valor nao tinha onde somar e virou
+    # linha propria, apontando aqui o numero do CT-e original.
+    complemento_de: Mapped[str] = mapped_column(String(120), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

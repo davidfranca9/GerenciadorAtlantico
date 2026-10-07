@@ -117,6 +117,12 @@ def on_startup():
             # guardam o total do servico e o ICMS ST retido em carga CIF.
             conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS frete_servico_total NUMERIC(14, 2)"))
             conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS desconto_icms_st NUMERIC(14, 2)"))
+            # CT-e complementar: o valor dele soma na carga do CT-e original.
+            # Estas tres dizem quais complementos entraram, quanto do frete veio
+            # deles e, na linha solta, qual CT-e ela complementa.
+            conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS complementos VARCHAR(120) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS complemento_total NUMERIC(14, 2)"))
+            conn.execute(text("ALTER TABLE carregamentos_financeiros ADD COLUMN IF NOT EXISTS complemento_de VARCHAR(120) DEFAULT ''"))
             # operacoes_fiscais e tabela nova (criada pelo create_all); o indice
             # unico abaixo e a protecao contra emitir dois CT-e pra mesma carga.
             conn.execute(text(

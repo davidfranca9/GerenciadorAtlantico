@@ -6,6 +6,10 @@
   (vTPrest): em carga CIF o tomador retem o ICMS ST e paga a diferenca - foi
   o que o CT-e 5250 mostrou (servico 9.440,00, ST 1.132,80, a receber
   8.307,20). Sem ST os dois sao iguais e nada muda.
+  CT-e COMPLEMENTAR (tpCTe = 1) nao e viagem: so acrescenta valor a um CT-e
+  que ja existe - vem sem peso e aponta o complementado em infCTeComp/chCTe.
+  O valor dele soma na carga do CT-e original e o numero entra na lista
+  ("5263/5264" vira "5263/5264/5265/5266"), em vez de virar carga de 0 t.
   O XML de cancelamento, quando existe, marca a carga como cancelada.
 - Contrato de frete ("RECIBO DE FRETE"): os CT-es que ele cobre - e isso que
   junta "5005/5006" numa carga so. O VALOR do contrato nao e o pago ao
@@ -144,6 +148,35 @@ def _numero(texto) -> Optional[float]:
         return None
 
 
+# tpCTe do layout do CT-e: 0 normal, 1 complemento de valores, 2 anulacao de
+# valores, 3 substituto.
+TIPO_COMPLEMENTO = "1"
+
+
+def numero_da_chave(chave) -> str:
+    """Numero do CT-e dentro da chave de acesso (44 digitos, mesmo desenho da
+    NF-e): cUF(2) AAMM(4) CNPJ(14) mod(2) serie(3) nCT(9) tpEmis(1) cCT(8)
+    cDV(1) - o numero fica da 26a a 34a casa. E assim que da pra saber qual
+    CT-e um complemento complementa mesmo quando o original nao veio na
+    listagem do periodo (complemento emitido no mes seguinte)."""
+    digitos = re.sub(r"\D", "", str(chave or ""))
+    return digitos[25:34].lstrip("0") if len(digitos) == 44 else ""
+
+
+def _chave_complementada(raiz) -> str:
+    """Chave do CT-e complementado. A tag e `infCTeComp` no layout 4.00 e
+    `infCteComp` em outros, por isso a comparacao ignora maiuscula; dentro
+    dela vale qualquer texto de 44 digitos (chCTe nos XML que vimos)."""
+    for el in raiz.iter():
+        if _local(el.tag).lower() != "infctecomp":
+            continue
+        for filho in el.iter():
+            digitos = re.sub(r"\D", "", filho.text or "")
+            if len(digitos) == 44:
+                return digitos
+    return ""
+
+
 def ler_xml_cte(xml: str) -> dict:
     """Frete (o que se recebe), peso (t), destino e partes de um CT-e autorizado."""
     if not xml:
@@ -179,10 +212,16 @@ def ler_xml_cte(xml: str) -> dict:
     desconto = None
     if total_servico is not None and a_receber is not None and total_servico - a_receber > 0.005:
         desconto = round(total_servico - a_receber, 2)
+    tipo = _texto(ide, "tpCTe")
+    # Complemento: o CT-e complementado vem na chave de acesso, nao no numero.
+    chave_complementado = _chave_complementada(raiz) if tipo == TIPO_COMPLEMENTO else ""
     return {
         "numero": _texto(ide, "nCT"),
         "emissao": _texto(ide, "dhEmi")[:10],
-        "tipo": _texto(ide, "tpCTe"),
+        "tipo": tipo,
+        "complemento": tipo == TIPO_COMPLEMENTO,
+        "chave_complementado": chave_complementado,
+        "numero_complementado": numero_da_chave(chave_complementado),
         "municipio_fim": _texto(ide, "xMunFim"),
         "ibge_fim": _texto(ide, "cMunFim"),
         "uf_fim": _texto(ide, "UFFim"),
@@ -228,6 +267,67 @@ def _data(texto) -> Optional[date]:
         return None
 
 
+def _destino(lido: dict, cidades: dict) -> str:
+    """Cidade de destino pelo cadastro (acento certo); sem cadastro, o que veio no XML."""
+    cidade = cidades.get(lido.get("ibge_fim"))
+    if cidade:
+        return f"{cidade.nome} {cidade.uf}"
+    return " ".join(p for p in (nome_legivel(lido.get("municipio_fim", "")), lido.get("uf_fim", "")) if p)
+
+
+def _somar_complemento(carga: dict, numero: str, lido: dict) -> None:
+    """Joga o CT-e complementar na carga do CT-e complementado: o valor entra
+    no frete cobrado e o numero na lista de CT-e ("5263/5264/5265/5266").
+
+    O PESO nao muda - complemento so acrescenta dinheiro, a tonelada ja foi
+    contada no CT-e original. E justamente por isso que a sobra por tonelada
+    da carga passa a sair certa: antes o valor ficava numa linha de 0 t."""
+    carga["numeros"] = sorted(set(carga["numeros"]) | {numero}, key=int)
+    carga["ctes"] = "/".join(carga["numeros"])
+    carga["complementos"] = "/".join(sorted(set(re.findall(r"\d+", carga["complementos"])) | {numero}, key=int))
+    for campo, valor in (("frete_empresa_total", lido.get("valor_frete")),
+                         ("complemento_total", lido.get("valor_frete")),
+                         ("frete_servico_total", lido.get("valor_total_servico")),
+                         ("desconto_icms_st", lido.get("desconto_icms_st"))):
+        if valor:
+            carga[campo] = fin.dinheiro((carga.get(campo) or 0) + valor)
+
+
+def _carga_so_do_complemento(numero: str, lido: dict, doc: dict, original: str, cidades: dict, *, cancelado: bool) -> dict:
+    """Complemento que nao achou o CT-e original no periodo (o original e de
+    outro mes, ou o complemento foi cancelado).
+
+    Vira linha propria, no mes em que foi emitido, pra o dinheiro continuar na
+    conta - e com o frete do motorista ja em ZERO, porque complemento nao tem
+    viagem nova: quem puxou a carga foi pago no CT-e original. Assim a linha
+    nao fica pedindo motorista; ela se apresenta como o complemento que e."""
+    valor = lido.get("valor_frete")
+    return {
+        "numeros": [numero],
+        "ctes": numero,
+        "data_emissao": _data(doc.get("dtEmissao")) or _data(lido.get("emissao")),
+        "motorista": ((doc.get("dados_motorista") or {}).get("motorista") or "").strip().upper(),
+        "placa": (doc.get("dados_motorista") or {}).get("veiculo") or "",
+        "fabrica": nome_da_fabrica(lido.get("remetente") or doc.get("remetente")),
+        "cliente": " ".join(str(lido.get("destinatario") or doc.get("destinatario") or "").split()),
+        "destino": _destino(lido, cidades),
+        # Complemento nao traz tonelada: a carga ja foi pesada no CT-e original.
+        "peso": 0,
+        "frete_empresa_total": fin.dinheiro(valor) if valor is not None else None,
+        "frete_servico_total": fin.dinheiro(lido["valor_total_servico"]) if lido.get("valor_total_servico") is not None else None,
+        "desconto_icms_st": fin.dinheiro(lido["desconto_icms_st"]) if lido.get("desconto_icms_st") else None,
+        "frete_motorista_total": 0,
+        "carta_frete": None,
+        "valor_contrato": None,
+        "contrato": "",
+        "cancelado": cancelado,
+        "contratos_detalhe": [],
+        "complementos": numero,
+        "complemento_total": fin.dinheiro(valor) if valor is not None else None,
+        "complemento_de": original,
+    }
+
+
 def cargas_do_periodo(db: Session, inicio: date, fim: date) -> dict:
     """Le o Bsoft e devolve as cargas do periodo (uma por contrato de frete)."""
     ctes = _listar_periodo("/transporte/v1/conhecimentos", {"dataInicio": inicio.isoformat(), "dataFim": fim.isoformat()})
@@ -243,6 +343,16 @@ def cargas_do_periodo(db: Session, inicio: date, fim: date) -> dict:
     por_numero = {str(c["nro"]): c for c in ctes}
     lidos = {numero: ler_xml_cte((xmls.get(c["chaveAcesso"]) or {}).get("autorizacao")) for numero, c in por_numero.items()}
     cancelados = {numero for numero, c in por_numero.items() if (xmls.get(c["chaveAcesso"]) or {}).get("cancelamento")}
+    # Complemento nao e viagem: fica de fora da montagem das cargas e, no fim,
+    # o valor dele e somado na carga do CT-e que ele complementa.
+    complementos = {numero: lido for numero, lido in lidos.items() if lido.get("complemento")}
+    por_chave = {str(c.get("chaveAcesso")): numero for numero, c in por_numero.items()}
+    # Anulacao (tpCTe 2) e substituto (3) continuam entrando como carga normal,
+    # que e o que o sistema sempre fez. Sao raros e a regra de qual valor vale
+    # depende de como o Bsoft lista os dois: fica avisado no log pra conferir.
+    especiais = sorted(n for n, l in lidos.items() if l.get("tipo") in ("2", "3"))
+    if especiais:
+        logger.warning("CT-e de anulacao/substituto no periodo (conferir na mao): %s", ", ".join(especiais))
 
     # Todos os contratos que citam cada CT-e (pra conferencia do frete do motorista).
     contratos_do_cte: dict[str, list] = {}
@@ -250,7 +360,9 @@ def cargas_do_periodo(db: Session, inicio: date, fim: date) -> dict:
         for n in contrato.get("nrosCTe") or []:
             contratos_do_cte.setdefault(str(n), []).append(contrato)
 
-    grupos, usados = [], set()
+    # `usados` ja comeca com os complementos: nem o contrato de frete nem a
+    # sobra do fim transformam um complemento em carga.
+    grupos, usados = [], set(complementos)
     for contrato in sorted(contratos, key=lambda c: int(c["id"]) if str(c.get("id", "")).isdigit() else 0):
         numeros = [str(n) for n in contrato.get("nrosCTe") or [] if str(n) in por_numero and str(n) not in usados]
         if numeros:
@@ -269,10 +381,7 @@ def cargas_do_periodo(db: Session, inicio: date, fim: date) -> dict:
         primeiro = xml[0] if xml else {}
         valor = valores.get(str(contrato.get("id"))) if contrato else None
         motorista = ((docs[0].get("dados_motorista") or {}).get("motorista") or (contrato or {}).get("motorista") or "").strip().upper()
-        cidade = cidades.get(primeiro.get("ibge_fim"))
-        destino = f"{cidade.nome} {cidade.uf}" if cidade else " ".join(
-            p for p in (nome_legivel(primeiro.get("municipio_fim", "")), primeiro.get("uf_fim", "")) if p
-        )
+        destino = _destino(primeiro, cidades)
         pesos = [x.get("peso") for x in xml if x.get("peso")]
         fretes = [x.get("valor_frete") for x in xml if x.get("valor_frete") is not None]
         # Total do servico e desconto do ICMS ST somados do mesmo jeito que o
@@ -319,7 +428,25 @@ def cargas_do_periodo(db: Session, inicio: date, fim: date) -> dict:
             "contrato": str(contrato.get("numeroCF") or "") if contrato else "",
             "cancelado": all(n in cancelados for n in numeros),
             "contratos_detalhe": detalhe_contratos,
+            # Preenchidos logo abaixo, se esta carga tiver complemento.
+            "complementos": "", "complemento_total": None, "complemento_de": "",
         })
+
+    # Cada complemento no seu lugar. Quando a carga do CT-e complementado esta
+    # aqui, o valor soma nela; quando nao esta (original de outro mes) ou o
+    # complemento foi cancelado, ele vira linha propria marcada como
+    # complemento - o dinheiro nao some e nao vira carga fantasma de 0 t.
+    por_cte = {n: carga for carga in cargas for n in carga["numeros"]}
+    for numero in sorted(complementos, key=int):
+        lido = complementos[numero]
+        original = por_chave.get(lido.get("chave_complementado")) or lido.get("numero_complementado") or ""
+        carga = por_cte.get(original)
+        if carga is not None and numero not in cancelados:
+            _somar_complemento(carga, numero, lido)
+            continue
+        cargas.append(_carga_so_do_complemento(numero, lido, por_numero[numero], original, cidades,
+                                               cancelado=numero in cancelados))
+
     ligar_cartas_frete(db, cargas)
     return {"cargas": cargas, "ctes": len(por_numero), "contratos": len(contratos)}
 
@@ -361,7 +488,10 @@ def ligar_cartas_frete(db: Session, cargas: list[dict], dias: int = 5) -> None:
             cartas.append((carta, dia, valor))
     usadas: set[int] = set()
     for carga in sorted(cargas, key=lambda c: c["data_emissao"] or date.max):
-        if not carga["data_emissao"] or carga["cancelado"]:
+        # Linha de complemento solto nao procura carta: a viagem - e a carta
+        # dela - esta no CT-e original, e pegar uma carta aqui roubaria o frete
+        # do motorista da carga de verdade.
+        if not carga["data_emissao"] or carga["cancelado"] or carga.get("complemento_de"):
             continue
         placa = _so_letras_numeros(carga.get("placa"))
         candidatas = []
@@ -395,6 +525,9 @@ def _numeros_de(texto: str) -> set[str]:
 
 def _valores_da_carga(carga: dict) -> dict:
     return {
+        # A lista de CT-e entra nos valores por causa do complemento: a carga
+        # que era "5263/5264" vira "5263/5264/5265" quando ele chega.
+        "ctes": carga["ctes"],
         "data_emissao": carga["data_emissao"], "motorista": carga["motorista"], "fabrica": carga["fabrica"],
         "destino": carga["destino"], "cliente": carga["cliente"], "peso": carga["peso"],
         "frete_empresa_total": carga["frete_empresa_total"], "frete_motorista_total": carga["frete_motorista_total"],
@@ -402,6 +535,10 @@ def _valores_da_carga(carga: dict) -> dict:
         # Guardados pra conferir o frete cobrado: total do servico no CT-e e o
         # ICMS ST que o tomador retem. Nao entram em nenhuma soma.
         "frete_servico_total": carga.get("frete_servico_total"), "desconto_icms_st": carga.get("desconto_icms_st"),
+        # Complemento: quais CT-e complementares ja estao dentro do frete
+        # cobrado, quanto deles veio e, na linha solta, qual CT-e ela completa.
+        "complementos": carga.get("complementos") or "", "complemento_total": carga.get("complemento_total"),
+        "complemento_de": carga.get("complemento_de") or "",
     }
 
 
@@ -414,6 +551,8 @@ def _resumo(carga: dict) -> dict:
         "cancelado": carga["cancelado"], "sem_contrato": not carga["contrato"],
         "carta_frete": carga.get("carta_frete"), "valor_contrato": carga.get("valor_contrato"),
         "contratos": carga.get("contratos_detalhe", []),
+        "complementos": carga.get("complementos") or "", "complemento_total": carga.get("complemento_total"),
+        "complemento_de": carga.get("complemento_de") or "",
     }
 
 
@@ -428,17 +567,34 @@ def sincronizar(db: Session, competencia: str, *, aplicar: bool = False, lido: O
     lido = lido if lido is not None else cargas_do_periodo(db, inicio, fim)
     existentes = db.query(CarregamentoFinanceiro).all()
 
-    novos, atualizados, divergencias = [], [], []
+    novos, atualizados, divergencias, removidos = [], [], [], []
     ja_existiam = 0
     try:
         for carga in lido["cargas"]:
             if not carga["data_emissao"] or fin.competencia_de(carga["data_emissao"]) != competencia:
                 continue
             numeros = set(carga["numeros"])
-            alvo = next((c for c in existentes if _numeros_de(c.ctes) & numeros), None)
+            so_complementos = _numeros_de(carga.get("complementos"))
+            # A linha da carga e a do CT-e da VIAGEM: o numero do complemento
+            # so vale pra achar a linha quando ela e do proprio complemento
+            # (senao a carga inteira cairia na linha de 0 t gravada antes).
+            principais = numeros - so_complementos
+            alvo = (next((c for c in existentes if _numeros_de(c.ctes) & principais), None)
+                    or next((c for c in existentes if _numeros_de(c.ctes) & numeros), None))
+            # Complemento que a versao antiga gravou como carga sozinha (linha
+            # de 0 t pedindo motorista) sai de cena agora que o valor dele esta
+            # dentro da carga do CT-e original - senao o dinheiro contaria duas vezes.
+            for antiga in [c for c in existentes
+                           if c is not alvo and c.origem == "bsoft" and _numeros_de(c.ctes)
+                           and _numeros_de(c.ctes) <= so_complementos]:
+                existentes.remove(antiga)
+                removidos.append({"ctes": antiga.ctes, "frete_empresa": fin.dinheiro(antiga.frete_empresa_total),
+                                  "juntado_em": carga["ctes"]})
+                db.delete(antiga)
             valores = _valores_da_carga(carga)
             if alvo is None:
-                nova = CarregamentoFinanceiro(competencia=competencia, ctes=carga["ctes"], origem="bsoft",
+                # `ctes` vem dentro de `valores` (o complemento muda a lista).
+                nova = CarregamentoFinanceiro(competencia=competencia, origem="bsoft",
                                               frete_motorista_ton=None, **valores)
                 db.add(nova)
                 existentes.append(nova)
@@ -450,6 +606,19 @@ def sincronizar(db: Session, competencia: str, *, aplicar: bool = False, lido: O
                 for campo, valor in valores.items():
                     # Frete do motorista digitado na tela nao e trocado.
                     if campo == "frete_motorista_total" and (alvo.frete_motorista_total is not None or alvo.frete_motorista_ton is not None):
+                        continue
+                    # A lista de CT-e so cresce (o complemento que chegou
+                    # depois entra na carga); nunca perde numero por causa de
+                    # um agrupamento diferente.
+                    if campo == "ctes" and not _numeros_de(valor) >= _numeros_de(alvo.ctes):
+                        continue
+                    # O rotulo do complemento anda junto com o valor: se o CT-e
+                    # complementar for cancelado depois, a linha tem que perder
+                    # os dois - por isso estes dois aceitam vazio.
+                    if campo in ("complementos", "complemento_total"):
+                        if getattr(alvo, campo) != valor:
+                            setattr(alvo, campo, valor)
+                            mudou = True
                         continue
                     if valor not in (None, "") and getattr(alvo, campo) != valor:
                         setattr(alvo, campo, valor)
@@ -502,9 +671,12 @@ def sincronizar(db: Session, competencia: str, *, aplicar: bool = False, lido: O
         "cargas_no_bsoft": len([c for c in lido["cargas"] if c["data_emissao"] and fin.competencia_de(c["data_emissao"]) == competencia]),
         "novos": novos,
         "atualizados": atualizados,
+        # Linhas de 0 t que eram complemento e agora estao dentro da carga.
+        "removidos": removidos,
         "ja_existiam": ja_existiam,
         "divergencias": divergencias,
         "sem_contrato": sum(1 for c in novos if c["sem_contrato"]),
         "com_carta_frete": sum(1 for c in novos if c["carta_frete"]),
-        "motorista_a_completar": sum(1 for c in novos if not c["carta_frete"] and not c["cancelado"]),
+        # Linha de complemento nao conta: ela nao tem viagem nem motorista.
+        "motorista_a_completar": sum(1 for c in novos if not c["carta_frete"] and not c["cancelado"] and not c["complemento_de"]),
     }

@@ -401,7 +401,9 @@ def totais_carregamento(c: CarregamentoFinanceiro) -> dict:
 
 
 def falta_frete_do_motorista(c: CarregamentoFinanceiro) -> bool:
-    return (c.origem == "bsoft" and not c.cancelado
+    # Complemento nao tem viagem nova: o motorista foi pago no CT-e original,
+    # entao a linha nunca fica "esperando o motorista" (e nem sai do lucro).
+    return (c.origem == "bsoft" and not c.cancelado and not c.complemento_de
             and c.frete_motorista_ton is None and c.frete_motorista_total is None)
 
 
@@ -431,6 +433,11 @@ def carregamento_para_dict(c: CarregamentoFinanceiro) -> dict:
         # tomador - so pra conferir com o DACTE; nao entram em soma nenhuma.
         "frete_servico_total": dinheiro(c.frete_servico_total) if c.frete_servico_total is not None else None,
         "desconto_icms_st": dinheiro(c.desconto_icms_st) if c.desconto_icms_st is not None else None,
+        # CT-e complementar: numeros ja somados no frete cobrado, quanto deles
+        # veio e - so na linha que E um complemento solto - o CT-e que ela completa.
+        "complementos": c.complementos or "",
+        "complemento_total": dinheiro(c.complemento_total) if c.complemento_total is not None else None,
+        "complemento_de": c.complemento_de or "",
         **_o_que_falta(c),
         "totais": totais_carregamento(c),
     }
@@ -439,7 +446,9 @@ def carregamento_para_dict(c: CarregamentoFinanceiro) -> dict:
 def _o_que_falta(c: CarregamentoFinanceiro) -> dict:
     """Carga que veio do Bsoft e ainda nao tem o que so a operacao sabe."""
     faltando = []
-    if c.origem == "bsoft" and not c.cancelado:
+    # Linha de CT-e complementar nao tem motorista, agenciamento nem
+    # contratante proprios: tudo isso e da carga do CT-e original.
+    if c.origem == "bsoft" and not c.cancelado and not c.complemento_de:
         if c.frete_motorista_ton is None and c.frete_motorista_total is None:
             faltando.append("frete do motorista")
         if c.agenciamento_ton is None and c.agenciamento_total is None:
