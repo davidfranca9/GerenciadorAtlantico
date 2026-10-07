@@ -194,6 +194,10 @@ export async function importarPedidoPdf(file, supplier) {
   return res.json();
 }
 
+export function recuperarPedidosDoWhatsapp(aplicar = false) {
+  return request(`/pedidos/recuperar-do-whatsapp?aplicar=${aplicar}`, { method: "POST" });
+}
+
 export function excluirPedido(id) {
   return request(`/pedidos/${id}`, { method: "DELETE" });
 }

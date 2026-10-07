@@ -164,6 +164,8 @@ export default function PedidosPage() {
   const [ordenacao, setOrdenacao] = useState("numero"); // "numero" | "alfabetica"
 
   const [importSupplier, setImportSupplier] = useState("AFL");
+  const [recuperando, setRecuperando] = useState(false);
+  const [recuperacao, setRecuperacao] = useState(null);
   const [importando, setImportando] = useState(false);
   const [status, setStatus] = useState("");
 
@@ -187,6 +189,36 @@ export default function PedidosPage() {
   useEffect(() => {
     carregar();
   }, []);
+
+  // Pedido apagado sem querer: o PDF que o cliente mandou fica guardado na
+  // mensagem do WhatsApp, entao da pra reler e recriar. Mostra antes o que
+  // voltaria - gravar sem conferir e o que causou o problema.
+  async function verRecuperacao() {
+    setRecuperando(true);
+    setError("");
+    try {
+      setRecuperacao(await api.recuperarPedidosDoWhatsapp(false));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRecuperando(false);
+    }
+  }
+
+  async function confirmarRecuperacao() {
+    setRecuperando(true);
+    setError("");
+    try {
+      const feito = await api.recuperarPedidosDoWhatsapp(true);
+      setRecuperacao(null);
+      setStatus(`${feito.quantidade} pedido(s) recuperado(s) do WhatsApp.`);
+      await carregar();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRecuperando(false);
+    }
+  }
 
   async function handleImportar(e) {
     const files = Array.from(e.target.files || []);
@@ -407,10 +439,54 @@ export default function PedidosPage() {
             {importando ? "Importando..." : <><Icon name="upload" size={16} />Importar Pedidos (PDF)</>}
             <input type="file" accept=".pdf" multiple onChange={handleImportar} disabled={importando} style={{ display: "none" }} />
           </label>
+          <button type="button" className="btn-secondary" disabled={recuperando} onClick={verRecuperacao} title="Relê os PDFs recebidos no WhatsApp e traz de volta pedido apagado sem querer">
+            {recuperando ? "Procurando..." : <><Icon name="refresh" size={16} />Recuperar do WhatsApp</>}
+          </button>
         </div>
       </div>
 
       {status && <div className="inline-alert info"><span className="status-dot" />{status}</div>}
+      {recuperacao && (
+        <div className="card pedidos-recuperacao">
+          <h3>Recuperar pedidos do WhatsApp</h3>
+          <p>
+            Li {recuperacao.mensagens_lidas} PDF(s) recebido(s) no WhatsApp.
+            {" "}<b>{recuperacao.quantidade} produto(s) voltariam</b>
+            {recuperacao.ja_estavam > 0 && ` · ${recuperacao.ja_estavam} já estão no sistema e não serão duplicados`}.
+          </p>
+          {recuperacao.quantidade > 0 && (
+            <div className="pedidos-recuperacao-lista">
+              {recuperacao.recuperados.map((r, i) => (
+                <div key={`${r.mensagem_id}-${i}`}>
+                  <strong>{r.contrato || "sem número"}</strong>
+                  <span>{r.produto}</span>
+                  <span>{r.cliente}</span>
+                  <span>{r.cidade || "sem cidade"}</span>
+                  <span>{formatTon(r.toneladas)} t</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {recuperacao.faltando_fora_do_whatsapp?.length > 0 && (
+            <div className="inline-alert warning">
+              {recuperacao.faltando_fora_do_whatsapp.length} pedido(s) aparecem em agendamentos mas não vieram pelo WhatsApp
+              — esses precisam ser importados de novo pelo PDF:{" "}
+              {recuperacao.faltando_fora_do_whatsapp.map((f) => `${f.pedido} (${f.produto})`).join(" · ")}
+            </div>
+          )}
+          {recuperacao.ilegiveis?.length > 0 && (
+            <div className="inline-alert warning">
+              {recuperacao.ilegiveis.length} arquivo(s) não deu para ler: {recuperacao.ilegiveis.map((i) => i.arquivo || `mensagem ${i.mensagem_id}`).join(", ")}
+            </div>
+          )}
+          <div className="pedidos-recuperacao-acoes">
+            <button type="button" className="btn-secondary" onClick={() => setRecuperacao(null)}>Fechar</button>
+            <button type="button" className="btn-primary" disabled={recuperando || !recuperacao.quantidade} onClick={confirmarRecuperacao}>
+              {recuperando ? "Recuperando..." : `Recuperar ${recuperacao.quantidade} pedido(s)`}
+            </button>
+          </div>
+        </div>
+      )}
       {retirado && (
         <div className="inline-alert info pedido-retirado-aviso">
           <span className="status-dot" />
