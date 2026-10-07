@@ -28,6 +28,10 @@ class UsuarioUpdateIn(BaseModel):
     paginas_liberadas: str | None = None
 
 
+class SenhaIn(BaseModel):
+    password: str
+
+
 def _telas_para_gravar(texto: str | None) -> str:
     """Aceita so rota que existe e que pode ser marcada (auth.GRUPOS_TELAS).
 
@@ -83,6 +87,25 @@ def criar_usuario(payload: UsuarioIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     return _to_dict(user)
+
+
+@router.post("/{user_id}/senha")
+def trocar_senha(user_id: int, payload: SenhaIn, db: Session = Depends(get_db)):
+    """Administrador define uma senha nova pra alguem que perdeu a dele.
+
+    Nao pede a senha atual de proposito: quem esqueceu nao tem como informar,
+    e era por isso que o usuario ficava de fora ate alguem mexer no banco. A
+    senha nova nao e devolvida nem registrada em log - ela vai pra pessoa pelo
+    canal que o administrador escolher.
+    """
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Usuario nao encontrado")
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="A senha deve ter ao menos 8 caracteres")
+    user.hashed_password = hash_password(payload.password)
+    db.commit()
+    return {"ok": True, "email": user.email}
 
 
 @router.patch("/{user_id}")

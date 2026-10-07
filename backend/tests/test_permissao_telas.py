@@ -324,3 +324,33 @@ def test_coluna_nula_vale_a_lista_antiga_se_a_migracao_nao_rodou():
     # Coluna vazia continua sendo "nenhuma aba" - usuario novo.
     novo = SimpleNamespace(role="operador", paginas_liberadas="", paginas_bloqueadas="")
     assert auth.telas_liberadas(novo) == set(auth.TELAS_SEMPRE_LIBERADAS)
+
+
+def test_administrador_troca_a_senha_de_quem_esqueceu(db_usuarios):
+    """Quem perde a senha nao tem como informar a atual, que e o que a troca
+    normal pede - antes so mexendo no banco."""
+    from app.auth import verify_password
+
+    http = cliente_admin(db_usuarios)
+    alvo = http.post("/admin/usuarios", json={
+        "email": "gleidson@atlanticofertlog.com.br", "password": "senhaantiga1", "name": "Gleidson", "role": "user",
+    }).json()
+
+    resposta = http.post(f"/admin/usuarios/{alvo['id']}/senha", json={"password": "senhanova123"})
+
+    assert resposta.status_code == 200
+    # A senha nova nao volta na resposta.
+    assert "senhanova123" not in resposta.text
+    usuario = db_usuarios.query(User).filter(User.id == alvo["id"]).first()
+    assert verify_password("senhanova123", usuario.hashed_password)
+    assert not verify_password("senhaantiga1", usuario.hashed_password)
+
+
+def test_senha_curta_e_usuario_inexistente_sao_recusados(db_usuarios):
+    http = cliente_admin(db_usuarios)
+    alvo = http.post("/admin/usuarios", json={
+        "email": "curta@atlanticofertlog.com.br", "password": "senhaantiga1", "role": "user",
+    }).json()
+
+    assert http.post(f"/admin/usuarios/{alvo['id']}/senha", json={"password": "1234"}).status_code == 400
+    assert http.post("/admin/usuarios/9999/senha", json={"password": "senhanova123"}).status_code == 404

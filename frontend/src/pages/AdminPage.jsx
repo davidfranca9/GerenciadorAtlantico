@@ -13,6 +13,11 @@ export default function AdminPage() {
   const [papel, setPapel] = useState("user");
   const [error, setError] = useState("");
   const [permissoesAbertoId, setPermissoesAbertoId] = useState(null);
+  // Troca de senha feita pelo administrador: quem esqueceu a dele nao tem
+  // como informar a atual, que e o que a troca normal pede.
+  const [senhaAbertaId, setSenhaAbertaId] = useState(null);
+  const [senhaNova, setSenhaNova] = useState("");
+  const [aviso, setAviso] = useState("");
   const [salvando, setSalvando] = useState(false);
 
   async function carregar() {
@@ -27,6 +32,20 @@ export default function AdminPage() {
     carregar();
     api.adminTelas().then((dados) => setGrupos(dados.grupos || [])).catch((err) => setError(err.message));
   }, []);
+
+  async function handleTrocarSenha(e, usuario) {
+    e.preventDefault();
+    setError("");
+    setAviso("");
+    try {
+      await api.adminTrocarSenha(usuario.id, senhaNova);
+      setSenhaAbertaId(null);
+      setSenhaNova("");
+      setAviso(`Senha de ${usuario.email} trocada. Passe a nova senha para a pessoa e peça que ela troque depois, em Segurança.`);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
 
   async function handleCriar(e) {
     e.preventDefault();
@@ -134,6 +153,7 @@ export default function AdminPage() {
       </form>
 
       {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
+      {aviso && <div className="inline-alert info"><span className="status-dot" />{aviso}</div>}
 
       <div className="card">
         <table>
@@ -168,8 +188,34 @@ export default function AdminPage() {
                         {permissoesAbertoId === u.id ? "Fechar" : "Permissões"}
                       </button>
                     )}
+                    <button className="btn-secondary" onClick={() => { setSenhaAbertaId(senhaAbertaId === u.id ? null : u.id); setSenhaNova(""); }}>
+                      {senhaAbertaId === u.id ? "Fechar" : "Trocar senha"}
+                    </button>
                   </td>
                 </tr>
+                {senhaAbertaId === u.id && (
+                  <tr>
+                    <td colSpan={6}>
+                      <form onSubmit={(e) => handleTrocarSenha(e, u)} style={{ display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap" }}>
+                        <div className="field" style={{ margin: 0 }}>
+                          <label>Nova senha de {u.email}</label>
+                          <input
+                            type="text"
+                            value={senhaNova}
+                            onChange={(e) => setSenhaNova(e.target.value)}
+                            placeholder="ao menos 8 caracteres"
+                            autoComplete="new-password"
+                            autoFocus
+                          />
+                        </div>
+                        <button className="btn-primary" type="submit" disabled={senhaNova.trim().length < 8}>Salvar senha</button>
+                        <small style={{ color: "var(--muted)" }}>
+                          A senha aparece em texto pra você copiar e passar para a pessoa. Ela pode trocar depois, em Segurança.
+                        </small>
+                      </form>
+                    </td>
+                  </tr>
+                )}
                 {permissoesAbertoId === u.id && (
                   <tr>
                     <td colSpan={6}>

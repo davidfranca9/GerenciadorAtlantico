@@ -255,6 +255,10 @@ export function adminAtualizarUsuario(id, payload) {
   return request(`/admin/usuarios/${id}`, { method: "PATCH", body: payload });
 }
 
+export function adminTrocarSenha(id, password) {
+  return request(`/admin/usuarios/${id}/senha`, { method: "POST", body: { password } });
+}
+
 // As abas do sistema nos grupos da barra lateral. Vem do backend porque e a
 // mesma lista que decide o acesso: aba nova aparece aqui sozinha.
 export function adminTelas() {
