@@ -260,18 +260,13 @@ CORPO_CORRECAO = """
 """
 
 
-def corrigir_valor(db: Session, carta_id: int, valor: str, motivo: str = "", usuario: str = "",
-                   avisar: bool = True, **etapas) -> CartaFreteEnviada:
+def corrigir_valor(db: Session, carta_id: int, valor: str, motivo: str = "", usuario: str = "", **etapas) -> CartaFreteEnviada:
     """Troca o valor do frete de uma autorizacao ja enviada.
 
     O posto ja recebeu o valor antigo, entao duas coisas acontecem juntas: a
     correcao fica registrada (quem, quando e por que) e um e-mail novo sai NA
     MESMA CONVERSA do primeiro, pra quem recebeu ler o acerto logo abaixo da
     autorizacao errada - e nao num e-mail solto que ninguem liga ao outro.
-
-    `avisar=False` corrige so o nosso registro, sem e-mail: as vezes o numero
-    saiu errado aqui e o posto sempre teve o certo - nesse caso o aviso so
-    confundiria quem recebe. A correcao fica registrada do mesmo jeito.
     """
     registro = db.get(CartaFreteEnviada, carta_id)
     if registro is None:
@@ -304,15 +299,6 @@ def corrigir_valor(db: Session, carta_id: int, valor: str, motivo: str = "", usu
     )
     db.add(correcao)
     corpo = CORPO_CORRECAO.format(anterior=anterior or "—", novo=novo)
-    if not avisar:
-        # So o nosso registro muda. A correcao fica guardada sem Message-ID,
-        # que e como a tela sabe que ninguem foi avisado.
-        registro.valor_frete = novo
-        registro.dados = json.dumps(dados, ensure_ascii=False)
-        db.commit()
-        db.refresh(registro)
-        return registro
-
     para = [d.strip() for d in (registro.destinatarios or "").split(",") if d.strip()] or _destinatarios(db)
     try:
         # Sem o Message-ID do original (autorizacao antiga, de antes deste

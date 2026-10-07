@@ -41,14 +41,13 @@ const SITUACAO = {
 function FormCorrecao({ carta, ocupado, aoSalvar, aoCancelar }) {
   const [valor, setValor] = useState(carta.valor_frete || "");
   const [motivo, setMotivo] = useState("");
-  const [avisar, setAvisar] = useState(true);
   const [erro, setErro] = useState("");
 
   async function salvar(e) {
     e.preventDefault();
     setErro("");
     try {
-      await aoSalvar(valor.trim(), motivo.trim(), avisar);
+      await aoSalvar(valor.trim(), motivo.trim());
     } catch (err) {
       setErro(err.message);
     }
@@ -64,21 +63,13 @@ function FormCorrecao({ carta, ocupado, aoSalvar, aoCancelar }) {
         <label>Motivo (opcional)</label>
         <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: valor acertado com o posto" />
       </div>
-      <label className="carta-correcao-avisar">
-        <input type="checkbox" checked={avisar} onChange={(e) => setAvisar(e.target.checked)} />
-        Avisar o posto por e-mail
-      </label>
       <div className="carta-correcao-acoes">
         <button type="button" className="btn-secondary" onClick={aoCancelar}>Cancelar</button>
         <button type="submit" className="btn-primary" disabled={ocupado}>
-          {ocupado ? "Salvando..." : avisar ? "Corrigir e reenviar" : "Corrigir só aqui"}
+          {ocupado ? "Enviando..." : "Corrigir e reenviar"}
         </button>
       </div>
-      <small>
-        {avisar
-          ? "O acerto vai por e-mail na mesma conversa em que a autorização foi enviada."
-          : "Só o nosso registro muda — o posto continua com o valor que recebeu."}
-      </small>
+      <small>O acerto vai por e-mail na mesma conversa em que a autorização foi enviada.</small>
       {erro && <div className="inline-alert error">{erro}</div>}
     </form>
   );
@@ -170,15 +161,11 @@ export default function CartaFretePage() {
     }, `Envio agendado para ${rotulo}.`);
   }
 
-  async function handleCorrigir(carta, valor, motivo, avisar) {
+  async function handleCorrigir(carta, valor, motivo) {
     setStatus("");
-    const atualizada = await api.corrigirValorCartaFrete(carta.id, valor, motivo, avisar);
+    const atualizada = await api.corrigirValorCartaFrete(carta.id, valor, motivo);
     setCorrigindo(null);
-    setStatus(
-      avisar
-        ? `Correção enviada: o valor de ${carta.condutor} passou para ${atualizada.valor_frete}.`
-        : `Valor de ${carta.condutor} corrigido para ${atualizada.valor_frete} (sem aviso ao posto).`
-    );
+    setStatus(`Correção enviada: o valor de ${carta.condutor} passou para ${atualizada.valor_frete}.`);
     await carregarEnviadas();
   }
 
@@ -338,7 +325,7 @@ export default function CartaFretePage() {
                               carta={c}
                               ocupado={ocupado}
                               aoCancelar={() => setCorrigindo(null)}
-                              aoSalvar={(valor, motivo, avisar) => handleCorrigir(c, valor, motivo, avisar)}
+                              aoSalvar={(valor, motivo) => handleCorrigir(c, valor, motivo)}
                             />
                           )}
                         </td>
