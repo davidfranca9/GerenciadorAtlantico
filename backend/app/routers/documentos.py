@@ -459,6 +459,8 @@ def cancelar_carta_frete(carta_id: int, db: Session = Depends(get_db)):
 class CorrecaoCartaFreteRequest(BaseModel):
     valor_frete: str
     motivo: str = ""
+    # Falso corrige so o nosso registro, sem e-mail pro posto.
+    avisar: bool = True
 
 
 @router.post("/cartas-frete/{carta_id}/corrigir-valor")
@@ -473,7 +475,7 @@ def corrigir_valor_carta_frete(
     try:
         registro = carta_frete.corrigir_valor(
             db, carta_id, payload.valor_frete, payload.motivo,
-            usuario=getattr(usuario, "email", "") or "",
+            usuario=getattr(usuario, "email", "") or "", avisar=payload.avisar,
         )
     except LookupError:
         raise HTTPException(status_code=404, detail="Autorização de abastecimento não encontrada")

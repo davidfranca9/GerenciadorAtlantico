@@ -367,3 +367,5 @@ span.resposta-fabrica-chip:hover{background:transparent}
 .carta-correcao-acoes{display:flex;gap:8px}
 .carta-correcao>small{flex-basis:100%;color:var(--muted);font-size:11.5px}
 .carta-teste{margin-left:6px;padding:1px 6px;border-radius:999px;border:1px solid var(--muted);color:var(--muted);font-size:9.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase}
+.carta-correcao-avisar{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text)}
+.carta-correcao-avisar input{width:15px;height:15px}

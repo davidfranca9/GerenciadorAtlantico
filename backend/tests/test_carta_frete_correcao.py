@@ -215,3 +215,22 @@ def test_envio_de_teste_nao_vira_fatura_a_pagar(db, etapas):
 
     assert [i["motorista"] for i in previsao["itens"]] == ["DE VERDADE"]
     sessao.close()
+
+
+def test_corrigir_so_no_sistema_nao_manda_e_mail(db, etapas):
+    """As vezes o numero saiu errado aqui e o posto sempre teve o certo: o
+    aviso so confundiria quem recebe."""
+    correio = Correio()
+    registro = enviada(db, correio, etapas)
+
+    atualizado = carta_frete.corrigir_valor(db, registro.id, "9.600,00", motivo="valor digitado errado",
+                                            avisar=False, enviar=correio, **etapas)
+
+    assert atualizado.valor_frete == "9.600,00"
+    # Nenhum e-mail novo saiu: so o do envio original.
+    assert len(correio.enviados) == 1
+    correcao = atualizado.correcoes[0]
+    assert (correcao.valor_anterior, correcao.valor_novo) == ("1.200,00", "9.600,00")
+    assert correcao.motivo == "valor digitado errado"
+    # Sem Message-ID e sem erro: foi correcao sem aviso, nao e-mail que falhou.
+    assert correcao.email_message_id == "" and correcao.erro == ""
