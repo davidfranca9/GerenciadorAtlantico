@@ -64,6 +64,12 @@ def gerar_oc_pdf_html(
         for p in (produtos or [])
     ]
     peso_total = sum(_safe_float(p.get("toneladas")) for p in (produtos or []))
+    # Sem motorista a O.C. saia com a linha "Motorista:" em branco. Enquanto
+    # ele nao existe, quem identifica a carga pra fabrica e o cliente - o
+    # mesmo criterio que o nome do arquivo e o assunto do e-mail ja usam.
+    clientes = list(dict.fromkeys(
+        str(p.get("cliente") or "").strip() for p in (produtos or []) if str(p.get("cliente") or "").strip()
+    ))
 
     blank_rows = range(max(0, MIN_ROWS_PRINT - len(produtos_ctx)))
 
@@ -78,6 +84,7 @@ def gerar_oc_pdf_html(
         peso_total=_format_peso_documento(peso_total),
         motorista_doc=cpf,
         motorista_nome=nome,
+        cliente=" / ".join(clientes),
         cnh=cnh,
         fone=fone,
         placa1=placa1,

@@ -292,11 +292,15 @@
 
   <div class="section-header">
     <svg class="outline-icon" viewBox="0 0 24 24" fill="none" stroke="#3f722a" stroke-width="2"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c1.2-4 4-6 7-6s5.8 2 7 6"/></svg>
-    <span class="section-title">Dados do Motorista</span>
+    <span class="section-title">{% if motorista_nome %}Dados do Motorista{% else %}Motorista a definir{% endif %}</span>
     <div class="stem"></div>
   </div>
   <div class="driver-grid">
+    {% if motorista_nome %}
     <div><span class="field-label">Motorista:</span> {{ motorista_doc }} &ndash; {{ motorista_nome }}</div>
+    {% else %}
+    <div><span class="field-label">Cliente:</span> {{ cliente }}</div>
+    {% endif %}
     <div><span class="field-label">CNH:</span> {{ cnh }}</div>
     <div><span class="field-label">Fone:</span> {{ fone }}</div>
   </div>
