@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from ..auth import exigir_tela
@@ -37,12 +38,20 @@ def resumo_dashboard(
     dias = _dias_da_semana(base)
     datas_str = [d.strftime("%d/%m/%Y") for d in dias]
 
-    agendamentos = db.query(Agendamento).filter(Agendamento.loading_date.in_(datas_str)).all()
+    # O caminhao carrega no dia que a fabrica CONFIRMOU. Contar pela data
+    # solicitada escondia o agendamento: pedido pra 15/10 e confirmado pra
+    # 20/10 nao aparecia em nenhuma das duas semanas.
+    dia_do_carregamento = case(
+        (Agendamento.data_agendada.isnot(None) & (Agendamento.data_agendada != ""), Agendamento.data_agendada),
+        else_=Agendamento.loading_date,
+    )
+    agendamentos = db.query(Agendamento).filter(dia_do_carregamento.in_(datas_str)).all()
     peso_por_dia = {ds: 0.0 for ds in datas_str}
     pedidos_por_dia = {ds: 0 for ds in datas_str}
     for a in agendamentos:
-        peso_por_dia[a.loading_date] = peso_por_dia.get(a.loading_date, 0) + (a.total_tons or 0)
-        pedidos_por_dia[a.loading_date] = pedidos_por_dia.get(a.loading_date, 0) + 1
+        dia = (a.data_agendada or "").strip() or a.loading_date
+        peso_por_dia[dia] = peso_por_dia.get(dia, 0) + (a.total_tons or 0)
+        pedidos_por_dia[dia] = pedidos_por_dia.get(dia, 0) + 1
 
     dias_semana = [
         {

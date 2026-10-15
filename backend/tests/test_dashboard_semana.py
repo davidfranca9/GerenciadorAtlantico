@@ -77,3 +77,29 @@ def test_qualquer_dia_da_semana_serve_de_referencia(cliente):
 
 def test_data_invalida_e_recusada(cliente):
     assert cliente.get("/dashboard/resumo", params={"semana": "semana que vem"}).status_code == 400
+
+
+def test_vale_a_data_confirmada_pela_fabrica(db, cliente):
+    """Pedido pra 15/10 e confirmado pra 20/10 nao aparecia em semana
+    nenhuma: o dashboard contava pela data solicitada."""
+    solicitada = SEGUNDA + timedelta(days=1)
+    confirmada = SEGUNDA + timedelta(days=8)
+    db.add(Agendamento(id=3, supplier="Fertimaxi", loading_date=br(solicitada),
+                       data_agendada=br(confirmada), total_tons=35, status="Aguardando Agendamento"))
+    db.commit()
+
+    desta = cliente.get("/dashboard/resumo").json()["semana"]
+    proxima = cliente.get("/dashboard/resumo", params={"semana": desta["proxima"]}).json()["semana"]
+
+    # Nao conta no dia em que foi pedido...
+    assert desta["dias"][1]["agendamentos"] == 0
+    # ...e sim no dia em que a fabrica confirmou.
+    dia_confirmado = next(d for d in proxima["dias"] if d["data"] == br(confirmada))
+    assert dia_confirmado["toneladas"] == 35 and dia_confirmado["agendamentos"] == 1
+
+
+def test_sem_data_confirmada_vale_a_solicitada(db, cliente):
+    semana = cliente.get("/dashboard/resumo").json()["semana"]
+
+    # O agendamento 1 da fixture nao tem data confirmada.
+    assert semana["dias"][0]["toneladas"] == 40

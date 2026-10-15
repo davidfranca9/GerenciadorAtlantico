@@ -36,8 +36,10 @@ export default function DashboardPage() {
   const agendamentosPorDia = useMemo(() => {
     const mapa = {};
     for (const a of agendamentos) {
-      if (!a.loading_date) continue;
-      (mapa[a.loading_date] ||= []).push(a);
+      // Vale o dia que a fábrica confirmou; a data solicitada é só o pedido.
+      const dia = (a.data_agendada || "").trim() || a.loading_date;
+      if (!dia) continue;
+      (mapa[dia] ||= []).push(a);
     }
     return mapa;
   }, [agendamentos]);
