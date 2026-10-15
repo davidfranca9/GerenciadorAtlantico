@@ -255,6 +255,10 @@ export function adminAtualizarUsuario(id, payload) {
   return request(`/admin/usuarios/${id}`, { method: "PATCH", body: payload });
 }
 
+export function adminExclusoes(limite = 100) {
+  return request(`/admin/usuarios/exclusoes?limite=${limite}`);
+}
+
 export function adminTrocarSenha(id, password) {
   return request(`/admin/usuarios/${id}/senha`, { method: "POST", body: { password } });
 }

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from ..auth import GRUPOS_TELAS, TELAS_LIBERAVEIS, hash_password, require_admin, telas_do_texto
 from ..database import get_db
 from ..models import User
+from ..servicos import exclusoes
 
 router = APIRouter(prefix="/admin/usuarios", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -62,6 +63,12 @@ def listar_telas():
     Administracao montar as caixinhas. Vem do backend porque e a MESMA lista
     que decide o acesso: aba nova aparece aqui sozinha."""
     return {"grupos": [{"titulo": g["titulo"], "telas": list(g["telas"])} for g in GRUPOS_TELAS]}
+
+
+@router.get("/exclusoes")
+def listar_exclusoes(limite: int = 100, tabela: str = "", db: Session = Depends(get_db)):
+    """O que foi apagado, por quem e quando - a resposta pro "sumiu"."""
+    return exclusoes.listar(db, limite=limite, tabela=tabela)
 
 
 @router.get("")

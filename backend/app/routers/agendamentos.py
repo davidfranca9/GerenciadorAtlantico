@@ -13,7 +13,7 @@ from ..auth import exigir_tela, get_current_user
 from ..config import settings
 from ..database import get_db
 from ..models import STATUS_AGENDAMENTO, Agendamento, AgendamentoEmail, AgendamentoItem, Cidade, Pedido
-from ..servicos import emails_agendamento, listas_email, ocr, respostas_fabrica, saldo_pedidos
+from ..servicos import emails_agendamento, exclusoes, listas_email, ocr, respostas_fabrica, saldo_pedidos
 from ..servicos.comunicacao import imagem_assinatura_inline, montar_autorizacao_do_caminhao, send_email_message
 from .documentos import Produto, OrdemColetaRequest, _gerar_oc_arquivos
 
@@ -244,7 +244,8 @@ def obter_agendamento(agendamento_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{agendamento_id}")
-def excluir_agendamento(agendamento_id: int, db: Session = Depends(get_db)):
+def excluir_agendamento(agendamento_id: int, db: Session = Depends(get_db),
+                        usuario=Depends(get_current_user)):
     agendamento = db.get(Agendamento, agendamento_id)
     if agendamento is None:
         raise HTTPException(status_code=404, detail="Agendamento nao encontrado")
@@ -253,6 +254,12 @@ def excluir_agendamento(agendamento_id: int, db: Session = Depends(get_db)):
     # O.C. libera de volta a tonelada que tinha sido descontada dela.
     saldo_pedidos.liberar(db, agendamento)
 
+    itens = ", ".join(f"{i.pedido} {i.produto}".strip() for i in agendamento.itens) or "sem itens"
+    exclusoes.anotar(
+        db, agendamento, usuario=getattr(usuario, "email", "") or "",
+        descricao=f"Agendamento {agendamento.loading_date or 's/data'} · "
+                  f"{agendamento.driver_name or 'sem motorista'} · {itens}",
+    )
     db.delete(agendamento)
     db.commit()
     return {"ok": True}

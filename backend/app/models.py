@@ -226,6 +226,27 @@ class Pedido(Base):
     )
 
 
+class RegistroExclusao(Base):
+    """O que foi apagado, por quem e quando.
+
+    Pedido e agendamento somem com um clique e nao deixavam rastro: quando
+    alguem perguntava "sumiu, quem apagou?", nao havia resposta - e sem os
+    dados nao dava nem pra refazer na mao. Aqui fica a linha inteira em JSON,
+    entao da pra conferir e reconstruir.
+    """
+
+    __tablename__ = "registros_exclusao"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tabela: Mapped[str] = mapped_column(String(40), index=True)
+    registro_id: Mapped[int] = mapped_column(Integer, index=True)
+    # Uma linha legivel ("Pedido 042666 - MAP - AGRODANTAS"), pra lista.
+    descricao: Mapped[str] = mapped_column(String(300), default="")
+    dados: Mapped[str] = mapped_column(Text, default="")
+    usuario: Mapped[str] = mapped_column(String(255), default="")
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class BaixaPedido(Base):
     """Tonelada dada como carregada na mao, fora dos agendamentos.
 

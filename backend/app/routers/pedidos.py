@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ..auth import exigir_tela, get_current_user
 from ..database import get_db
 from ..models import Agendamento, AgendamentoItem, BaixaPedido, Cidade, Pedido
-from ..servicos import ocr, saldo_pedidos
+from ..servicos import exclusoes, ocr, saldo_pedidos
 
 # Quem usa estas rotas (levantado no frontend, em frontend/src/api/client.js):
 # - Pedidos (PedidosPage): a tela toda - lista, baixa, retirar, devolver, PDF;
@@ -368,10 +368,15 @@ def aplicar_conciliacao(db: Session = Depends(get_db)):
 
 
 @router.delete("/{pedido_id}")
-def excluir_pedido(pedido_id: int, db: Session = Depends(get_db)):
+def excluir_pedido(pedido_id: int, db: Session = Depends(get_db), usuario=Depends(get_current_user)):
     pedido = db.get(Pedido, pedido_id)
     if pedido is None:
         raise HTTPException(status_code=404, detail="Pedido nao encontrado")
+    exclusoes.anotar(
+        db, pedido, usuario=getattr(usuario, "email", "") or "",
+        descricao=f"Pedido {pedido.contrato or 's/numero'} · {pedido.produto} · {pedido.cliente} · "
+                  f"{pedido.toneladas_total} t",
+    )
     db.delete(pedido)
     db.commit()
     return {"ok": True}

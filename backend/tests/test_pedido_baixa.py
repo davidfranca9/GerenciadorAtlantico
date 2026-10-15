@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.auth import get_current_user  # noqa: E402
 from app.database import get_db  # noqa: E402
-from app.models import Agendamento, AgendamentoEmail, AgendamentoItem, BaixaPedido, Pedido  # noqa: E402
+from app.models import Agendamento, AgendamentoEmail, AgendamentoItem, BaixaPedido, Pedido, RegistroExclusao  # noqa: E402
 from app.routers import pedidos  # noqa: E402
 from app.servicos import saldo_pedidos  # noqa: E402
 from tests.apoio_documentos import banco_em_memoria, usuario_de_teste  # noqa: E402
@@ -26,7 +26,7 @@ UREIA = "UREIA PRILL MICROGRANULADA 46% N"
 
 @pytest.fixture
 def db():
-    sessao = banco_em_memoria(Pedido, BaixaPedido, Agendamento, AgendamentoItem, AgendamentoEmail)
+    sessao = banco_em_memoria(Pedido, BaixaPedido, Agendamento, AgendamentoItem, AgendamentoEmail, RegistroExclusao)
     sessao.add_all([
         Pedido(id=44, contrato="041595", cliente="CARLOS LUCAS MENDES", produto=UREIA, toneladas_total=72, toneladas_usadas=40),
         Pedido(id=60, contrato="040393", cliente="MGX FLORESTAL", produto="MAP PURIFICADO 12.61.00", toneladas_total=30, toneladas_usadas=0),

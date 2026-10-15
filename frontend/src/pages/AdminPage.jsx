@@ -18,6 +18,8 @@ export default function AdminPage() {
   const [senhaAbertaId, setSenhaAbertaId] = useState(null);
   const [senhaNova, setSenhaNova] = useState("");
   const [aviso, setAviso] = useState("");
+  // "Sumiu, quem apagou?" passa a ter resposta aqui.
+  const [exclusoes, setExclusoes] = useState([]);
   const [salvando, setSalvando] = useState(false);
 
   async function carregar() {
@@ -31,6 +33,7 @@ export default function AdminPage() {
   useEffect(() => {
     carregar();
     api.adminTelas().then((dados) => setGrupos(dados.grupos || [])).catch((err) => setError(err.message));
+    api.adminExclusoes(50).then(setExclusoes).catch(() => {});
   }, []);
 
   async function handleTrocarSenha(e, usuario) {
@@ -125,6 +128,8 @@ export default function AdminPage() {
     if (!quantas) return "Nenhuma aba liberada";
     return `${quantas} aba${quantas === 1 ? "" : "s"}`;
   }
+
+  const quando = (iso) => (iso ? new Date(`${iso}Z`).toLocaleString("pt-BR") : "—");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -277,6 +282,31 @@ export default function AdminPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="card">
+        <h3 style={{ margin: "0 0 4px", font: "800 15px Manrope, sans-serif" }}>O que foi apagado</h3>
+        <p style={{ margin: "0 0 12px", color: "var(--muted)", fontSize: 12.5 }}>
+          Pedido e agendamento excluídos, com quem apagou e quando. Os dados ficam guardados, então dá para refazer.
+        </p>
+        {exclusoes.length === 0 ? (
+          <p style={{ margin: 0, color: "var(--muted)", fontSize: 12.5 }}>Nada foi excluído até agora.</p>
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr><th>Quando</th><th>Quem</th><th>O quê</th></tr>
+            </thead>
+            <tbody>
+              {exclusoes.map((e) => (
+                <tr key={e.id}>
+                  <td style={{ whiteSpace: "nowrap" }}>{quando(e.quando)}</td>
+                  <td>{e.usuario || "—"}</td>
+                  <td>{e.descricao || `${e.tabela} #${e.registro_id}`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
