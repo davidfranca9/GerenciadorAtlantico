@@ -147,3 +147,43 @@ def test_clientes_diferentes_vao_juntos_no_assunto():
     )
     assert titulo == "AUTORIZAÇÃO AGENDAMENTO: CARLOS LUCAS MENDES / LUCAS MENDES FILHO MARQUES SUCUPIRA - Nº 041594 / 038864"
     assert montar_autorizacao_do_caminhao([{"cliente": "X", "contrato": ""}], "18/09/2026") is None
+
+
+# --------------------------------------------------------------------------
+# Emitir sem motorista
+# --------------------------------------------------------------------------
+
+
+def _enviar_oc(monkeypatch, corpo):
+    """A rota da tela de Ordem de Coleta (com roteiro/localizador)."""
+    banco = SimpleNamespace(commit=lambda: None, get=lambda *a, **k: None,
+                            refresh=lambda *a, **k: None, add=lambda *a, **k: None)
+    cliente, documentos = cliente_http(db=banco)
+    monkeypatch.setattr(documentos, "_salvar_agendamento_oc", lambda *a, **k: SimpleNamespace(
+        id=7, email_subject="", email_recipients="", itens=[],
+    ))
+    monkeypatch.setattr(documentos.respostas_fabrica, "registrar_envio", lambda *a, **k: None)
+    enviados = []
+    monkeypatch.setattr(
+        documentos, "send_email_message",
+        lambda destinatarios, assunto, corpo_html, anexos, **kw: enviados.append((assunto, [Path(a).name for a in anexos])),
+    )
+    return cliente.post("/ordens-coleta/enviar-email", json=corpo), enviados
+
+
+def test_ordem_de_coleta_sai_sem_motorista(monkeypatch):
+    """A fabrica agenda antes de sabermos quem dirige: exigir motorista aqui
+    travava o pedido de agendamento."""
+    resposta, enviados = _enviar_oc(monkeypatch, pedido())
+
+    assert resposta.status_code == 200, resposta.text
+    assunto, anexos = enviados[0]
+    assert anexos == ["Ordem de Coleta_WAGMAR JOSE DE OLIVEIRA.pdf"]
+    assert "WAGMAR JOSE DE OLIVEIRA" in assunto
+
+
+def test_com_motorista_o_assunto_continua_no_nome_dele(monkeypatch):
+    resposta, enviados = _enviar_oc(monkeypatch, pedido(nome="TALISSON JUNIOR GUIMARAES RIBEIRO"))
+
+    assert resposta.status_code == 200, resposta.text
+    assert "TALISSON JUNIOR GUIMARAES RIBEIRO" in enviados[0][0]

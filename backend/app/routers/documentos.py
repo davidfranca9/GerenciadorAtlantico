@@ -320,9 +320,9 @@ class EnviarOrdemColetaRequest(OrdemColetaRequest):
 def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = Depends(get_db)):
     if not payload.produtos:
         raise HTTPException(status_code=400, detail="Selecione ao menos um produto/pedido")
-    if not payload.nome.strip():
-        raise HTTPException(status_code=400, detail="Nome do motorista e obrigatorio")
-
+    # Motorista nao e obrigatorio: a fabrica agenda antes de a gente saber
+    # quem vai dirigir, e a Ordem de Coleta sai no nome do cliente ate o
+    # motorista entrar (depois ele e incluido pela tela de Agendamentos).
     supplier_label = "Heringer" if payload.template.upper() == "HERINGER" else "Fertimaxi"
     recipients = listas_email.destinatarios(db, "heringer" if supplier_label == "Heringer" else "fertimaxi")
     if payload.teste:
@@ -337,7 +337,7 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
         # Agendamento" rapido: um e-mail so pro caminhao inteiro, com a Ordem
         # de Coleta anexada.
         anexos = [arquivos["pdf"]]
-        subject = f"Autorizacao de {payload.nome.strip()}"
+        subject = f"Autorizacao de {payload.nome.strip() or arquivos['nome_documento']}"
         montado = montar_autorizacao_do_caminhao(payload.produtos, payload.data_carregamento, motorista=payload.nome)
         if montado is not None:
             titulo, corpo = montado
@@ -350,7 +350,8 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
         anexos = [arquivos["pdf"]]
         if arquivos["xlsx"]:
             anexos.append(arquivos["xlsx"])
-        subject = f"Autorizacao de {payload.nome.strip()} - Placa {payload.placa1.strip() or 'N/A'}"
+        subject = (f"Autorizacao de {payload.nome.strip() or arquivos['nome_documento']}"
+                   f" - Placa {payload.placa1.strip() or 'N/A'}")
         detail_blocks = []
         if payload.roteiro.strip():
             detail_blocks.append(f"<p><b>Roteiro:</b><br>{html.escape(payload.roteiro).replace(chr(10), '<br>')}</p>")

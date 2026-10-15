@@ -59,10 +59,12 @@ export default function OrdemColetaPage() {
   const summary=[["Fornecedor",SUPPLIER_LABEL[supplier]||supplier,"truck"],["Carregamento",dataCarregamento||"Não definido","calendar"],["Pedidos",new Set(selectedRows.map((r)=>r.contrato).filter(Boolean)).size,"contract"],["Produtos",metrics.selectedCount,"clipboard"]];
   const hasContracts = selectedRows.length > 0;
   const hasDriver = Boolean(nome.trim());
+  // O motorista e opcional: a fabrica agenda antes de a gente saber quem vai
+  // dirigir, e ele entra depois pela tela de Agendamentos.
   const workflow = [
     { label:"Selecionar contratos", state:hasContracts ? "done" : "current" },
-    { label:"Conferir motorista", state:!hasContracts ? "locked" : hasDriver ? "done" : "current" },
-    { label:"Emitir documentos", state:hasContracts && hasDriver ? "current" : "locked" },
+    { label:"Conferir motorista (opcional)", state:!hasContracts ? "locked" : hasDriver ? "done" : "current" },
+    { label:"Emitir documentos", state:hasContracts ? "current" : "locked" },
   ];
 
   return <div className="ops-page">
@@ -95,6 +97,6 @@ export default function OrdemColetaPage() {
       <div className="field-grid route-grid"><div className="field field-full"><label>Observações</label><textarea value={observacoes} onChange={(e)=>updateMotorista("observacoes",e.target.value)} placeholder="Observações que aparecerão na O.C." rows={3}/></div></div>
     </section>
     {status&&<div className="inline-alert info"><span className="status-dot"/>{status}</div>}{error&&<div className="inline-alert error">{error}</div>}
-    <div className="action-dock"><div><span>ETAPA FINAL</span><strong>{hasContracts && hasDriver ? "Tudo pronto para emitir" : "Conclua as etapas anteriores para emitir"}</strong></div><div className="action-buttons"><button className="btn-ghost" disabled={!!loadingAction} onClick={handleLimpar}><Icon name="trash" size={16}/>Limpar</button><button className="btn-secondary" disabled={!!loadingAction || !hasContracts || !hasDriver} onClick={handleEnviarEmail}><Icon name="mail" size={16}/>{loadingAction==="email"?"Enviando...":"Enviar por e-mail"}</button><button className="btn-primary" disabled={!!loadingAction || !hasContracts || !hasDriver} onClick={handleGerar}><Icon name="file" size={16}/>{loadingAction==="pdf"?"Gerando...":supplier==="HERINGER"?"Gerar Ordem de Coleta PDF":"Gerar O.C. + autorização"}</button></div></div>
+    <div className="action-dock"><div><span>ETAPA FINAL</span><strong>{!hasContracts ? "Selecione os contratos para emitir" : hasDriver ? "Tudo pronto para emitir" : "Pronto para emitir sem motorista"}</strong></div><div className="action-buttons"><button className="btn-ghost" disabled={!!loadingAction} onClick={handleLimpar}><Icon name="trash" size={16}/>Limpar</button><button className="btn-secondary" disabled={!!loadingAction || !hasContracts} onClick={handleEnviarEmail}><Icon name="mail" size={16}/>{loadingAction==="email"?"Enviando...":"Enviar por e-mail"}</button><button className="btn-primary" disabled={!!loadingAction || !hasContracts} onClick={handleGerar}><Icon name="file" size={16}/>{loadingAction==="pdf"?"Gerando...":supplier==="HERINGER"?"Gerar Ordem de Coleta PDF":"Gerar O.C. + autorização"}</button></div></div>
   </div>;
 }
