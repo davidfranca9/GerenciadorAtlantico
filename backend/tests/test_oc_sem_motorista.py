@@ -22,8 +22,15 @@ PRODUTOS = [
 
 @pytest.fixture
 def oc_html(monkeypatch):
-    """O WeasyPrint nao carrega neste Windows (falta biblioteca nativa) e nem
-    e o que estamos testando: o que interessa e o HTML que entra nele."""
+    """Importa o modulo de verdade, com o WeasyPrint simulado.
+
+    Duas coisas atrapalham: o WeasyPrint nao carrega neste Windows (falta
+    biblioteca nativa) e outros testes trocam `app.servicos.oc_html` por um
+    dublê sem funcao nenhuma. Entao aqui o dublê sai de cena, o weasyprint
+    entra simulado e o modulo e importado do arquivo - o monkeypatch devolve
+    tudo ao normal no fim.
+    """
+    import importlib
     import types
 
     gerado = {}
@@ -35,13 +42,12 @@ def oc_html(monkeypatch):
         def write_pdf(self, caminho):
             pass
 
-    if "weasyprint" not in sys.modules:
-        falso = types.ModuleType("weasyprint")
-        falso.HTML = HTMLFalso
-        monkeypatch.setitem(sys.modules, "weasyprint", falso)
+    falso = types.ModuleType("weasyprint")
+    falso.HTML = HTMLFalso
+    monkeypatch.setitem(sys.modules, "weasyprint", falso)
+    monkeypatch.delitem(sys.modules, "app.servicos.oc_html", raising=False)
 
-    from app.servicos import oc_html as modulo
-
+    modulo = importlib.import_module("app.servicos.oc_html")
     monkeypatch.setattr(modulo, "HTML", HTMLFalso)
     modulo._conteudo = gerado
     return modulo
