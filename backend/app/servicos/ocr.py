@@ -13,6 +13,7 @@ import os
 import re
 import unicodedata
 from datetime import datetime
+from typing import Optional
 
 import fitz  # PyMuPDF
 import pdfplumber
@@ -490,6 +491,48 @@ def embalagem_do_texto(texto: str) -> str:
     return "DESCONHECIDA"
 
 
+def _linhas_na_ordem_do_desenho(pagina) -> list[str]:
+    """Os textos da pagina na ordem em que o PDF os desenha, um por linha.
+
+    O `extract_text` ordena os caracteres pela posicao na pagina. Quando um
+    texto transborda por cima de outro, os dois se embaralham: no contrato da
+    Fertimaxi o nome da empresa ("...FERTILIZANTES LT") passa por baixo do
+    quadro do cliente, e a leitura virava "FERTILIZANTECSL ILETNTE:" - a
+    palavra CLIENTE: nunca aparecia inteira e o pedido ficava sem cliente.
+
+    O PDF desenha cada texto de uma vez, entao seguir a ordem dos caracteres
+    como ele os guarda mantem cada um inteiro. Uma nova linha comeca quando a
+    altura muda, quando a posicao volta pra tras ou quando ha um vao grande.
+    """
+    linhas: list[str] = []
+    atual, anterior = "", None
+    for c in pagina.chars:
+        if anterior is not None and (
+            abs(c["top"] - anterior["top"]) > 1.5
+            or c["x0"] < anterior["x0"] - 1
+            or c["x0"] - anterior["x1"] > 12
+        ):
+            linhas.append(atual)
+            atual = ""
+        atual += c["text"]
+        anterior = c
+    linhas.append(atual)
+    return [linha.strip() for linha in linhas if linha.strip()]
+
+
+def cliente_do_contrato(pdf) -> Optional[str]:
+    """O nome do cliente, lido pela ordem de desenho (ver acima).
+
+    Percorre todas as paginas: tem PDF com uma pagina em branco na frente e o
+    contrato na segunda. Devolve None quando nao acha o rotulo CLIENTE:."""
+    for pagina in pdf.pages:
+        for linha in _linhas_na_ordem_do_desenho(pagina):
+            achou = re.match(r"CLIENTE:\s*(.+)", linha, re.IGNORECASE)
+            if achou and achou.group(1).strip():
+                return achou.group(1).strip()
+    return None
+
+
 def texto_com_cliente_separado(pdf) -> str:
     """Texto do pedido com o quadro do CLIENTE lido sozinho.
 
@@ -705,6 +748,7 @@ def parse_pdf_fields(pdf_path: str, cidades: list[tuple[str, str]]) -> dict:
         if eh_oferta_fertimaxi(text):
             return extrair_oferta_fertimaxi(text, cidades)
         texto_cliente = texto_com_cliente_separado(pdf)
+        cliente_do_desenho = cliente_do_contrato(pdf)
 
     candidatas = encontrar_cidades_candidatas(texto_cliente or text, cidades)
     cidade = ""
@@ -712,8 +756,11 @@ def parse_pdf_fields(pdf_path: str, cidades: list[tuple[str, str]]) -> dict:
         nome, uf = candidatas[0]
         cidade = formatar_cidade(nome, uf)
 
+    # O texto da pagina embaralha o cliente quando o nome da empresa transborda
+    # sobre o quadro dele; a ordem de desenho e a leitura confiavel, e o texto
+    # corrido fica de reserva pro PDF que nao tem os caracteres separados.
     m_cliente = re.search(r"CLIENTE:\s*(.+)", text, re.MULTILINE)
-    cliente = m_cliente.group(1).strip() if m_cliente else None
+    cliente = cliente_do_desenho or (m_cliente.group(1).strip() if m_cliente else None)
     m_pedido = re.search(r"Nr\. Pedido\s+(\d+)", text, re.IGNORECASE)
     if not m_pedido:
         m_pedido = re.search(r"N°\s+(\d+)", text, re.IGNORECASE)
