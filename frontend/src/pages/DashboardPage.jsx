@@ -2,6 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import * as api from "../api/client";
 import Icon from "../components/Icon";
 
+// O que está agendado de verdade: quem é o cliente e qual pedido/produto.
+// Antes a linha só dizia "Motorista não definido" - e quem olha o dia quer
+// saber a carga, não a ausência do motorista.
+function resumoDaCarga(agendamento) {
+  const itens = agendamento.itens || [];
+  const clientes = [...new Set(itens.map((i) => (i.cliente || "").trim()).filter(Boolean))];
+  const detalhes = itens
+    .slice(0, 2)
+    .map((i) => [i.pedido && `Pedido ${i.pedido}`, i.produto, i.cidade].filter(Boolean).join(" · "));
+  if (itens.length > 2) detalhes.push(`+ ${itens.length - 2} item(ns)`);
+  return { clientes: clientes.join(" / "), detalhes };
+}
+
 function formatTon(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 }
@@ -126,14 +139,21 @@ export default function DashboardPage() {
                     {itensDoDia.length === 0 ? (
                       <p>Nenhum agendamento nesse dia.</p>
                     ) : (
-                      itensDoDia.map((a) => (
-                        <div className="dashboard-week-item" key={a.id}>
-                          <span className="dashboard-week-item-supplier">{a.supplier || "-"}</span>
-                          <span>{a.driver_name || "Motorista não definido"}</span>
-                          <span>{formatTon(a.total_tons)} t</span>
-                          <span>{a.status}</span>
-                        </div>
-                      ))
+                      itensDoDia.map((a) => {
+                        const carga = resumoDaCarga(a);
+                        return (
+                          <div className="dashboard-week-item" key={a.id}>
+                            <span className="dashboard-week-item-supplier">{a.supplier || "-"}</span>
+                            <span className="dashboard-week-item-carga">
+                              <strong>{carga.clientes || "Cliente não informado"}</strong>
+                              {carga.detalhes.map((d) => <small key={d}>{d}</small>)}
+                              <small className="dashboard-week-item-motorista">{a.driver_name || "Motorista a definir"}</small>
+                            </span>
+                            <span>{formatTon(a.total_tons)} t</span>
+                            <span>{a.status}</span>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 )}

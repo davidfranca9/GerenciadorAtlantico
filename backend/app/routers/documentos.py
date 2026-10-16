@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import logging
 import os
 import re
 import tempfile
@@ -161,19 +162,71 @@ def _gerar_oc_arquivos(payload: OrdemColetaRequest, tmp_dir: str) -> dict:
     return {"pdf": pdf_path, "xlsx": xlsx_path, "safe_name": safe_name, "nome_documento": nome_documento}
 
 
+logger = logging.getLogger(__name__)
+
+
+def _numero_do_pedido(texto) -> str:
+    """"043843" e "43843" sao o mesmo pedido."""
+    return str(texto or "").strip().upper().lstrip("0")
+
+
+def _nome(texto) -> str:
+    return " ".join(str(texto or "").upper().split())
+
+
+def _e_a_mesma_carga(existente: Agendamento, produtos_dict: list[dict]) -> bool:
+    """O agendamento que a tela mandou reaproveitar e desta carga mesmo?
+
+    A tela guarda o id do ultimo agendamento pra gerar a O.C. e a autorizacao
+    em sequencia sem descontar o saldo duas vezes. So que ela guarda por
+    tempo demais: o id de um caminhao seguia valendo no proximo, e o servidor
+    REESCREVIA o agendamento antigo com a carga nova - o primeiro sumia e o
+    segundo nunca ganhava registro proprio.
+
+    Aqui so vale reaproveitar quando algum pedido + produto se repete (ou o
+    vinculo com o pedido bate). Carga sem nada em comum e outro caminhao.
+    """
+    if not existente.itens:
+        return True
+    ja_tem = {(_numero_do_pedido(i.pedido), _nome(i.produto)) for i in existente.itens}
+    vinculos = {i.pedido_ref_id for i in existente.itens if i.pedido_ref_id}
+    for p in produtos_dict:
+        if p.get("pedido_id") and p["pedido_id"] in vinculos:
+            return True
+        if (_numero_do_pedido(p.get("contrato")), _nome(p.get("produto"))) in ja_tem:
+            return True
+    return False
+
+
 def _salvar_agendamento_oc(
     db: Session,
     payload: OrdemColetaRequest,
     produtos_dict: list[dict],
     arquivos: dict,
+    confirmar: bool = True,
 ) -> Agendamento:
     """Cria ou atualiza (quando payload.agendamento_id e informado) o registro
-    da Ordem de Coleta no banco, funcionando como o "banco de OCs geradas"."""
+    da Ordem de Coleta no banco, funcionando como o "banco de OCs geradas".
+
+    `confirmar=False` so grava na transacao (flush): quem manda e-mail grava
+    ANTES de mandar e confirma depois, pra o e-mail nunca sair sem o
+    agendamento existir - e nao ficar agendamento de e-mail que nao saiu.
+    """
+    agendamento = None
     if payload.agendamento_id:
-        agendamento = db.get(Agendamento, payload.agendamento_id)
-        if agendamento is None:
-            raise HTTPException(status_code=404, detail="Ordem de Coleta nao encontrada para edicao")
-    else:
+        candidato = db.get(Agendamento, payload.agendamento_id)
+        if candidato is not None and _e_a_mesma_carga(candidato, produtos_dict):
+            agendamento = candidato
+        else:
+            # Id velho: ou o agendamento nao existe mais, ou e de outra carga.
+            # Em nenhum dos dois casos da pra reescrever, e recusar com 404
+            # depois de o e-mail ter saido deixava a fabrica avisada e o
+            # sistema sem registro. Cria um novo.
+            logger.warning(
+                "agendamento_id %s ignorado: %s", payload.agendamento_id,
+                "nao existe mais" if candidato is None else "e de outra carga",
+            )
+    if agendamento is None:
         agendamento = Agendamento()
         db.add(agendamento)
 
@@ -211,8 +264,11 @@ def _salvar_agendamento_oc(
         agendamento.planilha_path = arquivos["xlsx"]
     agendamento.updated_at = datetime.utcnow()
 
-    db.commit()
-    db.refresh(agendamento)
+    if confirmar:
+        db.commit()
+        db.refresh(agendamento)
+    else:
+        db.flush()
     return agendamento
 
 
@@ -295,13 +351,16 @@ def enviar_autorizacao_email(payload: OrdemColetaRequest, db: Session = Depends(
         raise HTTPException(status_code=400, detail="Nenhum produto com cliente e pedido preenchidos pra enviar")
     titulo, corpo = montado
     titulo = _assunto_teste(titulo, payload.teste)
+    # Grava ANTES de mandar: se o registro nao puder ser feito, o e-mail nem
+    # sai. Se o e-mail falhar, o registro desfaz - fica como era antes.
+    agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, arquivos, confirmar=False)
     try:
         message_ids = [send_email_message(destinatarios, titulo, corpo, [arquivos["pdf"]], imagens_inline=imagem_assinatura_inline())]
     except Exception as exc:
+        db.rollback()
         raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
     assuntos_enviados = [titulo]
 
-    agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, arquivos)
     agendamento.email_subject = "; ".join(assuntos_enviados)[:500]
     agendamento.email_recipients = ", ".join(destinatarios)[:1000]
     for message_id in message_ids:
@@ -331,6 +390,10 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
     tmp_dir = tempfile.mkdtemp()
     arquivos = _gerar_oc_arquivos(payload, tmp_dir)
     message_ids: list[str] = []
+    produtos_dict = [p.model_dump() for p in payload.produtos]
+    # Grava ANTES de mandar (ver _salvar_agendamento_oc): o e-mail so sai se o
+    # agendamento existe, e se ele falhar o registro desfaz.
+    agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, arquivos, confirmar=False)
 
     if supplier_label == "Fertimaxi":
         # Mesmo modelo (clientes + pedidos + assinatura) usado no "Novo
@@ -344,6 +407,7 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
             try:
                 message_ids.append(send_email_message(recipients, _assunto_teste(titulo, payload.teste), corpo, anexos, imagens_inline=imagem_assinatura_inline()))
             except Exception as exc:
+                db.rollback()
                 raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
             subject = titulo
     else:
@@ -367,10 +431,9 @@ def enviar_ordem_coleta_email(payload: EnviarOrdemColetaRequest, db: Session = D
         try:
             message_ids.append(send_email_message(recipients, _assunto_teste(subject, payload.teste), body, anexos))
         except Exception as exc:
+            db.rollback()
             raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {exc}")
 
-    produtos_dict = [p.model_dump() for p in payload.produtos]
-    agendamento = _salvar_agendamento_oc(db, payload, produtos_dict, arquivos)
     for message_id in message_ids:
         respostas_fabrica.registrar_envio(agendamento, message_id)
     agendamento.roteiro = payload.roteiro.strip()

@@ -139,7 +139,9 @@ export default function ContratoPage() {
     setEnviandoAutorizacao(true);
     try {
       const resultado = await api.enviarAutorizacaoColetaEmail(buildAutorizacaoPayload());
-      if (resultado?.agendamento_id) setAgendamentoId(resultado.agendamento_id);
+      // O e-mail fecha a carga: o proximo envio e outro caminhao. Guardar o id
+      // fazia o servidor tratar o proximo como edicao deste.
+      setAgendamentoId(null);
       setStatus(
         `Ordem de coleta enviada por e-mail. Agendamento #${resultado?.agendamento_id} registrado: `
         + "quando tiver o motorista, é só incluir em Agendamentos."
