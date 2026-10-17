@@ -44,7 +44,8 @@ def decidir(nota: NotaFiscalRecebida, sugestao: dict, operacao_anterior=None) ->
     if not (nota.xml or "").strip():
         return "nota sem XML (so o resumo)"
     if not sugestao.get("tarifa"):
-        return f"sem tarifa: nenhuma cotacao registrada para {sugestao.get('destino') or 'o destino'}"
+        return (f"sem tarifa: nenhuma cotacao registrada nem CT-e anterior para "
+                f"{sugestao.get('destino') or 'o destino'}")
     if operacao_anterior is not None and (operacao_anterior.cod_conhecimento_bsoft or operacao_anterior.erro):
         return f"ja existe operacao #{operacao_anterior.id} ({operacao_anterior.status})"
     return ""
@@ -110,7 +111,8 @@ def tentar(db: Session, nota: NotaFiscalRecebida) -> str:
     else:
         resultado = (
             f"rascunho {operacao.cod_conhecimento_bsoft} criado no Bsoft "
-            f"(tarifa R$ {sugestao['tarifa']}/t, {espelho['especie'].get('nome') or 'especie da embalagem'})"
+            f"(tarifa R$ {sugestao['tarifa']}/t - {sugestao.get('origem_tarifa') or 'cotacao'}; "
+            f"{espelho['especie'].get('nome') or 'especie da embalagem'})"
         )
         logger.info("rascunho automatico: nota %s -> %s", nota.chave, operacao.cod_conhecimento_bsoft)
 

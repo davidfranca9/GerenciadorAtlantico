@@ -915,12 +915,26 @@ def sugerir_para_agendamento(db: Session, agendamento: Agendamento) -> dict:
         if cotacao is None:
             cotacao = consulta.order_by(CotacaoFrete.data_cotacao.desc()).first()
 
+    # Sem cotacao registrada, vale o que ja foi cobrado no destino (ver
+    # servicos/tarifa_do_destino.py). A origem vai junto: a cotacao e a fonte
+    # de verdade, e quem confere o rascunho precisa saber de onde veio o numero.
+    reserva = None
+    if cotacao is None and destino:
+        from ..servicos import tarifa_do_destino
+
+        reserva = tarifa_do_destino.do_ultimo_cte(db, destino, cliente)
+
     return {
         "agendamento_id": agendamento.id,
         "destino": destino,
         "cliente": cliente,
         "embalagem": embalagem,
-        "tarifa": f"{cotacao.valor_tonelada:.2f}" if cotacao else "",
+        "tarifa": f"{cotacao.valor_tonelada:.2f}" if cotacao else (f"{reserva['tarifa']:.2f}" if reserva else ""),
+        "origem_tarifa": (
+            "cotacao" if cotacao
+            else f"ultimo CT-e pra {reserva['destino']} (CT-e {reserva['cte']}, R$ {reserva['tarifa']:.2f}/t)" if reserva
+            else ""
+        ),
         "cotacao": {
             "data": cotacao.data_cotacao,
             "destino": cotacao.destino,
