@@ -78,6 +78,7 @@ def tentar(db: Session, nota: NotaFiscalRecebida) -> str:
             espelho, agendamento,
             aliquota_icms=ALIQUOTA_PADRAO,
             rascunho=True,
+            usado_antes=emissao_cte.enderecos_do_ultimo_cte(db),
         )
     except emissao_cte.FalhaCadastros as exc:
         logger.warning("rascunho automatico da nota %s: %s", nota.chave, str(exc)[:150])

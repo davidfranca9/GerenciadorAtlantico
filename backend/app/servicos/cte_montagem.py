@@ -498,8 +498,12 @@ def resolver_parte(
     listar_enderecos,
     cep: str = "",
     endereco_id=None,
+    usado_antes=None,
 ) -> dict:
     """Traduz documento + municipio da NF-e nos ids do cadastro do Bsoft.
+
+    `usado_antes(pessoa_id)` devolve o endereco usado no ultimo CT-e criado
+    pra essa pessoa; so entra quando o documento nao decide.
 
     As buscas entram por parametro pra esta funcao poder ser testada sem
     tocar na API.
@@ -527,6 +531,15 @@ def resolver_parte(
 
     disponiveis = listar_enderecos(pessoa["id"])
     endereco, aviso, candidatos = _escolher_endereco(disponiveis, ibge, cep)
+    # O documento (municipio, CEP) e o preferencial ja tiveram a vez. Se ainda
+    # ha varios enderecos e nenhum e "o certo", vale o que foi usado no ultimo
+    # CT-e desta mesma pessoa: a Fertimaxi tem quatro no municipio da fabrica e
+    # sempre sai do mesmo. Parar aqui deixava o CT-e automatico sem remetente.
+    if endereco is None and not endereco_id and len(candidatos or []) > 1 and usado_antes:
+        anterior = str(usado_antes(pessoa["id"]) or "")
+        escolhido = next((e for e in candidatos if anterior and str(e.get("id")) == anterior), None)
+        if escolhido is not None:
+            endereco, aviso = escolhido, ""
     resultado["enderecos"] = [
         {"id": e.get("id"), "descricao": _descrever(e)} for e in (candidatos or disponiveis)
     ]
@@ -563,17 +576,23 @@ def resolver_partes(
     listar_enderecos,
     endereco_remetente_id=None,
     endereco_destinatario_id=None,
+    usado_antes=None,
 ) -> dict:
-    """Resolve remetente e destinatario de uma vez, a partir do espelho."""
+    """Resolve remetente e destinatario de uma vez, a partir do espelho.
+
+    `usado_antes(papel, pessoa_id)` desempata endereco ambiguo pelo do ultimo
+    CT-e criado ("remetente" ou "destinatario")."""
     remetente = resolver_parte(
         espelho["remetente_doc"], espelho["ibge_origem"],
         buscar_pessoa=buscar_pessoa, listar_enderecos=listar_enderecos,
         cep=espelho.get("cep_origem", ""), endereco_id=endereco_remetente_id,
+        usado_antes=(lambda pid: usado_antes("remetente", pid)) if usado_antes else None,
     )
     destinatario = resolver_parte(
         espelho["destinatario_doc"], espelho["ibge_destino"],
         buscar_pessoa=buscar_pessoa, listar_enderecos=listar_enderecos,
         cep=espelho.get("cep_destino", ""), endereco_id=endereco_destinatario_id,
+        usado_antes=(lambda pid: usado_antes("destinatario", pid)) if usado_antes else None,
     )
     pendencias = []
     if remetente["aviso"]:

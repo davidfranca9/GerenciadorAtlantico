@@ -15,6 +15,7 @@ Duas etapas, separadas de proposito:
 from __future__ import annotations
 
 import json
+import re
 import logging
 from datetime import datetime
 
@@ -71,6 +72,37 @@ CAMPOS_ESCOLHA = (
 def escolhas_de(valores: dict) -> dict:
     """Junta o que foi escolhido na tela, ignorando os campos vazios."""
     return {nome: valores[nome] for nome in CAMPOS_ESCOLHA if valores.get(nome)}
+
+
+def enderecos_do_ultimo_cte(db):
+    """Funcao (papel, pessoa_id) -> endereco usado no ultimo CT-e criado.
+
+    Le o payload que cada operacao guarda. Ele e cortado em 4.000 caracteres,
+    entao o JSON pode vir incompleto: por isso a leitura e por expressao
+    regular e nao por json.loads. So contam operacoes que de fato criaram o
+    documento no Bsoft.
+    """
+    from ..models import OperacaoFiscal
+
+    campos = {"remetente": ("remetente_id", "enderecoRemetente_id"),
+              "destinatario": ("destinatario_id", "enderecoDestinatario_id")}
+    operacoes = (
+        db.query(OperacaoFiscal.ultimo_payload)
+        .filter(OperacaoFiscal.cod_conhecimento_bsoft != "")
+        .order_by(OperacaoFiscal.id.desc()).limit(60).all()
+    )
+
+    def buscar(papel: str, pessoa_id) -> str | None:
+        campo_pessoa, campo_endereco = campos[papel]
+        for (texto,) in operacoes:
+            texto = texto or ""
+            pessoa = re.search(rf'"{campo_pessoa}":\s*"?(\d+)', texto)
+            endereco = re.search(rf'"{campo_endereco}":\s*"?(\d+)', texto)
+            if pessoa and endereco and pessoa.group(1) == str(pessoa_id):
+                return endereco.group(1)
+        return None
+
+    return buscar
 
 
 def escolher_cfops_id(uf_origem: str, uf_destino: str) -> int:
@@ -189,6 +221,7 @@ def montar(
     listar_enderecos=None,
     resolver_veiculos_fn=None,
     resolver_apolice_fn=None,
+    usado_antes=None,
 ) -> dict:
     """LEITURA no Bsoft. Devolve partes, veiculos, payload e pendencias.
 
@@ -206,6 +239,7 @@ def montar(
             listar_enderecos=listar_enderecos,
             endereco_remetente_id=endereco_remetente_id or None,
             endereco_destinatario_id=endereco_destinatario_id or None,
+            usado_antes=usado_antes,
         )
         veiculos = resolver_veiculos_fn(agendamento, escolhas or {})
         seguro = resolver_apolice_fn()

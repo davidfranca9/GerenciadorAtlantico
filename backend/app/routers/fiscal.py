@@ -339,6 +339,7 @@ async def espelho_do_cte(
             listar_enderecos=bsoft_fiscal.listar_enderecos,
             endereco_remetente_id=endereco_remetente_id or None,
             endereco_destinatario_id=endereco_destinatario_id or None,
+            usado_antes=emissao_cte.enderecos_do_ultimo_cte(db),
         )
         veiculos = await run_in_threadpool(emissao_cte.resolver_veiculos, agendamento, emissao_cte.escolhas_de(locals()))
         seguro = await run_in_threadpool(emissao_cte.resolver_apolice)
@@ -438,6 +439,7 @@ async def emitir_conhecimento(
             endereco_remetente_id=endereco_remetente_id,
             endereco_destinatario_id=endereco_destinatario_id,
             rascunho=not confirmar_emissao_real,
+            usado_antes=emissao_cte.enderecos_do_ultimo_cte(db),
         )
     except emissao_cte.FalhaCadastros as exc:
         raise HTTPException(status_code=502, detail=str(exc))
